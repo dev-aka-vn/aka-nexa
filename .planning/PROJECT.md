@@ -111,6 +111,19 @@ storage**, checked fresh on every access, and invalidated by a monotonically inc
 memory pressure, and it is the reason `jose` (with `kid`-keyed keyring resolution) was chosen
 over `@nestjs/jwt`.
 
+**Research is complete and it changed the plan, not the stack.** `.planning/research/` (four
+researchers + synthesis, 2026-10-01) audited the stack spine and found only patch-level drift —
+what it changed was the *ordering*. All four researchers independently reached the same headline:
+**the dominant risk in this project is build order, not technology.** The stack survived; the
+PRD's §20 phase sequence did not. See `.planning/REQUIREMENTS.md` for the three resolved
+requirement conflicts and the v1 scope calibration, and `research/SUMMARY.md` for the
+cross-research disagreements that were resolved rather than averaged.
+
+**Three decisions must be recorded before Phase 1 code is written**, because code written
+against the PRD as written will encode the losing side of each contradiction by accident:
+the per-IP rate-limit ruling, the trace-ID/erasure ruling, and the `FR-D-12` write-once
+amendment. All three are in Key Decisions below.
+
 ## Constraints
 
 - **Runtime**: Node.js **24 LTS** — Node 20 hit EOL 2026-04-30, and NFR-SEC-12 (critical vulns block
@@ -194,6 +207,23 @@ forced it.
 | **Rate limit tiers map to `@nestjs/throttler` named throttlers** | The three NFR-SEC-6 tiers (per-user, per-app, per-connector) are exactly what named throttlers express | — Pending |
 | **npm workspaces, reject nx / turbo** | 2 web apps + 1 API + 1 worker; a build-graph tool is unjustified overhead at this size | — Pending |
 | **Planning estimate 26–34 weeks, not PRD's 19–28** | PRD sequencing defers the read path and App Builder past their dependents | ⚠️ Revisit |
+| **NFR-SEC-10 per-IP brute-force cap loses** to NFR-A-1 / FR-R-10 | Six legitimate users behind one corporate NAT would trip the cap and lock out an entire office. This is a self-inflicted outage | — Pending |
+| **NFR-O-1 `trace_id = submission_id` loses** to FR-AU-5 / §15.4 | A stable, correlatable trace ID *is* a 3-year un-purgeable activity map living in a store with no per-app RBAC | — Pending |
+| **FR-AU-3/5 (3-year immutable audit) wins** over §15.4 erasure | 3-year audit retention is a hard compliance obligation. §15.4's erasure promise is **narrowed to what the code delivers**: PII excluded from logs by allowlist before serialisation + tombstoneable `actor_ref` + defined purge windows for submission bodies | ⚠️ Revisit — the "legitimate interest" framing needs counsel, not research |
+| **`FR-D-12` write-once is amended, not implemented** | Unimplementable against most enterprise downstreams. The platform guarantees a single *send* per submission; write-once additionally requires downstream idempotency-key support or a natural-key pre-check, declared per connector | — Pending |
+| **v1 = Slack × (internal + one external connector)** | 4 platforms in v1 costs +8–12 weeks of variance against a 26–34 week target. Internal-only would make this a form-forwarder, not a gateway. Teams is the first expansion; Zalo and Telegram defer past v1 | — Pending |
+| **Vertical-slice build order, not PRD §20's layer order** | All four researchers independently concluded the dominant project risk is build order, not technology. The read path moves from Phase 4 to immediately after the vertical slice; the App Builder stays put because building it earlier means designing UI against moving APIs | — Pending |
+| **`GETDEL` is the fast path, a MongoDB unique index is the guarantee** | Redis replication is asynchronous — acknowledged writes can be lost on failover, so a consumed one-time link can return to life | — Pending |
+| **Cache and queue use two separate Redis deployments** | BullMQ requires `maxmemory-policy=noeviction`; the PRD runbook says "evict expired keys". The policy is instance-wide, so one instance cannot safely be both. Split **before** queues carry data, not during a later phase | — Pending |
+| **Epoch-keyed cache keys replace Redis Pub/Sub as the correctness mechanism** | Pub/Sub is at-most-once, so a dropped message means a stale permission read. Embedding `perm_version` in the cache key makes one primitive serve both the RBAC cache and the read-link check; Pub/Sub becomes a latency optimisation only | — Pending |
+| **The `JEV-compatible` wire contract is published as a first-party named interface** | "JEV" is a hosted vendor model; the PRD's "OpenJev" reference implementations are unofficial reconstructions and no industry standard exists | — Pending |
+| **`FR-F-10` file upload is blocked pending licensing resolution** | Form.io's `File` component is **premium** (Library Licence + `@formio/premium`) while the renderer is MIT and the engine is OSL 3.0 — this directly threatens AD-3's open-source claim. Resolve in Phase 0 discovery | ⚠️ Revisit |
+| **Draft save & resume is blocked pending a token-model decision** | Structurally incompatible with the stateless one-time-token SPA; a resumable draft needs a second, longer-lived token class | ⚠️ Revisit |
+| **TypeScript 6.0.3 enforcer is `typescript-eslint`, not `@nestjs/swagger`** | The prior analysis attributed the hard `ERESOLVE` to Swagger, whose TS peer is optional and only warns. `typescript-eslint@8.71.0` (peer `>=4.8.4 <6.1.0`, not optional) is the actual enforcer. Conclusion unchanged, reason corrected | ✓ Good |
+| **MongoDB 8.2 is already EOL (2026-07-31) — stay on 8.0.x** | It was previously recorded as "inconsistent across sources". It is not inconsistent; it is dead | ✓ Good |
+| **Redis ≥8.2 as a floor, 8.10.x as develop-against** | 8.0.x EOLs 2026-12-01 (62 days out). A floor survives a future minor release; a pin does not | — Pending |
+| **ESLint over NestJS 12's new oxlint scaffold** | `eslint-plugin-boundaries@7.2.0` is required by the "boundary violation fails the build" constraint and is ESLint-only | — Pending |
+| **`@nestjs/observe` is rejected, not deferred** | It has no OTLP exporter and routes to a NestJS-hosted backend. It would also break data residency. The earlier "re-evaluate in Phase 4" is cancelled | ✓ Good |
 
 ## Evolution
 
