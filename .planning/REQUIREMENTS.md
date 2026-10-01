@@ -315,14 +315,173 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _Populated by gsd-roadmapper_ | | |
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 1 | Pending |
+| FND-05 | Phase 1 | Pending |
+| FND-06 | Phase 1 | Pending |
+| FND-07 | Phase 1 | Pending |
+| FND-08 | Phase 1 | Pending |
+| FND-09 | Phase 1 | Pending |
+| FND-10 | Phase 1 | Pending |
+| LNK-07 | Phase 1 | Pending |
+| RTE-10 | Phase 1 | Pending |
+| AUD-10 | Phase 1 | Pending |
+| DAT-13 | Phase 1 | Pending |
+| OBS-01 | Phase 1 | Pending |
+| IDN-01 | Phase 2 | Pending |
+| IDN-02 | Phase 2 | Pending |
+| IDN-03 | Phase 2 | Pending |
+| IDN-04 | Phase 2 | Pending |
+| IDN-06 | Phase 2 | Pending |
+| IDN-07 | Phase 2 | Pending |
+| ACL-01 | Phase 2 | Pending |
+| ACL-02 | Phase 2 | Pending |
+| ACL-03 | Phase 2 | Pending |
+| ACL-04 | Phase 2 | Pending |
+| ACL-06 | Phase 2 | Pending |
+| ACL-07 | Phase 2 | Pending |
+| ACL-08 | Phase 2 | Pending |
+| ACL-09 | Phase 2 | Pending |
+| ACL-11 | Phase 2 | Pending |
+| IM-01 | Phase 2 | Pending |
+| IM-02 | Phase 2 | Pending |
+| IM-03 | Phase 2 | Pending |
+| IM-04 | Phase 2 | Pending |
+| IM-05 | Phase 2 | Pending |
+| IM-06 | Phase 2 | Pending |
+| IM-07 | Phase 2 | Pending |
+| IM-08 | Phase 2 | Pending |
+| IM-09 | Phase 2 | Pending |
+| IM-11 | Phase 2 | Pending |
+| APP-01 | Phase 2 | Pending |
+| APP-02 | Phase 2 | Pending |
+| APP-04 | Phase 2 | Pending |
+| FRM-01 | Phase 2 | Pending |
+| FRM-02 | Phase 2 | Pending |
+| FRM-03 | Phase 2 | Pending |
+| FRM-04 | Phase 2 | Pending |
+| FRM-06 | Phase 2 | Pending |
+| FRM-07 | Phase 2 | Pending |
+| FRM-08 | Phase 2 | Pending |
+| LNK-01 | Phase 2 | Pending |
+| LNK-03 | Phase 2 | Pending |
+| LNK-04 | Phase 2 | Pending |
+| LNK-09 | Phase 2 | Pending |
+| LNK-10 | Phase 2 | Pending |
+| LNK-11 | Phase 2 | Pending |
+| LNK-12 | Phase 2 | Pending |
+| DAT-02 | Phase 2 | Pending |
+| DAT-08 | Phase 2 | Pending |
+| DAT-09 | Phase 2 | Pending |
+| AUD-01 | Phase 2 | Pending |
+| AUD-02 | Phase 2 | Pending |
+| RTE-01 | Phase 3 | Pending |
+| RTE-02 | Phase 3 | Pending |
+| RTE-03 | Phase 3 | Pending |
+| RTE-04 | Phase 3 | Pending |
+| RTE-05 | Phase 3 | Pending |
+| RTE-06 | Phase 3 | Pending |
+| RTE-07 | Phase 3 | Pending |
+| RTE-08 | Phase 3 | Pending |
+| RTE-09 | Phase 3 | Pending |
+| RTE-11 | Phase 3 | Pending |
+| OBS-02 | Phase 3 | Pending |
+| LNK-05 | Phase 4 | Pending |
+| LNK-06 | Phase 4 | Pending |
+| LNK-08 | Phase 4 | Pending |
+| DAT-10 | Phase 4 | Pending |
+| DAT-11 | Phase 4 | Pending |
+| DAT-12 | Phase 4 | Pending |
+| DAT-01 | Phase 5 | Pending |
+| DAT-03 | Phase 5 | Pending |
+| DAT-04 | Phase 5 | Pending |
+| DAT-05 | Phase 5 | Pending |
+| DAT-06 | Phase 5 | Pending |
+| DAT-07 | Phase 5 | Pending |
+| DAT-14 | Phase 5 | Pending |
+| CON-01 | Phase 5 | Pending |
+| CON-02 | Phase 5 | Pending |
+| CON-03 | Phase 5 | Pending |
+| CON-04 | Phase 5 | Pending |
+| CON-05 | Phase 5 | Pending |
+| CON-06 | Phase 5 | Pending |
+| CON-07 | Phase 5 | Pending |
+| CON-08 | Phase 5 | Pending |
+| CON-09 | Phase 5 | Pending |
+| CON-10 | Phase 5 | Pending |
+| LNK-02 | Phase 5 | Pending |
+| OBS-04 | Phase 5 | Pending |
+| BLD-01 | Phase 6 | Pending |
+| BLD-02 | Phase 6 | Pending |
+| BLD-03 | Phase 6 | Pending |
+| BLD-04 | Phase 6 | Pending |
+| BLD-05 | Phase 6 | Pending |
+| BLD-06 | Phase 6 | Pending |
+| BLD-07 | Phase 6 | Pending |
+| BLD-08 | Phase 6 | Pending |
+| BLD-09 | Phase 6 | Pending |
+| BLD-10 | Phase 6 | Pending |
+| BLD-11 | Phase 6 | Pending |
+| BLD-12 | Phase 6 | Pending |
+| APP-03 | Phase 6 | Pending |
+| APP-05 | Phase 6 | Pending |
+| APP-06 | Phase 6 | Pending |
+| APP-07 | Phase 6 | Pending |
+| APP-08 | Phase 6 | Pending |
+| APP-09 | Phase 6 | Pending |
+| FRM-05 | Phase 6 | Pending |
+| FRM-09 | Phase 6 | Pending |
+| IDN-05 | Phase 6 | Pending |
+| IDN-08 | Phase 6 | Pending |
+| ACL-05 | Phase 6 | Pending |
+| ACL-10 | Phase 6 | Pending |
+| OBS-05 | Phase 6 | Pending |
+| IM-10 | Phase 7 | Pending |
+| NOT-01 | Phase 7 | Pending |
+| NOT-02 | Phase 7 | Pending |
+| NOT-03 | Phase 7 | Pending |
+| NOT-04 | Phase 7 | Pending |
+| NOT-05 | Phase 7 | Pending |
+| AUD-03 | Phase 8 | Pending |
+| AUD-04 | Phase 8 | Pending |
+| AUD-05 | Phase 8 | Pending |
+| AUD-06 | Phase 8 | Pending |
+| AUD-07 | Phase 8 | Pending |
+| AUD-08 | Phase 8 | Pending |
+| AUD-09 | Phase 8 | Pending |
+| OBS-03 | Phase 8 | Pending |
+| OBS-06 | Phase 8 | Pending |
+| OBS-07 | Phase 8 | Pending |
+| OBS-08 | Phase 8 | Pending |
+| OBS-09 | Phase 8 | Pending |
+| OBS-10 | Phase 8 | Pending |
+
+**Phase distribution:**
+
+| Phase | Name | Requirements |
+|-------|------|--------------|
+| 1 | Foundations & Platform | 15 |
+| 2 | The Vertical Slice — Slack + Internal Routing | 47 |
+| 3 | Natural-Language Routing | 11 |
+| 4 | Read Path & Query DSL | 6 |
+| 5 | Integration & Async Execution | 19 |
+| 6 | Self-Service App Builder | 25 |
+| 7 | Multi-IM Expansion & Two-Way Sync | 6 |
+| 8 | Production Readiness — Compliance, Observability & Load | 13 |
 
 **Coverage:**
 - v1 requirements: 142 total
-- Mapped to phases: 0
+- Mapped to phases: 142
 - Unmapped: 0 ✓
+- Duplicates (mapped to more than one phase): 0 ✓
 - v2 (deferred): 29
 - Resolved requirement conflicts recorded as v1: 3
+  - Conflict 1 (per-IP loses) → `AUD-10` → Phase 1
+  - Conflict 2 (trace ID loses) → `FND-07` → Phase 1, enforced by `AUD-04` → Phase 8
+  - Conflict 3 (audit wins, erasure narrowed) → `FND-06` → Phase 1, delivered with `AUD-04` + `AUD-08` → Phase 8
+  - `FR-D-12` write-once amendment → `DAT-13` → Phase 1, enforced with `CON-01`/`CON-09` → Phase 5
 
 ---
 *Requirements defined: 2026-10-01*

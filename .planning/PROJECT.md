@@ -84,7 +84,14 @@ rather than read from the PRD.
 **PRD's own timeline vs. credible estimate.** PRD §20 proposes 5 phases totalling 19–28 weeks,
 with Phase 5 explicitly post-MVP. A stack-research pass put the credible v1 estimate at
 **26–34 weeks**, on the grounds that the PRD's sequencing defers the *read* path and the *App
-Builder* past several things that depend on them. Treat 26–34 weeks as the planning number.
+Builder* past several things that depend on them. That figure has since been **superseded**: the
+roadmap re-derived the estimate bottom-up against the actual 8-phase structure and landed at
+**~43 weeks P50 (range 38–49)**, assuming one engineer plus one implementer agent. The delta is
++9 to +17 weeks, driven by v1 now containing Teams *and* the App Builder *and* Redmine *and* full
+compliance tooling, the read path moving into v1, and a bottom-up estimate from per-phase
+surfaces rather than the PRD's 5-phase layer sequence. **ROADMAP.md → Timing** is the number to
+plan against. Contingency not yet included: 2–3 weeks if the customer genuinely requires SAML
+rather than OIDC.
 
 **The PRD's stack table is stale in seven places.** A version-verification pass (npm registry
 `dist-tags`, `peerDependencies`, `engines`, `time.modified`; redis.io command metadata;
@@ -206,7 +213,7 @@ forced it.
 | **PII field allowlist before log serialization** | A denylist regex always misses; right-to-erasure is unachievable otherwise | — Pending |
 | **Rate limit tiers map to `@nestjs/throttler` named throttlers** | The three NFR-SEC-6 tiers (per-user, per-app, per-connector) are exactly what named throttlers express | — Pending |
 | **npm workspaces, reject nx / turbo** | 2 web apps + 1 API + 1 worker; a build-graph tool is unjustified overhead at this size | — Pending |
-| **Planning estimate 26–34 weeks, not PRD's 19–28** | PRD sequencing defers the read path and App Builder past their dependents | ⚠️ Revisit |
+| **Planning estimate 26–34 weeks, not PRD's 19–28** | PRD sequencing defers the read path and App Builder past their dependents | ⚠️ Superseded — see the ~43-week bottom-up estimate in ROADMAP.md |
 | **NFR-SEC-10 per-IP brute-force cap loses** to NFR-A-1 / FR-R-10 | Six legitimate users behind one corporate NAT would trip the cap and lock out an entire office. This is a self-inflicted outage | — Pending |
 | **NFR-O-1 `trace_id = submission_id` loses** to FR-AU-5 / §15.4 | A stable, correlatable trace ID *is* a 3-year un-purgeable activity map living in a store with no per-app RBAC | — Pending |
 | **FR-AU-3/5 (3-year immutable audit) wins** over §15.4 erasure | 3-year audit retention is a hard compliance obligation. §15.4's erasure promise is **narrowed to what the code delivers**: PII excluded from logs by allowlist before serialisation + tombstoneable `actor_ref` + defined purge windows for submission bodies | ⚠️ Revisit — the "legitimate interest" framing needs counsel, not research |
