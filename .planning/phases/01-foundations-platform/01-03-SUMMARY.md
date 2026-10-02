@@ -20,7 +20,11 @@ provides:
 actuals:
   tokens: 18480
   tasks: 3
-  commits: 4
+  commits: 7
+
+commits: 7
+plan_head_before: 6952a6861bb00d87e3b07a219c02f0c9e700cfd6
+plan_head_after: the commit that adds this file — resolve with `git rev-parse HEAD` (7 commits across 958f69f..HEAD)
 
 tech-stack:
   added: []
@@ -189,7 +193,9 @@ the first accidental proof that the rule fires on real source.
 1. **Task 1 — boundary settings, R1/R2/R3 policies, violation smoke test** — `958f69f` (feat)
 2. **Task 2 — runtime provider-boundary guard** — `d0bbf8d` (feat)
 3. **Task 3 — plugin pin assertion (D-32)** — `42d1772` (test)
-4. **Plan metadata** — `574ef05` (docs: D-02 refinement recorded in `01-ASSUMPTIONS.md`)
+4. **Plan metadata** — `574ef05` (docs: D-02 refinement recorded in `01-ASSUMPTIONS.md`),
+   `ecafaa9` (docs: this summary), `3f14975` (docs: STATE.md + ROADMAP.md progress),
+   and this file's own commit (docs: measured commit-count reconciliation)
 
 ## What was salvaged from the aborted draft vs. rewritten
 
@@ -322,6 +328,8 @@ None - no external service configuration required.
 
 - All 9 files claimed in `key-files.created` / `key-files.modified` exist on disk.
 - All 5 commit hashes recorded above are present in `git log --all`.
+- Measured commit count reconciles: `git rev-list --count 6952a68..HEAD` = 7, matching the
+  `commits:` / `actuals.commits` frontmatter for `/gsd-verify-work`'s same-instrument check.
 - `packages/kernel/src/boundary-probe.ts` (aborted-draft leftover) is absent from disk **and** was never committed.
 - No temporary probe artefacts remain (`probe.tmp.mjs`, `zz-probe.spec.ts`, the four `zz-demo-*` demonstration files).
 - `npm run build` exits 0 on the clean tree; `npm test` is 7 files / 36 tests green.
