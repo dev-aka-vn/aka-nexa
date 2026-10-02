@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REDIS_URL_FIELDS, refineRedisInstancesDistinct } from './redis.schema.js';
 
 /**
  * Boot configuration schema (FND-09).
@@ -16,12 +17,19 @@ const AppConfigShape = {
   PORT: z.coerce.number().int().positive().default(3000),
   SERVICE_NAME: z.enum(['api', 'worker', 'scheduler']),
   MONGO_URL: z.string().url(),
-  REDIS_CACHE_URL: z.string().url(),
-  REDIS_QUEUE_URL: z.string().url(),
+  ...REDIS_URL_FIELDS,
   CRYPTO_KEY_PROVIDER: z.enum(['local', 'kms']).default('local'),
 };
 
-export const AppConfigSchema = z.object(AppConfigShape).strict();
+/**
+ * The boot contract. `.strict()` rejects unknown keys; the `superRefine` adds
+ * D-12's distinct-instance cross-field rule so both failure modes share one
+ * named boot error.
+ */
+export const AppConfigSchema = z
+  .object(AppConfigShape)
+  .strict()
+  .superRefine(refineRedisInstancesDistinct);
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
