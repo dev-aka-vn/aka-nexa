@@ -1,7 +1,7 @@
 import { HealthIndicatorService } from '@nestjs/terminus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MongoService } from '../../mongo/mongo.service.js';
+import { MongoService } from '../mongo/mongo.service.js';
 import { MongoIndicator } from './mongo.indicator.js';
 import { RedisIndicator } from './redis.indicator.js';
 

@@ -47,6 +47,11 @@ function build(mongo: MongoService, cache: unknown, queue: unknown, extra?: () =
       redisCacheProvider,
       redisQueueProvider,
       { provide: MONGO_CLIENT, useExisting: MongoService },
+      // Declared empty by default because `@Optional()` alone is not enough for
+      // `overrideProvider` to have anything to override: the builder rewrites an
+      // existing definition, and silently ignoring an unknown token would make
+      // the extension-point test pass for the wrong reason.
+      { provide: EXTRA_HEALTH_INDICATORS, useValue: [] },
     ],
   })
     .overrideProvider(MONGO_CLIENT).useValue(mongo)
