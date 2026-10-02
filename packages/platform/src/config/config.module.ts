@@ -2,6 +2,7 @@ import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import {
   APP_CONFIG_KEYS,
   AppConfigSchema,
+  formatConfigError,
   type AppConfig,
 } from './config.schema.js';
 
@@ -15,7 +16,8 @@ import {
  *
  * On failure the thrown message is prefixed with `CONFIG_INVALID: ` followed by
  * the first offending path and the Zod issue code, so boot failures are greppable
- * and actionable.
+ * and actionable. A named error is why we use `validate:` rather than
+ * `validationSchema:`, which cannot supply one of our own.
  */
 export function namedValidate(raw: Record<string, unknown>): AppConfig {
   const candidate: Record<string, unknown> = {};
@@ -27,9 +29,7 @@ export function namedValidate(raw: Record<string, unknown>): AppConfig {
 
   const result = AppConfigSchema.safeParse(candidate);
   if (!result.success) {
-    const issue = result.error.issues[0];
-    const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    throw new Error(`CONFIG_INVALID: ${path} ${issue.code}`);
+    throw new Error(formatConfigError(result.error.issues[0]));
   }
 
   return result.data;
