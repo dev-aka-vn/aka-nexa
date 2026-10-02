@@ -48,7 +48,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **FND-06**: Structured JSON logs exclude PII by a **field allowlist applied before serialisation**, not a denylist filter
 - [ ] **FND-07**: The OpenTelemetry trace ID is generated independently of `submission_id` and is not correlatable back to it
 - [ ] **FND-08**: Long-running scheduled work runs on BullMQ Job Schedulers, so a task registered once runs on every replica
-- [ ] **FND-09**: All configuration is validated at boot by Zod; an invalid or missing required value fails startup with a named error
+- [x] **FND-09**: All configuration is validated at boot by Zod; an invalid or missing required value fails startup with a named error
 - [ ] **FND-10**: Secrets are encrypted at rest with AES-256-GCM under a KMS-backed master key, and no secret appears in code, config files, or plaintext env vars
 
 ### Identity & User Resolution
@@ -323,7 +323,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-06 | Phase 1 | Pending |
 | FND-07 | Phase 1 | Pending |
 | FND-08 | Phase 1 | Pending |
-| FND-09 | Phase 1 | Pending |
+| FND-09 | Phase 1 | Complete |
 | FND-10 | Phase 1 | Pending |
 | LNK-07 | Phase 1 | Pending |
 | RTE-10 | Phase 1 | Pending |

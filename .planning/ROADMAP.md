@@ -77,12 +77,12 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 1/10 plans executed
+**Plans:** 2/10 plans executed
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
+- [x] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
 - [ ] 01-03-PLAN.md — Build-failing module boundaries and the per-app boot boundary assertion
 - [ ] 01-04-PLAN.md — PII-safe structured logging with a frozen allowlist enforced before serialisation
 - [ ] 01-06-PLAN.md — Frozen JEV v1 wire contract, read-link claim schema, and contract skeletons

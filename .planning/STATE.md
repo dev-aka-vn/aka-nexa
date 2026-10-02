@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-10-02T07:41:12.928Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-10-02T08:35:33.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Phase 01 execution started
-state_head: 31d8a9c750978207b1c430b40283741b7eb7f64f
+last_activity_desc: Plan 01-02 complete - boot config contract + two Redis deployments + ioredis profiles
+state_head: e949602e221f418a2007a8f3957954cd314b34d9
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10 (01-03 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Phase 01 execution started
+Last activity: 2026-10-02 — Plan 01-02 complete (boot config contract, two-distinct-Redis gate, ioredis profiles)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 2
+- Average duration: 45min
+- Total execution time: 1.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 2 | 2 | 45min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 01-01 (38min), 01-02 (52min)
+- Trend: —
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 38min | 5 tasks | 48 files |
+| Phase 01 P02 | 52min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,11 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-01]: All workspace tsconfigs set composite:true in tooling/tsconfig.base.json so project references typecheck (TS6306) and `tsc -b` can build in dependency order.
 - [Phase 01]: [Phase 1 / 01-01]: Added @types/node@^24 as a root devDependency (not in STACK.md §14) — required for tsc to typecheck Node globals; it is the canonical DefinitelyTyped package, not a substitution.
 - [Phase 01]: [Phase 1 / 01-01]: Added a root solution tsconfig.json referencing all seven workspaces — required by `npm run build` = `npm run lint && tsc -b`; it is a deviation from the plan's files_modified list.
+- [Phase 01]: [Phase 1 / 01-02]: Named boot failures use `ConfigModule.forRoot({ validate: namedValidate })`, not `validationSchema:` — the Standard Schema option cannot carry a caller-defined message and FND-09 requires a greppable `CONFIG_INVALID: <path> <code>` line. The hook narrows `process.env` to `APP_CONFIG_KEYS` before parsing, because `.strict()` against the raw env would reject every unrelated OS/toolchain key and fail every boot.
+- [Phase 01]: [Phase 1 / 01-02]: Zod `superRefine` issues always carry `code: 'custom'`, so machine-readable refinement tokens (e.g. `REDIS_INSTANCES_NOT_DISTINCT`) ride in `issue.message` and `formatConfigError` substitutes them. Without that, the distinct-Redis failure would be logged as the useless `CONFIG_INVALID: REDIS_CACHE_URL custom`.
+- [Phase 01]: [Phase 1 / 01-02]: D-12's two-deployment check compares `new URL(x).host` — host **and** port, a purely syntactic parse with no DNS — so same-host/different-port local dev passes while a single instance fails. A logical-database path suffix is never a discriminator: `maxmemory-policy` is instance-wide, so `/0` vs `/1` on one instance is still one deployment (D-12).
+- [Phase 01]: [Phase 1 / 01-02]: The D-14 retry split is one argument, not two code paths: `createRedisClient({ url, profile })` with `buildRedisOptions(profile)` as the pure, testable options object. Assertions target `buildRedisOptions` rather than `client.options` because ioredis normalises `keyPrefix: ""` into the client, which would make a "never sets keyPrefix" test vacuously pass. Clients use `lazyConnect: true` so module compilation never opens a socket.
+- [Phase 01]: [Phase 1 / 01-02]: Added `ioredis@6.0.0` (exact STACK.md §14 pin, never 5.x) as a root **dev** dependency — nothing constructs a client until Nest resolves the providers in plan 07/10. Its default export is not constructable under NodeNext; import the named class (`import { Redis as IORedis, type RedisOptions } from 'ioredis'`).
 
 ### Pending Todos
 
@@ -93,6 +99,8 @@ None yet.
 - **[Cross-phase]** MongoDB 9.0 deliberately not adopted (4 days old at verification). Revisit before the 3-year retention window bites.
 - **[Phase 8]** The 3-tier throttler's Redis cost is unmeasured — measure it in the load test, do not assume it.
 - **[Phase 1]** KMS vendor adapter is blocked on naming the deployment cloud. FND-10 requires a KMS-backed master key, but no cloud has been named. Phase 1 ships the `KeyProvider` interface, a `LocalKeyProvider` that refuses to boot in production, and a startup assertion that `NODE_ENV=production` without `CRYPTO_KEY_PROVIDER=kms` fails boot. Ruling: 01-CONTEXT.md D-27.
+- **[Phase 1]** The production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard is still absent — deliberately owned by plan 05 inside `crypto/**`, not by this plan's config `validate:` hook (plan 01-02 prohibitions). Plan 05 must add it and must not assume the config hook already covers it.
+- **[Phase 1]** `test/setup-env.ts` now seeds the full required boot surface globally for Vitest, because `ConfigModule.forRoot({ validate })` aborts any spec that resolves it without those keys. When plan 05 adds a required field, that file must grow with it; a spec asserting the *absence* of that field must delete it explicitly rather than rely on it being unset.
 
 ## Deferred Items
 
@@ -109,6 +117,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T07:40:35.627Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-10-02T08:35:33.000Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
