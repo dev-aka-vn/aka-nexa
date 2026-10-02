@@ -27,27 +27,45 @@ import { Db, MongoClient, type MongoClientOptions } from 'mongodb';
  * wiring. The driver connects on first operation instead, which is also what
  * lets `ping()` be the *only* thing readiness needs.
  *
- * ## Why `serverSelectionTimeoutMS` is bounded and small
+ * ## Why BOTH timeouts are set, and why they are small
  *
- * The default is 30 seconds. A readiness probe that hangs for 30 seconds is
- * worse than one that fails: the orchestrator's own probe timeout usually
- * expires first, so the process is reported as "unresponsive" rather than
+ * `serverSelectionTimeoutMS` alone does **not** bound the operation. The driver
+ * retries a connection with its own backoff, and each attempt is bounded by
+ * `connectTimeoutMS` (default **30 s**). A readiness probe against a server
+ * that is gone — where the TCP connect hangs rather than being refused — can
+ * therefore sit for the connect timeout while the selection timeout counts
+ * down, and the first observable failure is a *timeout*, not a `down` flag.
+ *
+ * That is the worse of the two outcomes: the orchestrator's own probe timeout
+ * usually expires first, so the process is reported "unresponsive" rather than
  * "not ready", and an operator loses the one piece of information the
- * per-dependency design exists to give them. Three seconds is comfortably
- * longer than a healthy `ping` round-trip and short enough to be reported
- * inside a typical 5–10 s probe budget.
+ * per-dependency design exists to give them. Caught by running the full suite
+ * under load — the isolated spec passed every time, and the suite failed
+ * intermittently at exactly the boundary. Both timeouts are therefore set, and
+ * `connectTimeoutMS` is the one that actually does the bounding.
+ *
+ * Three seconds is comfortably longer than a healthy `ping` round-trip and
+ * short enough to leave room for all three indicators inside a typical 5–10 s
+ * probe budget.
  */
 export const DEFAULT_SERVER_SELECTION_TIMEOUT_MS = 3_000;
+
+/** See the note above: selection alone does not bound a connect attempt. */
+export const DEFAULT_CONNECT_TIMEOUT_MS = 3_000;
 
 /** The database used when the connection URL carries no path. */
 export const DEFAULT_DATABASE = 'akane';
 
 export interface MongoServiceOptions {
   /**
-   * How long the driver hunts for a reachable server before giving up. Bounded
-   * so readiness fails fast and names the dependency instead of timing out.
+   * How long the driver hunts for a reachable server before giving up.
    */
   readonly serverSelectionTimeoutMS?: number;
+  /**
+   * How long a single connection attempt may take. Without this the selection
+   * timeout does not bound the operation — see the note above.
+   */
+  readonly connectTimeoutMS?: number;
   readonly defaultDb?: string;
 }
 
@@ -76,6 +94,7 @@ export class MongoService {
     const driverOptions: MongoClientOptions = {
       serverSelectionTimeoutMS:
         options.serverSelectionTimeoutMS ?? DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
+      connectTimeoutMS: options.connectTimeoutMS ?? DEFAULT_CONNECT_TIMEOUT_MS,
     };
     this.client = new MongoClient(url, driverOptions);
     this.#defaultDb = options.defaultDb ?? databaseFromUrl(url) ?? DEFAULT_DATABASE;
@@ -102,8 +121,9 @@ export class MongoService {
    * reaches the server and back, so it fails when the deployment is unreachable
    * or the primary is gone, and it is cheap enough to run on every probe.
    *
-   * Rejects rather than hanging once the server stops, bounded by
-   * `serverSelectionTimeoutMS`.
+   * Rejects rather than hanging once the server stops, bounded by **both**
+   * `connectTimeoutMS` and `serverSelectionTimeoutMS` — see the note at the top
+   * of this file for why one of the two is not enough.
    */
   async ping(): Promise<void> {
     if (this.#closed) {

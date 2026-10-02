@@ -10,6 +10,7 @@
  */
 export { MONGO_CLIENT, MongoModule, mongoServiceProvider } from './mongo.module.js';
 export {
+  DEFAULT_CONNECT_TIMEOUT_MS,
   DEFAULT_DATABASE,
   DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
   MongoService,

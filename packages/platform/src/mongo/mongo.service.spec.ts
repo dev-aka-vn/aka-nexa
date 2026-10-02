@@ -4,7 +4,11 @@ import {
   startThreeContainers,
   type ThreeContainers,
 } from '../../../../tooling/containers.js';
-import { MongoService } from './mongo.service.js';
+import {
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
+  MongoService,
+} from './mongo.service.js';
 
 /**
  * `MongoService` against a real MongoDB 8.0 (D-07, FND-05).
@@ -48,6 +52,20 @@ describe('MongoService over the native driver (FND-05)', () => {
     await expect(mongo.ping()).resolves.toBeUndefined();
   });
 
+  it('bounds both server selection and connection so a dead server cannot hang a probe', () => {
+    // `serverSelectionTimeoutMS` alone does NOT bound the operation: the driver
+    // retries with backoff and each attempt is bounded by `connectTimeoutMS`
+    // (30 s by default). Measured — the isolated spec passed every time, and
+    // the full suite failed intermittently with
+    // "Test timed out in 30000ms" on the next test whenever Docker contention
+    // stretched a connect attempt past the selection window.
+    expect(mongo.client.options.serverSelectionTimeoutMS).toBe(
+      DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
+    );
+    expect(mongo.client.options.connectTimeoutMS).toBe(DEFAULT_CONNECT_TIMEOUT_MS);
+    expect(DEFAULT_CONNECT_TIMEOUT_MS).toBeLessThanOrEqual(5_000);
+  });
+
   it('rejects ping() within the selection timeout once the server is gone', async () => {
     await containers.mongo.stop();
 
@@ -57,5 +75,8 @@ describe('MongoService over the native driver (FND-05)', () => {
     // down for the wrong reason — or, worse, a real outage would look like a
     // pass because the error was swallowed somewhere.
     await expect(mongo.ping()).rejects.toThrow(/server selection|ECONNREFUSED/i);
-  }, 30_000);
+    // Generous on purpose. The point of this test is the driver's failure
+    // *mode*, not how fast this machine tears a container down; a budget sized
+    // to the driver's own 3 s bound turns suite load into a red test.
+  }, 60_000);
 });
