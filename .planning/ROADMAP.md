@@ -65,6 +65,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 ## Phase Details
 
 ### Phase 1: Foundations & Platform
+
 **Goal**: A clean checkout builds three independently runnable processes on the pinned stack, and every irreversible design commitment plus all three requirement-conflict rulings exist in code before a single feature is written.
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
@@ -75,22 +76,34 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. A module that imports across a declared component boundary fails the build; a compliant tree passes, and the three entrypoints cannot drift into one process.
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
+
 **Plans:** 10 plans
+**Wave 1**
 - [ ] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
 - [ ] 01-03-PLAN.md — Build-failing module boundaries and the per-app boot boundary assertion
 - [ ] 01-04-PLAN.md — PII-safe structured logging with a frozen allowlist enforced before serialisation
-- [ ] 01-05-PLAN.md — `KeyProvider`, the AES-256-GCM envelope, and the production key guard
 - [ ] 01-06-PLAN.md — Frozen JEV v1 wire contract, read-link claim schema, and contract skeletons
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 01-05-PLAN.md — `KeyProvider`, the AES-256-GCM envelope, and the production key guard
 - [ ] 01-07-PLAN.md — Three-container test harness, native-driver Mongo, and per-dependency readiness
 - [ ] 01-08-PLAN.md — BullMQ queue registration, `{akane-q}` prefix, heartbeat scheduler, and business metrics
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
+
 **Notes**: Two Redis deployments are split from day one — BullMQ requires `maxmemory-policy=noeviction` while the cache wants eviction, and the policy is instance-wide. Rate limiting is **per user and per link `jti`, never per IP**, and blocks only on signature failure (`NFR-SEC-10` loses). `FR-D-12` write-once is **amended** to a single-send guarantee plus a per-connector `supports_idempotency_key` flag. The §15.4 erasure promise is narrowed to PII-excluded-by-allowlist + tombstonable `actor_ref` + defined purge windows.
 **Discovery required in this phase**: (a) resolve the Form.io `File` component licensing question — it is premium while the renderer is MIT — and drop `FR-F-10` plus its dependent object-storage gap if it cannot be rendered unlicensed; (b) decide the draft-save token model, since a resumable draft needs a second, longer-lived token class incompatible with the stateless one-time-token SPA.
 **Spike**: S3 — SAML need confirmation. This is a **customer** question, not a technical one: which IdP, and does it support OIDC? OIDC covers Entra ID, Okta, Auth0, Google Workspace, Keycloak. If SAML is genuinely required, add 2–3 weeks for `@node-saml/node-saml`.
 
 ### Phase 2: The Vertical Slice — Slack + Internal Routing
+
 **Goal**: An employee completes a real cross-system task entirely from Slack plus one rendered form, with identity resolved, permissions enforced twice, and an auditable submission record.
 **Mode:** mvp
 **Depends on**: Phase 1
@@ -101,12 +114,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. An unmapped user receives plain-language onboarding instructions in chat, never a raw system error; a deactivated mapping stops future resolution while that user's historical submissions remain readable.
   4. Removing a user's permission from an app takes effect on the very next request — with no restart and no dependence on a cache-invalidation message arriving — and a denial names the missing permission. No user exceeds 10 requests/minute and no app exceeds 100 requests/minute without a clear rate-limit message.
   5. Every state change writes an append-only audit entry recording actor, action, target, previous state, and new state; success and failure produce two **distinct**, actionable Slack messages; a duplicate platform delivery produces one processing job.
+
 **Plans**: TBD
 **UI hint**: yes
 **Notes**: The largest phase by requirement count and the one that makes every architectural assumption load-bearing while the codebase is small. Internal routing only — the connector/BullMQ/outbox surface is deliberately excluded. Identity is **CSV pre-provisioning only**; OTP onboarding adds a Redis state machine, brute-force policy, and lockout flow that the demonstrable capability does not need, so it moves to Phase 6. `perm_version` is embedded in the RBAC cache key so the epoch primitive serves both the cache and (later) the read path; Pub/Sub becomes a latency optimisation, never the correctness mechanism. Enqueue idempotency is a **MongoDB unique index on the platform event ID**, not a BullMQ `jobId` flag, because `jobId` dedup lapses on `removeOnComplete`. Slash commands ack **empty** and deliver via `response_url` — Slack permits only 5 responses per 30 minutes.
 **Research**: not required — every component is a single well-documented pattern. Large but unambiguous.
 
 ### Phase 3: Natural-Language Routing
+
 **Goal**: A user reaches the right app by describing what they want in plain language, and the system still routes correctly when every hosted decision provider is down.
 **Mode:** mvp
 **Depends on**: Phase 2
@@ -117,12 +132,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. When the hosted provider is unreachable or slow, the request still returns a routing decision inside the 2-second chat-to-link budget by propagating a deadline down the fallback chain to a local rule-based provider. The user never sees an error.
   4. A request whose best match falls below the app's confidence threshold produces a clarifying question rather than the wrong app's form, and an ambiguous or malformed request degrades gracefully.
   5. Every provider — including the rule-based one — passes a conformance suite of 50 labelled intents and degrades gracefully on an empty tool list, unknown input, and a malformed request; accuracy is reported **per app with a confidence interval**, never as a single number.
+
 **Plans**: TBD
 **Needs**: **`AI-SPEC.md` via `/gsd-ai-integration-phase 3`** — this phase introduces an AI system. The provider choice, host, and cost profile were explicitly out of scope for stack research and were never covered.
 **Research (highest need in the roadmap)**: `/gsd-plan-phase 3 --research-phase`. Tool-selection accuracy at 100–800 candidates was **not retrievable**; the PRD's ">90% accuracy" and "p95 <500 ms" targets are not jointly achievable as specified. A 50-item conformance set cannot cover a 600-tool catalogue. Report measured behaviour against the contract in Phase 1 (`RTE-10`), not against the PRD's headline numbers.
 **Notes**: `RuleBasedProvider` ships **first** and is the terminal link in the chain — the system has no routing path at all without it. No third-party call, confidence threshold, or model latency goes on the critical path of the Phase 2 slice; the slice's deterministic routing is upgraded, not retrofitted. Swap any provider by config only. The trace's stage list becomes final here, so `OBS-02` is verified now rather than after Phase 5's work lands.
 
 ### Phase 4: Read Path & Query DSL
+
 **Goal**: A 90-day view or query link lets a user read their own data with no stored session, and dies the instant their permission changes.
 **Mode:** mvp
 **Depends on**: Phase 3
@@ -132,12 +149,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
   2. Revoking that user's permission makes the already-issued link fail on the next click, and the failure is recorded with a distinct reason — expired, consumed, revoked, wrong app, wrong version, deactivated user, or bad signature — not one aggregate counter.
   3. A manager holding `view_all` sees the whole team's records; a regular user never sees another user's records, including soft-deleted rows, and one filter builder emits both `real_user_id` and `deleted_at: null` so neither can be omitted.
   4. Rotating the signing key invalidates nothing: links signed by the previous key keep working through the zero-downtime dual-key window, and a new key can be added without touching live links.
+
 **Plans**: TBD
 **UI hint**: yes
 **Notes**: Highest-risk, highest-value work in the roadmap, and the reason it is adjacent rather than later. Deliberately **not** merged with Phase 5 — a slip here must not consume the App Builder's slack. `perm_version` is the shared primitive with the Phase 2 RBAC cache; the JWT claim shape was frozen in Phase 1 for exactly this reason. The Query DSL is an **authorization surface with no test precedent** — raw MongoDB query syntax is never exposed to an app builder.
 **Research**: `/gsd-plan-phase 4 --research-phase` — the Query DSL authorization surface and the seven revocation events. `DAT-12` mandates one test per DSL construct asserting the injected filters survive it.
 
 ### Phase 5: Integration & Async Execution
+
 **Goal**: A submission can land in a downstream enterprise system through a shared connector — synchronously to internal storage, asynchronously externally, or both — and a failure is visible rather than silent.
 **Mode:** mvp
 **Depends on**: Phase 4 (and structurally on Phase 2's submission record)
@@ -148,12 +167,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. Nothing in `sent_unconfirmed` is ever auto-resent — the reconciliation job retries only `not_sent`, because an unconfirmed send may already have reached Redmine.
   4. An edit link can be reopened repeatedly but consumes on submit, and a second submit returns the original confirmation rather than creating a duplicate record.
   5. One app's traffic spike fails that app and not every app sharing the connector; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation.
+
 **Plans**: TBD
 **UI hint**: yes
 **Notes**: The hardest correctness surface in the system. The outbound state is modelled as **exactly three** states — `not_sent | sent_unconfirmed | confirmed` — and `sent_unconfirmed` is committed *before* the outbound call, because the PRD cannot express the gap between "sent" and "confirmed" and puts the idempotency guarantee on the wrong side of the wire. `FR-D-12` is implemented as the amended single-send guarantee recorded in Phase 1, surfaced to the builder at publish time. Connectors are **globally managed** — an app references a connector and never owns its credentials. `DAT-14` lands here because `partial` is unreachable before this phase.
 **Research**: `/gsd-plan-phase 5 --research-phase` — per-connector contract research for **Redmine**: field mapping, idempotency-key support, and error taxonomy. The transactional outbox pattern is well-understood; the Redmine contract is not.
 
 ### Phase 6: Self-Service App Builder
+
 **Goal**: A department admin builds, secures, and publishes a working app end-to-end without an engineering ticket and without a platform admin's help.
 **Mode:** mvp
 **Depends on**: Phase 5
@@ -164,6 +185,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. An employee with no CSV mapping self-onboards by OTP from Slack — 10-minute expiry, 3 attempts, 30-minute lockout — and can immediately use an app they were granted; an admin can also map an SSO identity without the user verifying anything.
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
+
 **Plans**: TBD
 **UI hint**: yes
 **Notes**: Highest-value, lowest-risk slice: by now the APIs are stable, so this is a CRUD skin rather than a design against moving targets. Research explicitly resolved the DH-2 tension by **not** moving the builder earlier. The pre-builder story is made credible by shipping the **~10-app seed template gallery plus tag filtering** (`APP-09`) — do not drop it. Editing a published form must not disturb an in-flight submission.
@@ -171,6 +193,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Research**: `/gsd-plan-phase 6 --research-phase` — FormIO builder integration (spike S1) and the connector-request workflow, which is a new flow with no PRD section.
 
 ### Phase 7: Multi-IM Expansion & Two-Way Sync
+
 **Goal**: A Microsoft Teams employee gets the identical experience, and an external system can push status back to the person who originally submitted.
 **Mode:** mvp
 **Depends on**: Phase 6
@@ -181,11 +204,13 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. A replayed webhook — stale timestamp or reused nonce — is rejected and logged, and IM delivery failure retries three times rather than disappearing.
   4. A connector that cannot sign its webhooks has a documented alternative trust mechanism recorded per connector and visible to the platform admin.
   5. A Teams outage queues and retries the user's request; no failure is silent to the user.
+
 **Plans**: TBD
 **Notes**: The adapter is now a *known* shape — Phase 2 defined the `InboundEvent`/`OutboundMessage` contract — so adding a platform is additive rather than inventive. Teams uses `@microsoft/agents-hosting` 1.9.1 + `-msteams`; the Bot Framework SDK is retired (support ended 2025-12-31) and the package the PRD names does not exist on npm. **Zalo and Telegram are v2** — this phase does not include them, which is why spike S2 does not block the critical path.
 **Research**: `/gsd-plan-phase 7 --research-phase` — Microsoft Teams activity-delivery retry semantics beyond retry-on-429/502; the relevant Microsoft Learn pages returned 404 during research.
 
 ### Phase 8: Production Readiness — Compliance, Observability & Load
+
 **Goal**: The deployment is operable at target scale and can answer a compliance question about any action taken in the last three years.
 **Mode:** mvp
 **Depends on**: Phase 7
@@ -196,6 +221,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. A quarterly access-review report is produced without manual work, naming who holds access to what.
   4. A load test at **1,000 concurrent users and 50 IM events/second** passes, and reports the **measured** Redis cost of the three-tier throttler rather than assuming it.
   5. Each of the seven named alert conditions fires in a test — including `submission_status{status="partial"}` and all decision providers unhealthy — and a runbook exists for each of the five named incidents.
+
 **Plans**: TBD
 **UI hint**: yes
 **Notes**: `AUD-04` is the concrete encoding of conflict #2 — `actor_ref` is tombstoneable precisely because Phase 1 decoupled the trace ID from `submission_id`. Conflict #3's narrowed erasure promise is delivered *here* as the combination of Phase 1's log allowlist, `AUD-04`'s tombstone, and `AUD-08`'s defined purge windows. **Do not promise full erasure of the audit record**, and do not present the "legitimate interest" framing as settled — that is a legal question for counsel, not a research question. Zero-downtime rolling deploys and zero-downtime key rotation are verified here.

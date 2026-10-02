@@ -463,7 +463,9 @@ Every KMS wraps the *DEK*, and AES-256-GCM still does the bulk work with the DEK
 
 **Missing with no fallback:** Docker availability is unverified. If the dev machine or CI runner has no daemon, **every D-07 integration test blocks**. The planner should make "Docker daemon reachable" a Wave-0 precondition task.
 
-### Open question for the planner (one only)
+### Open question for the planner (one only) — RESOLVED
+
+> **RESOLVED** in `01-ASSUMPTIONS.md` PD-5: all three `apps/*` are ESM; `main.ts` starts OTel then `await import('./app.module.js')`. Implemented by plans `01-01` and `01-10`.
 
 **D-20 vs ESM.** `jose` (P2.6) and `openid-client` are both **ESM-only**, and STACK.md §13.5 says "make the ESM decision once, early" — but D-09 requires `NestFactory.create()` on all three apps and D-20 requires an OTel loader entry. **What we know:** ESM is effectively forced by the dependency set; `--import` is the ESM-native loader flag. **What's unclear:** whether the three `apps/*` should be `"type": "module"` outright or remain CJS with dynamic `import()` of the ESM-only deps. **Recommendation:** make all three apps ESM in Phase 1, with `main.ts` doing `sdk.start()` then `await import('./app.module.js')`; a CJS/ESM mix across three entrypoints is the drift FND-03 forbids.
 
