@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-10-02T15:10:00.000Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-10-02T15:58:00.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Plan 01-04 complete - allowlist log rebuild before serialisation (FND-06)
-state_head: 16af780
+last_activity_desc: Plan 01-06 complete - JEV v1 wire contract and read-link claim set frozen (RTE-10, LNK-07)
+state_head: 0546099
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 4
-  percent: 40
+  completed_plans: 5
+  percent: 50
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 5 of 10 (01-05 — next)
+Plan: 5 of 10 complete (01-05 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-04 complete (allowlist log rebuild before serialisation, FND-06)
+Last activity: 2026-10-02 — Plan 01-06 complete (JEV v1 + read-link contracts frozen, RTE-10/LNK-07/DAT-13/AUD-10)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 55min
-- Total execution time: 5.2 hours
+- Total plans completed: 5
+- Average duration: 51min
+- Total execution time: 6.0 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 4 | 4 | 55min |
+| 01 | 5 | 5 | 51min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min)
-- Trend: 01-04 is an outlier — the installed-source investigation of pino's four key sources (which found a real PII leak via `child()`) plus 36 new tests, most of it spent reading `node_modules/pino/lib` rather than writing. Treat ~55min as the average and 159min as the worst case for a compliance-control plan.
+- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min)
+- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-06 came in at 38min — the cheapest plan so far — and the pattern is consistent: a plan whose correctness comes from **reading installed source** (pino internals, the boundaries plugin) is expensive, and a plan whose correctness comes from **asserting a contract** is not. Budget accordingly.
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -61,6 +61,7 @@ Progress: [████░░░░░░] 40%
 | Phase 01 P02 | 52min | 3 tasks | 15 files |
 | Phase 01 P03 | 62min | 3 tasks | 31 files |
 | Phase 01 P04 | 159min | 3 tasks | 11 files |
+| Phase 01 P06 | 38min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,13 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-04]: **`LoggerPort`'s call-site surface is the allowlist MINUS the factory trio.** `CallerLogField = Exclude<AllowlistedField, 'service' | 'env' | 'pid'>`, derived from the same frozen list, and `createPinoOptions` spreads the base fields *after* the caller's object so they win even if a caller reaches the seam. Ten `@ts-expect-error` directives cover an unlisted field, three bag names, three base fields, and a raw `Error`; `tsc` fails with TS2578 when one goes unused, so the surface cannot silently loosen.
 - [Phase 01]: [Phase 1 / 01-04]: Added `pino@10.3.1` (exact STACK.md §14 pin, `--save-exact`) as a root **dev** dependency — a missing stack dependency, not a new one; the plan's `files_modified` omitted `package.json`. `pino-http@11.0.0` and `nestjs-pino@5.2.1` are NOT installed and plan 10 owns adding them.
 - [Phase 01]: [Phase 1 / 01-04]: `packages/platform/src/logging/index.ts` is a deliberate separate barrel so plan 10 does not edit `packages/platform/src/index.ts`. **`packages/platform/package.json`'s `exports` map still declares only `"."`, so a cross-package deep import (`@akane/platform/logging`) will not resolve** — the first plan that needs it must add an `exports` entry.
+- [Phase 01]: [Phase 1 / 01-06]: **D-24's freeze needs TWO assertions, not one, and only the second catches a removal.** `.strict()` rejects an ADDED key at runtime; it is blind to a key REMOVED at author time, because the schema that lost `question` still rejects everything unknown and now accepts nothing where a question belongs. Every frozen schema therefore ships with a test asserting `Object.keys(schema.shape).sort()` against a literal version-named array. The split is applied to the JEV request, the JEV response, and the read-link claims — and deliberately **not** to `connector/` and `events/`, where a new field invalidates nothing already deployed.
+- [Phase 01]: [Phase 1 / 01-06]: **`JevResponse.choice` is REQUIRED, overriding PRD §11.2's `choice?`.** An optional object makes abstention expressible twice (an absent `choice`, or a `choice` with no tool), and PRD §17.3's conformance suite would then have two shapes to test for one signal. D-23 picks one shape; abstention is the `verified === null` state. The refusal is a `.superRefine` emitting two named tokens, so a provider cannot pair `verified: null` with a real `tool_id` and `clarification_needed: false`.
+- [Phase 01]: [Phase 1 / 01-06]: **Zod's `toJSONSchema` `override` hook is mutation-only in `zod@4.6.5` and runs per-subschema.** `ctx.override(...)`'s return value is discarded (`core/to-json-schema.js:460`), so the documented `{ ...ctx.jsonSchema, $id }` pattern silently drops the `$id`; and because it fires for every subschema, a mutation-based `$id` would land on each property unless guarded by `path.length === 0`. `toJsonSchema` therefore spreads the generated document and appends `$id` after the call. Separately, the `metadata` option throws `ctx.metadataRegistry.get is not a function` in this version — use `.meta()` on the schema, not `metadata`.
+- [Phase 01]: [Phase 1 / 01-06]: **A negative rule needs an unexpressible bad state, not a discouraged one.** Three of D-22/AUD-10 are now types: the rate-limit scope union has exactly two members so an address cannot be a scope; `TOKEN_CLASSES` is keyed by the `ReadLinkAction` union with `satisfies` so a widened enum without a row is a compile error; `draft` carries `emittedInV1: false` and `isEmittableInV1()` is the gate a Phase 2 issuer must pass. `TokenClass.ttl` is an opaque token (`'30m' | '4h' | '90d' | 'configurable' | 'reserved'`), not a parsed duration — the resolver belongs to the link-issuing phase, and putting it here would be a second source of truth for time.
+- [Phase 01]: [Phase 1 / 01-06]: **The boundary graph absorbed the whole contract package with no config change.** `packages/contract/src/**` is element type `contract`, allowed edge `['kernel']`, plus the position-0 third-party allow — so `zod` and intra-package relative imports were already legal. `tooling/boundaries.config.mjs`, `eslint.config.mjs`, `package.json` and `package-lock.json` are byte-identical after this plan (T-1-SC: no new package). No rule was relaxed to make these files pass.
+- [Phase 01]: [Phase 1 / 01-06]: **`perm_version` is a REQUIRED claim on the frozen set even though D-21 scopes it to read links.** The set is one `.strict()` schema; a write link does not need the epoch to mean anything, and making it optional would weaken exactly the read guarantee it exists for. **Open question for the Phase 2 link-issuing service:** a write link has no epoch value, so either it mints the current epoch (keeps the claim set single-shaped) or D-21's ruling is revisited — and the frozen key set forbids the second without a version bump. Likewise `READ_LINK_TARGET_RULES` is documentation as data; nothing yet *enforces* "no `target_id` on a `create` link", and the read-link verification service is its natural home.
+
 - [Phase 1]: **Draft-save blocker removed by reserving shape, not building machinery** (D-22). `action: "draft"` is in the frozen enum and must not be emitted in v1; `ak:tok:draft:{jti}` is reserved; token classes are a `{action, ttl, consume}` config table. Research flagged this as a structural blocker on Phase 2's token model — one enum value and one table row close it.
 - [Phase 1]: **Form.io File licensing and SAML are out of Phase 1** (D-29, D-30). File upload is already v2, so the licensing question gates a deferred feature and AD-3's open-source claim holds by not shipping the premium component — no spike. SAML is a *customer* fact, not a technical unknown: OIDC is the plan of record, and the question carries a deadline before Phase 5 planning (`BLD-12` is the first SSO surface). +2–3 weeks if SAML is required, which is not in the ~43-week estimate.
 - [Phase 1]: **Health topology deviates from research in favour of FND-05** (D-09). All three entrypoints use `NestFactory.create()`; `worker` and `scheduler` mount only HealthController and MetricsController. `ARCHITECTURE.md` recommended `createApplicationContext()`, but FND-05 requires each of the three to expose both endpoints. Readiness is per-dependency (Mongo, RedisCache, RedisQueue, plus per-process additions); liveness checks nothing, so a Redis blip fails readiness without restarting a healthy pod.
@@ -121,6 +129,11 @@ None yet.
 - **[Phase 1]** `vitest.config.mts` now includes `tooling/**/*.spec.ts`. Any future spec placed outside `packages/` or `apps/` will not run until that glob is extended — the boundary fixture spec is the only one today.
 - **[Phase 1]** The boundary graph does not yet reach the apps' composition roots. Plan 10 must provide `BOUNDARY_MANIFEST` per app, call `createProviderBoundaryGuard(manifest).assert(app)` in `OnApplicationBootstrap`, and add the two `export *` lines for `bootstrap/boundary-manifest.js` and `bootstrap/provider-boundary.guard.js` to `packages/platform/src/index.ts` (deliberately left out of plan 03's `files_modified`).
 - **[Phase 1]** An empty `BoundaryManifest.forbidden` makes the runtime guard permanently silent. `provider-boundary.guard.spec.ts` documents this; plan 10 must supply the manifest explicitly rather than relying on a default.
+- **[Phase 1]** (01-06) **Plan 01-05 owns the production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard and must not assume the config hook already covers it.** Unchanged from 01-04's note; re-listed because 01-05 is now the next plan to execute.
+- **[Phase 1]** (01-06) **`READ_LINK_TARGET_RULES` and the frozen-key-set machinery extend to one place only — do not add key-set tests to `connector/` or `events/`.** A connector descriptor gaining a field invalidates nothing already deployed, which is the property that makes the two frozen schemas different in *kind*. Freezing the non-frozen ones turns every future connector field into a version bump.
+- **[Phase 1]** (01-06) **The Phase 2 link-issuing service must call `isEmittableInV1(action)` and must own the `TokenClass.ttl` token→seconds resolver.** Both are deliberate hand-offs recorded in 01-06-SUMMARY.md; neither has an enforcement point inside the contract package.
+- **[Phase 1]** (01-06) **`packages/contract/src/index.ts` now re-exports the full surface, so later phases import from `@akane/contract`, never from deep paths.** Its `exports` map declaring only `"."` is therefore correct. The sibling problem is unchanged and still open: `packages/platform/package.json`'s `exports` map declares only `"."`, so `@akane/platform/logging` will not resolve cross-package.
+- **[Phase 1]** (01-06) **`z.toJSONSchema()`'s `metadata` option throws in `zod@4.6.5`** (`ctx.metadataRegistry.get is not a function`), and its `override` hook discards its return value while running per-subschema. Any later plan wanting `$id`/`title`/`description` on a published document must use `.meta()` on the schema or post-process the returned document, as `toJsonSchema` does.
 - **[Phase 1]** `pino`'s `msg` is emitted verbatim *after* `formatters.log` runs, so the log message is the one channel the allowlist cannot filter. `LoggerPort` fixes it as a fixed first argument so interpolation is visible at the call site, but no test can catch one. Human review is pending (01-04 coverage entry D7); plan 10 should consider a lint rule against interpolating values into a log call, or accept the convention explicitly and record it.
 - **[Phase 1]** `pino-http@11.0.0` and `nestjs-pino@5.2.1` are STACK.md §14 pins that are **not installed** — only `pino@10.3.1` is. Plan 10 owns adding them, with the exact versions.
 - **[Phase 1]** `packages/platform/package.json`'s `exports` map declares only `"."`, so `@akane/platform/logging` will not resolve cross-package. 01-04 created the barrel so plan 10 would not have to edit the platform index; the first plan that imports it cross-package must add an `exports` entry.
@@ -140,6 +153,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T15:10:00.000Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-10-02T15:58:00.000Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None

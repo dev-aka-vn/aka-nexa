@@ -80,7 +80,16 @@ patterns-established:
   - "Refusal is a value, not an absence: `verified: null` is how a provider abstains, `emittedInV1: false` is how a token class stays unissued, `consume: false` is how a read link stays re-openable. A property that is merely missing is a property the next author will add back."
   - "Opaque IDs everywhere: `real_user_id`, `chat_user_id`, `channel_id`, `sub`, `target_id` are all opaque. The identity mapping is a service, not a field format."
 
-requirements-completed: [RTE-10, LNK-07, DAT-13, AUD-10]
+requirements-completed: [RTE-10, LNK-07]
+# AUD-10 and DAT-13 are delivered at their CONTRACT half only — this plan's
+# `files_modified` scope — and are deliberately left Pending in REQUIREMENTS.md
+# rather than ticked on half a sentence:
+#   AUD-10  delivered: the user/link scope union and the key schema. Not yet:
+#            "blocks only on signature failure", which is the link-verification
+#            path (Phase 3/4).
+#   DAT-13  delivered: ConnectorDescriptorSchema's required
+#            supports_idempotency_key, and idempotencyKey on the execute input.
+#            Not yet: "surfaced in the App Builder at publish time" (Phase 6).
 
 coverage:
   - id: D1

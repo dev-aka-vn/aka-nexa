@@ -87,7 +87,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **RTE-07**: Provider health is checked every 60 seconds and unhealthy providers are skipped in the chain
 - [ ] **RTE-08**: A decision below the app's configured confidence threshold produces a clarification prompt rather than a wrong action
 - [ ] **RTE-09**: Decision responses are cached by `hash(text + sorted(tool_ids) + locale)` with a configurable TTL
-- [ ] **RTE-10**: The decision wire contract is frozen before any provider is integrated, including `choice.verified` and `state.force_clarification`
+- [x] **RTE-10**: The decision wire contract is frozen before any provider is integrated, including `choice.verified` and `state.force_clarification`
 - [ ] **RTE-11**: Every provider passes a conformance suite of 50 labelled intents and degrades gracefully on an empty tool list, unknown input, and a malformed request
 
 ### App Registry & Lifecycle
@@ -122,7 +122,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **LNK-04**: An integration test that kills Redis mid-submit produces exactly one submission
 - [ ] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
 - [ ] **LNK-06**: A read link re-checks permission and compares `perm_version` on every access, and is rejected when they diverge
-- [ ] **LNK-07**: The read-link JWT claim shape — including `form_version`, `app_version`, and the epoch — is frozen in the foundations phase, because adding a claim later invalidates every outstanding link
+- [x] **LNK-07**: The read-link JWT claim shape — including `form_version`, `app_version`, and the epoch — is frozen in the foundations phase, because adding a claim later invalidates every outstanding link
 - [ ] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
 - [ ] **LNK-09**: Every link access is logged with `jti`, `real_user_id`, action, IP, and User-Agent
 - [ ] **LNK-10**: Link URLs are unguessable and contain no sequential identifier
@@ -325,8 +325,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-08 | Phase 1 | Pending |
 | FND-09 | Phase 1 | Complete |
 | FND-10 | Phase 1 | Pending |
-| LNK-07 | Phase 1 | Pending |
-| RTE-10 | Phase 1 | Pending |
+| LNK-07 | Phase 1 | Complete |
+| RTE-10 | Phase 1 | Complete |
 | AUD-10 | Phase 1 | Pending |
 | DAT-13 | Phase 1 | Pending |
 | OBS-01 | Phase 1 | Pending |
