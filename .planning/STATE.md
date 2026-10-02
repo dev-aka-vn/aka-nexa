@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-10-02T08:35:33.000Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-10-02T14:05:00.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Plan 01-02 complete - boot config contract + two Redis deployments + ioredis profiles
+last_activity_desc: Plan 01-03 complete - build-failing boundary graph + runtime boot guard
 state_head: e949602e221f418a2007a8f3957954cd314b34d9
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 2
-  percent: 20
+  completed_plans: 3
+  percent: 30
 ---
 
 # Project State
@@ -29,27 +29,27 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 3 of 10 (01-03 — next)
+Plan: 4 of 10 (01-04 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-02 complete (boot config contract, two-distinct-Redis gate, ioredis profiles)
+Last activity: 2026-10-02 — Plan 01-03 complete (build-failing boundary graph, runtime boot guard)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 45min
-- Total execution time: 1.5 hours
+- Total plans completed: 3
+- Average duration: 49min
+- Total execution time: 2.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 2 | 2 | 45min |
+| 01 | 3 | 3 | 49min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (38min), 01-02 (52min)
+- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min)
 - Trend: —
 
 *Updated after each plan completion*
@@ -59,6 +59,7 @@ Progress: [██░░░░░░░░] 20%
 |------|----------|-------|-------|
 | Phase 01 P01 | 38min | 5 tasks | 48 files |
 | Phase 01 P02 | 52min | 3 tasks | 15 files |
+| Phase 01 P03 | 62min | 3 tasks | 31 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,13 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-02]: D-12's two-deployment check compares `new URL(x).host` — host **and** port, a purely syntactic parse with no DNS — so same-host/different-port local dev passes while a single instance fails. A logical-database path suffix is never a discriminator: `maxmemory-policy` is instance-wide, so `/0` vs `/1` on one instance is still one deployment (D-12).
 - [Phase 01]: [Phase 1 / 01-02]: The D-14 retry split is one argument, not two code paths: `createRedisClient({ url, profile })` with `buildRedisOptions(profile)` as the pure, testable options object. Assertions target `buildRedisOptions` rather than `client.options` because ioredis normalises `keyPrefix: ""` into the client, which would make a "never sets keyPrefix" test vacuously pass. Clients use `lazyConnect: true` so module compilation never opens a socket.
 - [Phase 01]: [Phase 1 / 01-02]: Added `ioredis@6.0.0` (exact STACK.md §14 pin, never 5.x) as a root **dev** dependency — nothing constructs a client until Nest resolves the providers in plan 07/10. Its default export is not constructable under NodeNext; import the named class (`import { Redis as IORedis, type RedisOptions } from 'ioredis'`).
+- [Phase 01]: [Phase 1 / 01-03]: **`checkAllOrigins: true` is REQUIRED and overrides 01-03-PLAN's prohibition.** The installed `eslint-plugin-boundaries@7.2.0` gates the whole evaluation on the *target's* origin (`checkAllOrigins || isLocalDependency`), so at the default the rule returns before evaluating any policy for `jose`/`mongodb` — R2 and R3 are dead config. Measured 6/6 blocking cases silent without the flag. RESEARCH P1.1's premise ("R2/R3 select external targets, which the default supports") was backwards. A spec asserts the flag's presence *and* that stripping it silences R2/R3, so it cannot be removed as cleanup.
+- [Phase 01]: [Phase 1 / 01-03]: **`tooling/import-resolver.cjs` is load-bearing, not optional.** The default Node resolver does not map NodeNext's `./foo.js` onto `./foo.ts`, so without it every relative import in this repo is unresolvable and `boundaries/dependencies` reports zero problems on a tree full of violations. It also maps `@akane/<pkg>` to the workspace's `src/index.ts`; without that mapping cross-workspace imports follow the `exports` map into `node_modules/dist` and are classified `external`, escaping the element graph. Verified with/without: 3 of 4 relative-import probes flip to silence.
+- [Phase 01]: [Phase 1 / 01-03]: **Policies are LAST-MATCH-WINS, not first-match-wins** (`evaluatePolicies` in `dist/Rules/Dependencies.js`), and within one policy `disallow` beats `allow`. `tooling/boundaries.config.mjs` therefore declares the broad third-party allow and the permissive element edges FIRST and the R1/R2/R3 restrictions LAST. Reordering the array silently re-enables everything.
+- [Phase 01]: [Phase 1 / 01-03]: **R2/R3 use an inverted disallow/allow pair, not `from: { file: { categories: { noneOf: [...] } } }`.** The plan's `noneOf` selector never matches a file with no category — the array query runs against an empty candidate list — so a non-owner file satisfied neither the disallow nor anything else. RESEARCH P1.4's documented fallback shape ("two `from: { file: { categories: "X" } }, allow` policies plus `default: disallow`") is the one that works; it is implemented as one origin-unconstrained disallow plus one owner-category allow per source.
+- [Phase 01]: [Phase 1 / 01-03]: **D-02's single `entrypoint` element type is split into `app-api`/`app-worker`/`app-scheduler`** so R1's `from: { element: { type: "!(app-api)" } }` can distinguish the origins. Refinement recorded in 01-ASSUMPTIONS.md §5. Option (b) (one type plus a `path` conjunction) was rejected because it depends on `type`+`path` conjunction semantics the plugin README does not demonstrate.
+- [Phase 01]: [Phase 1 / 01-03]: **`InstanceWrapper.isResolved` does not exist in `@nestjs/core@12.1.2`.** RESEARCH P1.6 cited `injector/instance-wrapper.d.ts:25`, which belongs to `interface InstancePerContext`, not the class — `wrapper.isResolved` is `undefined` for every provider. The per-context fallback is no better: `getInstanceByContextId(STATIC_CONTEXT)` *synthesises* `{ instance: null, isResolved: true }`. `createProviderBoundaryGuard` reads `wrapper.instance` instead. A guard built on either signal is permanently silent, which is worse than no guard because it looks like enforcement.
+- [Phase 01]: [Phase 1 / 01-03]: The boundary graph's element types are keyed on paths, so a 14th `packages/domain/src/<type>/` directory is **silently ignored**, not reported (`checkUnknownLocals` defaults to `false`). Adding a domain module means adding an element type, and `partialMatch: false` must stay on every descriptor or `packages/platform/src/**` also suffix-matches `apps/api/src/platform/**`.
 
 ### Pending Todos
 
@@ -101,6 +109,9 @@ None yet.
 - **[Phase 1]** KMS vendor adapter is blocked on naming the deployment cloud. FND-10 requires a KMS-backed master key, but no cloud has been named. Phase 1 ships the `KeyProvider` interface, a `LocalKeyProvider` that refuses to boot in production, and a startup assertion that `NODE_ENV=production` without `CRYPTO_KEY_PROVIDER=kms` fails boot. Ruling: 01-CONTEXT.md D-27.
 - **[Phase 1]** The production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard is still absent — deliberately owned by plan 05 inside `crypto/**`, not by this plan's config `validate:` hook (plan 01-02 prohibitions). Plan 05 must add it and must not assume the config hook already covers it.
 - **[Phase 1]** `test/setup-env.ts` now seeds the full required boot surface globally for Vitest, because `ConfigModule.forRoot({ validate })` aborts any spec that resolves it without those keys. When plan 05 adds a required field, that file must grow with it; a spec asserting the *absence* of that field must delete it explicitly rather than rely on it being unset.
+- **[Phase 1]** `vitest.config.mts` now includes `tooling/**/*.spec.ts`. Any future spec placed outside `packages/` or `apps/` will not run until that glob is extended — the boundary fixture spec is the only one today.
+- **[Phase 1]** The boundary graph does not yet reach the apps' composition roots. Plan 10 must provide `BOUNDARY_MANIFEST` per app, call `createProviderBoundaryGuard(manifest).assert(app)` in `OnApplicationBootstrap`, and add the two `export *` lines for `bootstrap/boundary-manifest.js` and `bootstrap/provider-boundary.guard.js` to `packages/platform/src/index.ts` (deliberately left out of plan 03's `files_modified`).
+- **[Phase 1]** An empty `BoundaryManifest.forbidden` makes the runtime guard permanently silent. `provider-boundary.guard.spec.ts` documents this; plan 10 must supply the manifest explicitly rather than relying on a default.
 
 ## Deferred Items
 
@@ -117,6 +128,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T08:35:33.000Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-10-02T14:05:00.000Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None

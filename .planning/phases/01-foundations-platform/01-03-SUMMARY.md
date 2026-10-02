@@ -317,3 +317,14 @@ None - no external service configuration required.
 ---
 *Phase: 01-foundations-platform*
 *Completed: 2026-10-02*
+
+## Self-Check: PASSED
+
+- All 9 files claimed in `key-files.created` / `key-files.modified` exist on disk.
+- All 5 commit hashes recorded above are present in `git log --all`.
+- `packages/kernel/src/boundary-probe.ts` (aborted-draft leftover) is absent from disk **and** was never committed.
+- No temporary probe artefacts remain (`probe.tmp.mjs`, `zz-probe.spec.ts`, the four `zz-demo-*` demonstration files).
+- `npm run build` exits 0 on the clean tree; `npm test` is 7 files / 36 tests green.
+- Working tree carries no uncommitted work from this plan. The only dirty entries
+  (`.planning/config.json`, `.gsd/`, `.planning/milestone.lock`, `.planning/state.json`)
+  are GSD orchestrator runtime state, not plan 01-03 output.
