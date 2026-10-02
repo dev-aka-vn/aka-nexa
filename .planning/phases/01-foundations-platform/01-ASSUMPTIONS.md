@@ -121,3 +121,81 @@ have needed its own smoke test. Three types costs three config lines; (b) costs 
 element descriptor. Without it the plugin's default suffix matching would make `packages/platform/src/**`
 also match `apps/api/src/platform/**`, silently promoting an app-local directory to the `platform`
 element type — which would quietly widen every platform edge in the graph.
+
+---
+
+## 6. Resolutions recorded during 01-05 execution
+
+### 6.1 PD-4 confirmed by construction, not only by a stub
+
+PD-4 resolved B-3's text-versus-bytes failure mode by making `wrapped: Buffer`
+tolerate a UTF-8 encoding and adding **no** `wrappedIsText` discriminator. A
+resolution proven only by a stub is a resolution the next adapter can quietly get
+wrong, so `LocalKeyProvider.wrapDek` emits its own wrapping in the **Vault
+transit shape** — `local:v1:<kid>:<iv>:<tag>:<ct>` as a UTF-8 `Buffer`. The one
+provider that actually runs is therefore also the reference implementation for a
+text-returning adapter.
+
+The parsing hazard is reproduced rather than abstracted away: `scheme:version:`
+is two separator-delimited fields, so `unwrapDek` splits into six parts and
+validates both `local` and `v1` separately. Vault's ciphertext has the same
+shape and the same trap.
+
+### 6.2 D-25's frozen envelope has nowhere to persist a per-secret wrapped DEK
+
+D-25 freezes the stored record at `{ v, alg, kid, iv, tag, ct }`, and D-28
+stores no secret at all in Phase 1. Standard envelope encryption wraps a **random
+per-secret DEK** and stores that wrapping beside the ciphertext — which this
+shape has no field for.
+
+**Resolution.** `encryptSecret` derives the DEK from the provider itself:
+`wrapDek` of a fixed 32-byte label, immediately unwrapped again. The DEK is
+deterministic for a given key (so `decryptSecret(envelope, provider)` can
+reconstruct it from the envelope alone) and the nonce is still drawn fresh from
+`randomBytes` per encryption, which is D-25's actual requirement.
+
+**What this costs, stated plainly.** Rotating `kid` makes previously sealed
+envelopes undecryptable, because there is no persisted wrapping to re-wrap. The
+fix is additive — the secret store in Phase 4 persists the wrapping as a sibling
+column and the five envelope fields never change — and it is **not done**. No
+real credential may be stored before it is. Recorded as `WINDOWS.md` entry 7.
+
+An alternative was considered and rejected: adding a `dek` field to the envelope
+would break the frozen shape D-25 states is costly to change, and adding a
+fourth `KeyProvider` method would break the interface B-3 says must not change.
+Both were acceptance criteria of plan 01-05.
+
+### 6.3 `ConfigService` serves an import-time snapshot, not the live environment
+
+`ConfigModule.forRoot()` is **`async`** in `@nestjs/config@12` and
+`packages/platform/src/config/config.module.ts` calls it at module scope without
+`await`. The validated configuration is therefore a snapshot taken when
+`config.module.js` is imported, and `ConfigService.get()` prefers it over the
+live environment.
+
+**Measured, not inferred.** With `process.env.NODE_ENV = "production"` set before
+`Test.createTestingModule(...).compile()`, `ConfigService.get('NODE_ENV')`
+returned `"test"` — the value present at import time. The first `CryptoModule`
+draft injected `ConfigService`, so the production guard read the stale value and
+**did not fire**; a production boot with `CRYPTO_KEY_PROVIDER=local` reached the
+key-file read. Found by running the boot path end-to-end, not by reading.
+
+**Resolution.** `CryptoModule`'s provider factory reads the live environment via
+`readKeyProviderEnv()`. `namedValidate` still validates the *shape* of both keys
+at import time; only the copy of the value the policy check is given changed. A
+security guard must never be given a possibly-stale `NODE_ENV`.
+
+**Left open.** The boot module itself is unchanged, so every *future*
+`ConfigService` consumer inherits the snapshot. Plan 10 owns awaiting `forRoot()`
+(or loading config at bootstrap). Recorded as `WINDOWS.md` entry 6 and in
+`STATE.md`.
+
+### 6.4 `packages/platform/package.json` gains a `./crypto` export
+
+Plan 01-05 created `packages/platform/src/crypto/index.ts` specifically "so plan
+10 imports it without editing the top-level package barrel" — but the package's
+`exports` map declared only `"."`, so `@akane/platform/crypto` did not resolve
+cross-package. The same latent blocker was already recorded for
+`@akane/platform/logging` by 01-04. A `"./crypto"` entry was added (one entry,
+three lines) rather than leaving plan 10 to rediscover the failure. `./logging`
+remains open and is still plan 10's.
