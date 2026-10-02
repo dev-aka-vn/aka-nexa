@@ -77,9 +77,9 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 10 plans
+**Plans:** 1/10 plans executed
 **Wave 1**
-- [ ] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
+- [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
@@ -277,7 +277,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Platform | 0/10 | Not started | - |
+| 1. Foundations & Platform | 1/10 | In Progress|  |
 | 2. The Vertical Slice | 0/TBD | Not started | - |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |

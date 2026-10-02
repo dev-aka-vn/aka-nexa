@@ -40,9 +40,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Foundations & Platform
 
-- [ ] **FND-01**: A clean checkout builds and runs with `npm ci` without breaking, on Node 24 LTS, NestJS 12, and a hard-pinned TypeScript 6.0.3
-- [ ] **FND-02**: The repository commits `package-lock.json` in its first commit, and `.nvmrc` pins the Node major
-- [ ] **FND-03**: The codebase contains three independently runnable process entrypoints — `api`, `worker`, and `scheduler` — that never drift into a single process
+- [x] **FND-01**: A clean checkout builds and runs with `npm ci` without breaking, on Node 24 LTS, NestJS 12, and a hard-pinned TypeScript 6.0.3
+- [x] **FND-02**: The repository commits `package-lock.json` in its first commit, and `.nvmrc` pins the Node major
+- [x] **FND-03**: The codebase contains three independently runnable process entrypoints — `api`, `worker`, and `scheduler` — that never drift into a single process
 - [ ] **FND-04**: A lint rule fails the build when a module imports across a declared component boundary
 - [ ] **FND-05**: `api`, `worker`, and `scheduler` each expose `/health/live` and `/health/ready`, where liveness checks no dependency and readiness checks MongoDB and both Redis deployments
 - [ ] **FND-06**: Structured JSON logs exclude PII by a **field allowlist applied before serialisation**, not a denylist filter
@@ -315,9 +315,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
 | FND-04 | Phase 1 | Pending |
 | FND-05 | Phase 1 | Pending |
 | FND-06 | Phase 1 | Pending |
