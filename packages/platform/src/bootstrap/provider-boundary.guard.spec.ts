@@ -1,4 +1,8 @@
-import { Module } from '@nestjs/common';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+
+import { Module, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -26,9 +30,7 @@ class WorkerLoadedModule {}
 })
 class CleanModule {}
 
-type NestApp = Awaited<ReturnType<ReturnType<typeof Test.createTestingModule>['compile']>['createNestApplication']>;
-
-const boot = async (moduleClass: typeof WorkerLoadedModule): Promise<NestApp> => {
+const boot = async (moduleClass: typeof WorkerLoadedModule): Promise<INestApplication> => {
   const moduleRef = await Test.createTestingModule({ imports: [moduleClass] }).compile();
   const app = moduleRef.createNestApplication();
   await app.init();
@@ -158,5 +160,68 @@ describe('createProviderBoundaryGuard (D-03, FND-04)', () => {
     expect(inspected, 'the forbidden token must be reachable in the container').toBe(1);
 
     await app.close();
+  });
+});
+
+/**
+ * D-32: the plugin version is *verified and recorded*, not guessed.
+ *
+ * Plan 01's ARCHITECTURE.md described the v5 config shape and a `5.3.1` pin.
+ * The installed version is 7.2.0, and between those two the plugin changed the
+ * very things this phase depends on: `boundaries/files` became a settings block
+ * rather than a rule, and the dependency evaluator gained the
+ * `checkAllOrigins` / policy-ordering behaviour that decides whether R2/R3 fire
+ * at all. A silent `npm install eslint-plugin-boundaries@latest` would therefore
+ * not fail loudly — it would quietly change enforcement, which is the one
+ * outcome FND-04 cannot tolerate.
+ *
+ * So the version is asserted in a test. A bump is a red test with the observed
+ * value in the message, not a review comment nobody reads.
+ *
+ * This lives beside the guard rather than in `tooling/` because the plan puts
+ * it here, and because the consequence of a wrong version is exactly the
+ * runtime half being wrong: the lint gate stops reporting and the guard is the
+ * only thing left.
+ */
+describe('eslint-plugin-boundaries pin (D-32, FND-04)', () => {
+  it('the installed plugin is exactly 7.2.0', () => {
+    const requireFromHere = createRequire(import.meta.url);
+
+    // `eslint-plugin-boundaries/package.json` is not resolvable: the package's
+    // `exports` map lists only `.`, `./config`, `./recommended` and `./strict`,
+    // so a direct require throws ERR_PACKAGE_PATH_NOT_EXPORTED. Resolve the
+    // published entry point instead and walk up to the package root, which also
+    // survives the exports map gaining entries later.
+    const entry = requireFromHere.resolve('eslint-plugin-boundaries');
+    let dir = dirname(entry);
+    let manifest: { name?: string; version?: string } | undefined;
+
+    while (dir !== dirname(dir)) {
+      const candidate = join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as {
+          name?: string;
+          version?: string;
+        };
+        if (parsed.name === 'eslint-plugin-boundaries') {
+          manifest = parsed;
+          break;
+        }
+      }
+      dir = dirname(dir);
+    }
+
+    expect(
+      manifest?.version,
+      'could not locate the installed eslint-plugin-boundaries package.json',
+    ).toBeDefined();
+
+    expect(
+      manifest?.version,
+      `eslint-plugin-boundaries is pinned at 7.2.0 (STACK.md §14, D-32) but ` +
+        `${manifest?.version} is installed. v7 changed the boundaries/files and ` +
+        `checkAllOrigins semantics this plan's R2/R3 policies depend on; re-verify ` +
+        `RESEARCH P1.1–P1.6 against the new version before bumping the pin.`,
+    ).toBe('7.2.0');
   });
 });
