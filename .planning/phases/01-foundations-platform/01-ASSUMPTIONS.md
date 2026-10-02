@@ -96,3 +96,28 @@ must not change (the `KeyProvider` interface, the envelope, the production guard
 guess a vendor. Selecting `kms` before the vendor is chosen throws `KMS_PROVIDER_BLOCKED:` and fails
 boot under `NODE_ENV=production`. It must be resolved before Phase 5 stores the first real connector
 credential (D-28).
+
+---
+
+## 5. Refinement to D-02 recorded during 01-03 execution
+
+**D-02's single `entrypoint` element type is split into `app-api` / `app-worker` / `app-scheduler`.**
+This is a refinement, not an overturn: the composition-root concept is unchanged, only its
+representation in the boundary graph.
+
+**Why it was necessary.** R1 is entrypoint *exclusivity* — "only `apps/api` may import inbound
+adapters and `http`", "only `apps/worker` may import `bullmq/workers`". Expressing that as
+`from: { element: { type: "!(app-api)" } }` requires `api`, `worker` and `scheduler` to be
+distinguishable by type alone. With one shared `entrypoint` type the selector cannot say which one is
+the origin.
+
+**Why option (a) over option (b).** RESEARCH P1.3 recorded two options: (a) three app types, or
+(b) keep `entrypoint` and add `from: { element: { type: "entrypoint", path: "apps/api/**" } }`.
+Option (a) was taken because it uses only the negation form the plugin README documents, whereas (b)
+depends on `type` + `path` conjunction semantics that the README does not demonstrate and that would
+have needed its own smoke test. Three types costs three config lines; (b) costs a proof.
+
+**Second, separate reason.** `tooling/boundaries.config.mjs` also adds `partialMatch: false` to every
+element descriptor. Without it the plugin's default suffix matching would make `packages/platform/src/**`
+also match `apps/api/src/platform/**`, silently promoting an app-local directory to the `platform`
+element type — which would quietly widen every platform edge in the graph.
