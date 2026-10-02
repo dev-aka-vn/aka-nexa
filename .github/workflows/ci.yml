@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install (lockfile authoritative)
+        run: npm ci
+      - name: Build (lint, then tsc -b)
+        run: npm run build
+      - name: Test
+        run: npm test
+
+  # FND-01 / FND-02 / D-06: prove a deliberate lockfile-free install does not
+  # silently resolve TypeScript 7.x and break the build. Peer-dependency-bypass
+  # flags must never be added to the install below — they turn the guard into a
+  # no-op. The plan's node assertion fails if such a flag is present.
+  install-guard:
+    name: install-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install without a lockfile (the guard)
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
+      - name: Build (lint, then tsc -b)
+        run: npm run build
+      - name: Test
+        run: npm test
+      - name: Assert each app emitted dist/main.js
+        run: |
+          for app in api worker scheduler; do
+            test -f "apps/$app/dist/main.js" || {
+              echo "missing apps/$app/dist/main.js (resolved toolchain failed to compile)"
+              exit 1
+            }
+          done
