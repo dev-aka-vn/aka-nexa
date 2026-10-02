@@ -17,11 +17,11 @@ provides:
 affects: [01-08, 01-09, 01-10, every later phase that reads or writes MongoDB, every entrypoint's probe wiring]
 
 actuals:
-  tokens: 12495
+  tokens: 29502
   tasks: 3
-  commits: 6
+  commits: 7
   plan_head_before: 41fb141be82594fb6dffebd1545bea4504e852af
-  plan_head_after: 8379909
+  plan_head_after: 124a77412b87f677c917e08518c18c933f8c0c12
 
 tech-stack:
   added:
@@ -167,7 +167,7 @@ coverage:
     rationale: "Process-level mounting is plan 10's files. It cannot be automated here because the deliverable does not exist yet; the verifier must confirm each of apps/api, apps/worker and apps/scheduler answers both endpoints on its own port after plan 10."
 
 # Metrics
-duration: 82min
+duration: 95min
 completed: 2026-10-02
 status: complete
 ---
@@ -181,12 +181,12 @@ the deployment that is down.**
 
 ## Performance
 
-- **Duration:** ~82 min
+- **Duration:** ~95 min
 - **Started:** 2026-10-02T15:11Z
-- **Completed:** 2026-10-02T16:33Z
+- **Completed:** 2026-10-02T17:05Z
 - **Tasks:** 3
-- **Files modified:** 16 (12 new source/test, 4 config)
-- **Test suite:** 24 files / 193 tests green (was 20 / 171)
+- **Files modified:** 16 source/test + 4 config (21 files in the diff, incl. `package-lock.json`)
+- **Test suite:** 24 files / 194 tests green (was 20 / 171)
 
 ## Accomplishments
 
@@ -239,11 +239,11 @@ Each task was committed atomically:
 3. **Task 2 RED** — `88def4f` (test) — indicators + controller specs and skeletons
 4. **Task 2 GREEN** — `ee38ae8` (feat) — indicators, controller, barrel
 5. **Task 3** — `646087c` (feat) — `redis.integration.spec.ts` + the `executeCliCmd` fix
-6. **Teardown fix** — `8379909` (fix) — explicit `afterAll` timeouts
+6. **Teardown timeout** — `8379909` (fix)
+7. **Suite-load bug** — `124a774` (fix) — `connectTimeoutMS`, found by running the suite under load
+8. **Plan metadata** — this commit (docs) — summary, STATE.md, ROADMAP.md, WINDOWS.md
 
-**Plan metadata:** this summary + STATE.md + ROADMAP.md (docs)
-
-_Plan head before: `41fb141` · after: `8379909` · commits measured: 6_
+**Plan head before:** `41fb141` · after: `124a774` · **task commits measured: 7.**
 
 ## Files Created/Modified
 
@@ -283,9 +283,11 @@ _Plan head before: `41fb141` · after: `8379909` · commits measured: 6_
 - **`PING` must answer `PONG`, not merely succeed.** A stale connection reused across a failover, or
   a proxy in front of Redis, answers on the socket. Treating any reply as healthy would report a
   deployment as up when it is not.
-- **`serverSelectionTimeoutMS` is 3 s, not the 30 s default.** A readiness probe that hangs for 30 s is
-  usually outlived by the orchestrator's own probe timeout, so the process is reported *unresponsive*
-  instead of *not ready* — losing the one thing the per-dependency design exists to give an operator.
+- **`serverSelectionTimeoutMS` alone did not bound `ping()` — and the docblock said it did.**
+  `MongoService` was written with a 3 s `serverSelectionTimeoutMS` and a docblock asserting that made
+  readiness "fail fast and name the dependency". The full suite disproved it (~50% failure rate);
+  the isolated spec could not. Superseded by deviation 9: `connectTimeoutMS` is set too, and the
+  docblock now says which of the two does the bounding and why.
 - **The two Redis clients are given their names at construction, and the readiness key defaults to
   the constructor's name.** The `check(key)` parameter still exists for a caller that must
   disambiguate a second entry, but nothing in the shipped path uses it.
@@ -445,13 +447,45 @@ port (D-09: api 3000, worker 3001, scheduler 3002).
   against the RED commits (`d0d27b1`, `88def4f`) to confirm. The INVALID_RED first attempt and its
   correction are recorded there too, because that is the fact the gate would have caught.
 
+**9. [Rule 1 - Bug] `serverSelectionTimeoutMS` alone did not bound `ping()`, and the full suite found it**
+- **Found during:** post-commit verification. **The isolated spec passed 3/3 every time; the full
+  suite failed roughly half its runs** with
+  `× rejects ping() within the selection timeout once the server is gone — Error: Test timed out in
+  30000ms` (observed: fail, pass, fail, pass across four full-suite runs; 3/3 clean in isolation).
+  Reading the code had not predicted this.
+- **Issue:** `serverSelectionTimeoutMS` bounds *server selection*, not the operation. The driver
+  retries the connection with backoff, and each attempt is bounded by **`connectTimeoutMS`, which
+  defaults to 30 s**. Under Docker contention across 24 parallel spec files a connect attempt could
+  outlive the 3 s selection window, so `ping()` neither resolved nor rejected inside the budget.
+- **Why this is a production defect, not a test-timing nuisance:** the same thing happens to a real
+  probe. `MongoService.ping()` is what `MongoIndicator` calls, so a MongoDB that hangs rather than
+  refuses connections would leave `/health/ready` hanging — and the orchestrator's probe timeout
+  expires first, reporting the pod *unresponsive* instead of *not ready*, losing precisely the
+  per-dependency detail D-10 exists to provide. The original `3 s` claim in the class docblock was
+  therefore false, and it was written by me in this plan.
+- **Fix:** `connectTimeoutMS` is set alongside `serverSelectionTimeoutMS` (both 3 s,
+  `DEFAULT_CONNECT_TIMEOUT_MS`), documented as the one that actually bounds the operation. A new test
+  asserts the constructed client carries both. The "server is gone" test's own budget was raised to
+  60 s — it exists to measure the driver's *failure mode*, not this machine's teardown speed, and a
+  budget sized to the driver's bound converts suite load into a red test.
+- **Files modified:** `packages/platform/src/mongo/mongo.service.ts`,
+  `packages/platform/src/mongo/mongo.service.spec.ts`, `packages/platform/src/mongo/index.ts`
+- **Verification:** the spec now has 4 tests (all pass); **five consecutive full-suite runs green
+  (194 tests each)** against a ~50% failure rate before the fix. `npm run build` clean.
+- **Committed in:** `124a774`
+
+**This is the plan's most valuable finding and the reason to keep full-suite runs in the loop.** A
+plan whose tests are fast enough to run in isolation would have shipped the defect: the isolated spec
+was green 3 out of 3 every time.
+
 ---
 
-**Total deviations:** 8 auto-fixed (4 × Rule 3 blocking, 2 × Rule 1 bug, 1 × Rule 2 missing critical, 1 × Rule 3 tooling gap)
+**Total deviations:** 9 auto-fixed (4 × Rule 3 blocking, 3 × Rule 1 bug, 1 × Rule 2 missing critical, 1 × Rule 3 tooling gap)
 **Impact on plan:** Every one was a prerequisite for the planned work rather than scope creep. 1, 2
 and 3 are corrections to library behaviour the plan's prose could not have anticipated; 4, 5 and 6 are
 compile/install/teardown prerequisites; 7 removes a vacuous-pass hazard from the plan's own test
-instruction; 8 is an environment gap in the executor tooling, not in the deliverable.
+instruction; 8 is an environment gap in the executor tooling, not in the deliverable; **9 was a real
+defect in code this plan wrote, found only by running the whole suite.**
 **No threat mitigation was weakened.** No boundary rule, allowlist, or pin was relaxed
 to make a file pass — `npm run lint` (boundaries + `no-restricted-imports`) is clean, and the plan-03
 fixture spec that proves R2/R3 actually fire is still green.
@@ -483,7 +517,17 @@ Two new **open** entries, and one correction to an existing one:
   set and the last one tears MongoDB down, so it must stay last in declaration order. The file
   says so at the top. Moving it up would cascade the failure into the tests above it for the wrong
   reason.
-- **`npm test` takes ~5 min**, almost all of it container startup: MongoDBContainer runs a
+- **`serverSelectionTimeoutMS` does NOT bound a MongoDB operation — `connectTimeoutMS` does.** The
+  driver retries with backoff and each attempt is bounded by `connectTimeoutMS` (30 s default). A
+  readiness probe against a MongoDB that hangs rather than refuses therefore hangs too, and the
+  orchestrator's own probe timeout expires first: *unresponsive*, not *not ready*. `MongoService` sets
+  both to 3 s. Found by full-suite runs (≈50% failure rate under Docker contention), **not** by
+  reading and **not** by the isolated spec, which passed 3/3 every time. Five consecutive full-suite
+  runs green after the fix.
+- **An isolated test cannot see a load-dependent bug.** This is the second time in Phase 1 that the
+  only place a defect surfaced was a run under real conditions (01-04's pino leak was found by
+  running the boot path). A suite that only ever runs one file at a time will keep shipping these.
+- `npm test` takes ~5 min, almost all of it container startup: MongoDBContainer runs a
   replica-set `rs.initiate()` on a 5 s health-check interval, and three specs start their own
   harness. Vitest reports that `isolate: false` would save ~16 s by sharing module transforms across
   workers. Not changed here — it trades test isolation for 5% of a suite that is dominated by Docker,
@@ -498,7 +542,7 @@ Two new **open** entries, and one correction to an existing one:
 
 | Threat ID | Disposition | Status |
 |-----------|-------------|--------|
-| T-1-17 (DoS — liveness must not restart a healthy pod) | mitigate | **Implemented.** `/health/live` returns a fixed literal and constructs nothing; a test counts `mongo.ping` and both Redis `ping` calls at **zero** across two requests while all three dependencies reject. Readiness returns 503 naming the failing key, so a blip withdraws traffic instead of cascading into restarts. |
+| T-1-17 (DoS — liveness must not restart a healthy pod) | mitigate | **Implemented.** `/health/live` returns a fixed literal and constructs nothing; a test counts `mongo.ping` and both Redis `ping` calls at **zero** across two requests while all three dependencies reject. Readiness returns 503 naming the failing key, so a blip withdraws traffic instead of cascading into restarts. `MongoService` bounds **both** `connectTimeoutMS` and `serverSelectionTimeoutMS` at 3 s, so readiness cannot hang into an *unresponsive* verdict (deviation 9). |
 | T-1-18 (Information Disclosure — the readiness body is unauthenticated) | mitigate | **Implemented.** Both indicators catch and return a bare `down`; no `error.message`, `options`, or `hosts` reaches the result. Asserted at unit level (per indicator) and over real HTTP (all three down, 503 body checked for `mongodb://`, `redis://`, `:password@`, the seeded secret, and both hostnames). |
 | T-1-SC (no unpinned install) | mitigate | **Implemented.** All five additions are `--save-exact` at the STACK.md §14 versions, each verified against the registry before install. No package outside the ledger was added. |
 
@@ -553,17 +597,18 @@ three D-07 integration tests cannot run; everything else in the suite is unaffec
   `tooling/tsconfig.json`, `mongo/{mongo.service,mongo.module,index,mongo.service.spec}.ts`,
   `health/{mongo.indicator,redis.indicator,health.controller,index,health.controller.spec,health.indicators.spec}.ts`,
   `redis/redis.integration.spec.ts`.
-- **Commits** (6/6 verified in `git log`): `d0d27b1`, `29436b3`, `88def4f`, `ee38ae8`, `646087c`,
-  `8379909`.
-- **Measured commit count** — `git rev-list --count 41fb141..HEAD` = **6** for the task commits
-  (plus this metadata commit = 7 total), matching `commits: 6` / `plan_head_before` /
-  `plan_head_after` in the frontmatter, which are the **task** boundaries. Nothing is left
-  uncommitted: the only working-tree entries are pre-existing and out of scope
-  (`.planning/config.json`, `.gsd/`, `.planning/milestone.lock`, `.planning/state.json`).
+- **Commits** (7/7 task commits verified in `git log`): `d0d27b1`, `29436b3`, `88def4f`, `ee38ae8`,
+  `646087c`, `8379909`, `124a774`.
+- **Measured commit count** — `git rev-list --count 41fb141..124a774` = **7**, matching
+  `commits: 7` / `plan_head_before` / `plan_head_after` in the frontmatter. (This summary's own
+  metadata commit is a separate 8th commit in the range and is deliberately not counted, matching how
+  01-01 through 01-06 recorded their own.) Nothing is left uncommitted: the only working-tree entries
+  are pre-existing and out of scope (`.planning/config.json`, `.gsd/`, `.planning/milestone.lock`,
+  `.planning/state.json`).
 - **Verification re-run after the last commit:** `npm run build` (lint + `tsc -b`) exits 0;
-  `npm test` reports 24 files / 193 tests passed.
+  **five consecutive `npm test` runs** report 24 files / 194 tests passed.
 - **Plan `<automated>` commands, all green:**
-  - `npm test -- packages/platform/src/mongo/mongo.service.spec.ts` → 3/3
+  - `npm test -- packages/platform/src/mongo/mongo.service.spec.ts` → 4/4
   - `npm test -- packages/platform/src/health/health.controller.spec.ts packages/platform/src/health/health.indicators.spec.ts` → 14/14
   - `npm test -- packages/platform/src/redis/redis.integration.spec.ts` → 5/5
 - **Acceptance criteria checked by command, not by inspection:**
