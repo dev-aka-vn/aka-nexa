@@ -49,6 +49,29 @@ export interface ThreeContainerUrls {
   readonly queue: string;
 }
 
+/**
+ * Build a client-usable MongoDB URL from the container's connection string.
+ *
+ * ## Why `directConnection=true` is not optional here
+ *
+ * `MongoDBContainer` starts MongoDB with `--replSet rs0`, so the server
+ * advertises itself as a replica-set member using its **container hostname**
+ * (`911148e5986d:27017`, for example). The driver performs topology discovery,
+ * believes that advertisement, and then tries to reach that address from the
+ * host — where it is an unresolvable name, and every `ping()` fails with
+ * `getaddrinfo EAI_AGAIN` while the server is perfectly healthy.
+ *
+ * `directConnection=true` tells the driver to talk to the seed address and
+ * ignore the advertised member list. That is the correct mode for a single
+ * node reached through a published port, and it is what `getConnectionString()`
+ * omits.
+ */
+export function mongoUrl(container: StartedMongoDBContainer): string {
+  const url = new URL(container.getConnectionString());
+  url.searchParams.set('directConnection', 'true');
+  return url.toString();
+}
+
 export interface ThreeContainers {
   readonly mongo: StartedMongoDBContainer;
   readonly cache: StartedRedisContainer;
@@ -113,7 +136,7 @@ export async function startThreeContainers(): Promise<ThreeContainers> {
     cache,
     queue,
     urls: {
-      mongo: mongo.getConnectionString(),
+      mongo: mongoUrl(mongo),
       cache: cache.getConnectionUrl(),
       queue: queue.getConnectionUrl(),
     },
