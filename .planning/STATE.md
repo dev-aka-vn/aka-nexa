@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-10-02T14:05:00.000Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-10-02T15:10:00.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Plan 01-03 complete - build-failing boundary graph + runtime boot guard
-state_head: e949602e221f418a2007a8f3957954cd314b34d9
+last_activity_desc: Plan 01-04 complete - allowlist log rebuild before serialisation (FND-06)
+state_head: 16af780
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 3
-  percent: 30
+  completed_plans: 4
+  percent: 40
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 4 of 10 (01-04 — next)
+Plan: 5 of 10 (01-05 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-03 complete (build-failing boundary graph, runtime boot guard)
+Last activity: 2026-10-02 — Plan 01-04 complete (allowlist log rebuild before serialisation, FND-06)
 
-Progress: [███░░░░░░] 30%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 49min
-- Total execution time: 2.5 hours
+- Total plans completed: 4
+- Average duration: 55min
+- Total execution time: 5.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 3 | 3 | 49min |
+| 01 | 4 | 4 | 55min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min)
-- Trend: —
+- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min)
+- Trend: 01-04 is an outlier — the installed-source investigation of pino's four key sources (which found a real PII leak via `child()`) plus 36 new tests, most of it spent reading `node_modules/pino/lib` rather than writing. Treat ~55min as the average and 159min as the worst case for a compliance-control plan.
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -60,6 +60,7 @@ Progress: [███░░░░░░] 30%
 | Phase 01 P01 | 38min | 5 tasks | 48 files |
 | Phase 01 P02 | 52min | 3 tasks | 15 files |
 | Phase 01 P03 | 62min | 3 tasks | 31 files |
+| Phase 01 P04 | 159min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -75,7 +76,15 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - **Timing superseded:** ~43 weeks P50 (38–49) replaces the inherited 26–34 weeks, which was never re-derived against an 8-phase structure.
 - [Phase 1]: **Read-link claim shape frozen in Phase 1** (01-CONTEXT.md D-21). The discriminant is `action`, not `typ` — the JOSE header already owns that name. `query_version` is frozen in foundations even though the read path is Phase 3, because a saved query is versioned the way a form is and adding a claim later invalidates every outstanding link.
 - [Phase 1]: **JEV wire contract frozen in foundations** (D-23). PRD §11.1 plus exactly two additions: `choice.verified: boolean | null` (abstention is a different signal from low confidence, with a cross-field refinement forcing clarification) and `state.force_clarification: boolean` (the platform can force clarification, not only the provider). Frozen by a `.strict()` schema plus an exact-key-set test, not by a comment.
-- [Phase 1]: **Log allowlist and trace decoupling are enforced mechanically** (D-15, D-18). A typed `LoggerPort` plus a Zod-parsing pino destination that strips unknown keys *before* serialisation; a frozen span-attribute allowlist plus a subset test proving `submission_id` is not recoverable from a trace ID. `submission_id` may appear in logs and the audit trail — both have defined purge windows; the trace backend does not, and that asymmetry is the erasure property.
+- [Phase 1]: **Log allowlist and trace decoupling are enforced mechanically** (D-15, D-18). A typed `LoggerPort` plus a pino `formatters.log` rebuild hook that strips unknown keys *before* serialisation (D-15's original "destination stream" wording is not implementable — see the 01-04 amendment below); a frozen span-attribute allowlist plus a subset test proving `submission_id` is not recoverable from a trace ID. `submission_id` may appear in logs and the audit trail — both have defined purge windows; the trace backend does not, and that asymmetry is the erasure property.
+- [Phase 01]: [Phase 1 / 01-04]: **D-15's layer-2 wording is AMENDED (RESEARCH B-1 implemented): the control is pino's `formatters.log`, not a destination stream.** A pino destination receives already-serialised bytes — `hooks.streamWrite` is documented as receiving "the stringified JSON" — so "immediately before `JSON.stringify`" is unachievable there. `_asJson` in `lib/tools.js` runs `obj = formatters.log(obj)` *before* the serialisation loop, so the hook's return value is the object that gets written. Both of D-15's stated properties hold; only the mechanism changed. **Read `_asJson` before trusting any other pino security claim — the same function shows three of four key sources never reach the hook.**
+- [Phase 01]: [Phase 1 / 01-04]: **pino emits four key sources and only one passes through `formatters.log`.** `level` comes from `formatters.level` (cached into a raw `{"level":30` prefix), `ts` from the `timestamp` function, child bindings from `asChindings` — all three are concatenated as raw prefixes *before* the formatter runs. `createPinoOptions` therefore routes `formatters.level` through the same gate, supplies a custom `TimeFn` that emits the allowlisted name `ts` (pino's default key `time` is NOT allowlisted), and sets `base: null` — because the default `{pid, hostname}` bindings chunk would emit `hostname`, which is not on D-16's list, on every single record.
+- [Phase 01]: [Phase 1 / 01-04]: **`logger.child(bindings)` leaks PII and `formatters.bindings` cannot fix it.** `child()` in `lib/proto.js` takes a deliberate fast path that rebuilds the instance's formatters with `resetChildingsFormatter` (the identity function), so a root `formatters.bindings` is honoured only for the root's `base` chunk — which is `null`. Found by a failing test: `"user_email":"anna.pino@example.com"` in the output. `createChildLogger(logger, bindings)` rebuilds the bindings *before* pino sees them and touches no pino option or internal, so it survives a version bump. **Plan 10 wires `nestjs-pino`, which creates child loggers for requests — it must route them through `createChildLogger` or wrap the instance in a `LoggerPort` adapter that exposes no `child()`.**
+- [Phase 01]: [Phase 1 / 01-04]: **`msg` is the one channel the allowlist cannot filter.** pino appends the message string *after* `formatters.log` has run, so `logger.info('failed for ' + userInput)` passes every automated test. The control is layer 1 plus convention (`LoggerPort` takes the message as a fixed first argument). Documented in the module and routed to human review as coverage entry D7; plan 10 should consider a lint rule against interpolating values into a log call. Claiming the allowlist covers `msg` contents would be false.
+- [Phase 01]: [Phase 1 / 01-04]: **An allowlisted key with an object value is a depth bypass, so allowlisted values are primitives only.** The rebuild closes nesting under a *non-allowlisted* container, but `reason: { detail: { email } }` is allowlisted by key and would serialise the subtree. No D-16 field is defined to hold a composite value, so restricting copied values to finite numbers, strings, booleans, and `null` is free and makes the three-level guarantee total. Non-finite numbers are dropped rather than allowed to serialise as an invented `null`. Likewise `error_code` is normalised through the closed enum on every record — the key is allowlisted, so without normalisation a caller could pass any string in it.
+- [Phase 01]: [Phase 1 / 01-04]: **`LoggerPort`'s call-site surface is the allowlist MINUS the factory trio.** `CallerLogField = Exclude<AllowlistedField, 'service' | 'env' | 'pid'>`, derived from the same frozen list, and `createPinoOptions` spreads the base fields *after* the caller's object so they win even if a caller reaches the seam. Ten `@ts-expect-error` directives cover an unlisted field, three bag names, three base fields, and a raw `Error`; `tsc` fails with TS2578 when one goes unused, so the surface cannot silently loosen.
+- [Phase 01]: [Phase 1 / 01-04]: Added `pino@10.3.1` (exact STACK.md §14 pin, `--save-exact`) as a root **dev** dependency — a missing stack dependency, not a new one; the plan's `files_modified` omitted `package.json`. `pino-http@11.0.0` and `nestjs-pino@5.2.1` are NOT installed and plan 10 owns adding them.
+- [Phase 01]: [Phase 1 / 01-04]: `packages/platform/src/logging/index.ts` is a deliberate separate barrel so plan 10 does not edit `packages/platform/src/index.ts`. **`packages/platform/package.json`'s `exports` map still declares only `"."`, so a cross-package deep import (`@akane/platform/logging`) will not resolve** — the first plan that needs it must add an `exports` entry.
 - [Phase 1]: **Draft-save blocker removed by reserving shape, not building machinery** (D-22). `action: "draft"` is in the frozen enum and must not be emitted in v1; `ak:tok:draft:{jti}` is reserved; token classes are a `{action, ttl, consume}` config table. Research flagged this as a structural blocker on Phase 2's token model — one enum value and one table row close it.
 - [Phase 1]: **Form.io File licensing and SAML are out of Phase 1** (D-29, D-30). File upload is already v2, so the licensing question gates a deferred feature and AD-3's open-source claim holds by not shipping the premium component — no spike. SAML is a *customer* fact, not a technical unknown: OIDC is the plan of record, and the question carries a deadline before Phase 5 planning (`BLD-12` is the first SSO surface). +2–3 weeks if SAML is required, which is not in the ~43-week estimate.
 - [Phase 1]: **Health topology deviates from research in favour of FND-05** (D-09). All three entrypoints use `NestFactory.create()`; `worker` and `scheduler` mount only HealthController and MetricsController. `ARCHITECTURE.md` recommended `createApplicationContext()`, but FND-05 requires each of the three to expose both endpoints. Readiness is per-dependency (Mongo, RedisCache, RedisQueue, plus per-process additions); liveness checks nothing, so a Redis blip fails readiness without restarting a healthy pod.
@@ -112,6 +121,9 @@ None yet.
 - **[Phase 1]** `vitest.config.mts` now includes `tooling/**/*.spec.ts`. Any future spec placed outside `packages/` or `apps/` will not run until that glob is extended — the boundary fixture spec is the only one today.
 - **[Phase 1]** The boundary graph does not yet reach the apps' composition roots. Plan 10 must provide `BOUNDARY_MANIFEST` per app, call `createProviderBoundaryGuard(manifest).assert(app)` in `OnApplicationBootstrap`, and add the two `export *` lines for `bootstrap/boundary-manifest.js` and `bootstrap/provider-boundary.guard.js` to `packages/platform/src/index.ts` (deliberately left out of plan 03's `files_modified`).
 - **[Phase 1]** An empty `BoundaryManifest.forbidden` makes the runtime guard permanently silent. `provider-boundary.guard.spec.ts` documents this; plan 10 must supply the manifest explicitly rather than relying on a default.
+- **[Phase 1]** `pino`'s `msg` is emitted verbatim *after* `formatters.log` runs, so the log message is the one channel the allowlist cannot filter. `LoggerPort` fixes it as a fixed first argument so interpolation is visible at the call site, but no test can catch one. Human review is pending (01-04 coverage entry D7); plan 10 should consider a lint rule against interpolating values into a log call, or accept the convention explicitly and record it.
+- **[Phase 1]** `pino-http@11.0.0` and `nestjs-pino@5.2.1` are STACK.md §14 pins that are **not installed** — only `pino@10.3.1` is. Plan 10 owns adding them, with the exact versions.
+- **[Phase 1]** `packages/platform/package.json`'s `exports` map declares only `"."`, so `@akane/platform/logging` will not resolve cross-package. 01-04 created the barrel so plan 10 would not have to edit the platform index; the first plan that imports it cross-package must add an `exports` entry.
 
 ## Deferred Items
 
@@ -128,6 +140,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T14:05:00.000Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-10-02T15:10:00.000Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
