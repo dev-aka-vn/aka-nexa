@@ -275,6 +275,16 @@ None for this plan. **One decision is required from outside engineering, and it 
 4. **`CRYPTO_LOCAL_KEY_FILE` has no schema field.** Read from the environment by `createKeyProvider`; declaring it in `AppConfig` is plan 10's.
 5. **`@akane/platform/logging` still does not resolve** cross-package; plan 10 adds the `exports` entry when it wires `nestjs-pino`.
 
+## Self-Check: PASSED
+
+- **Files:** all 9 `packages/platform/src/crypto/**` artifacts and this summary confirmed on disk.
+- **Commits:** `8979a6c`, `ab70de1`, `9d990b4`, `41f19d3`, `ef8188f` all present in history.
+- **Deletions:** `git diff --diff-filter=D f949b78..HEAD` is empty — no tracked file was removed by this plan.
+- **FND-10:** still `Pending` in `REQUIREMENTS.md`; not marked complete anywhere.
+- **Untracked:** only pre-existing `.gsd/`, `.planning/milestone.lock`, `.planning/state.json`, and the pre-existing modified `.planning/config.json` — none produced by this plan.
+
+---
+
 ---
 *Phase: 01-foundations-platform*
 *Plan: 05*
