@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-10-02T16:58:00.000Z"
+stopped_at: Completed 01-07-PLAN.md
+last_updated: "2026-10-02T16:40:00.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Plan 01-05 complete - KeyProvider interface, AES-256-GCM envelope, and the production KMS guard (FND-10 mechanism half; vendor adapter still blocked)
-state_head: 0546099
+last_activity_desc: Plan 01-07 complete - three-container harness, native-driver MongoService, per-dependency readiness (FND-05 mechanism delivered; the three entrypoints still do not mount it)
+state_head: 8379909
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 6
-  percent: 60
+  completed_plans: 7
+  percent: 70
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 6 of 10 complete (01-07 — next)
+Plan: 7 of 10 complete (01-08 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-05 complete (KeyProvider + AES-256-GCM envelope + production KMS guard; **FND-10 stays Pending** — the KMS vendor adapter is still blocked on naming the deployment cloud)
+Last activity: 2026-10-02 — Plan 01-07 complete (three-container harness + `MongoService` + `HealthController`; **FND-05 stays PENDING** — no `apps/**` module mounts the controller yet)
 
-Progress: [██████░░░░] 60%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 51min
-- Total execution time: 6.8 hours
+- Total plans completed: 7
+- Average duration: 55min
+- Total execution time: 8.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 6 | 6 | 51min |
+| 01 | 7 | 7 | 55min |
 
 **Recent Trend:**
-- Last 6 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min)
-- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-06 came in at 38min — the cheapest plan so far — and the pattern is consistent: a plan whose correctness comes from **reading installed source** (pino internals, the boundaries plugin) is expensive, and a plan whose correctness comes from **asserting a contract** is not. Budget accordingly.
+- Last 7 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (82min)
+- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-07 is the second costliest, and for a different reason: **Docker dominates it**. A plan whose correctness comes from *asserting a contract* is cheap; one that must observe a real server pays roughly two minutes of container startup per spec that starts its own harness, and three specs did. The library-behaviour corrections (terminus indicator functions, `directConnection`, `executeCliCmd` argv) were each found by running the code, not by reading it — the same pattern as 01-04, cheaper per finding.
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -63,6 +63,7 @@ Progress: [██████░░░░] 60%
 | Phase 01 P04 | 159min | 3 tasks | 11 files |
 | Phase 01 P06 | 38min | 3 tasks | 17 files |
 | Phase 01 P05 | 49min | 3 tasks | 10 files |
+| Phase 01 P07 | 82min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,20 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-05]: **A missing auth tag is a LENGTH failure, not a "field present" failure — and an empty plaintext is legal.** The first draft of `decodeField` required every base64url field to be non-empty, which made an empty credential (an unset password field) unround-trippable: an empty plaintext legitimately produces an empty `ct`. Only the type is checked now; `iv` (12) and `tag` (16) carry length assertions at the call site, which is the stronger check anyway.
 - [Phase 01]: [Phase 1 / 01-05]: **`packages/platform/package.json` gained a `"./crypto"` exports entry.** The plan created `crypto/index.ts` "so plan 10 imports it without editing the top-level barrel", but the `exports` map declared only `"."`, so `@akane/platform/crypto` did not resolve cross-package — the same latent blocker 01-04 already recorded for `@akane/platform/logging`. Verified with a real `import('@akane/platform/crypto')`. `./logging` remains open and is still plan 10's.
 
+- [Phase 01]: [Phase 1 / 01-07]: **A health indicator must CATCH internally — the catch is the security control, not error handling.** `@nestjs/terminus`'s `HealthCheckExecutor` re-throws anything an indicator function rejects, so an uncaught error is a **500**, not the 503 a probe is looking for. Catching is therefore required for correctness *and* it is what keeps T-1-18 true: a `MongoServerSelectionError` embeds the seed address and the resolved member list, an ioredis `ReplyError` embeds the host, and the readiness body is unauthenticated. The indicators return a bare `up()`/`down()` with **no data** — terminus's `JsonErrorLogger` also echoes `details` to its logger, so one extra field would reach two places. Asserted by test, not by inspection.
+- [Phase 01]: [Phase 1 / 01-07]: **Terminus indicator entries are FUNCTIONS, not the promises they return.** `h instanceof HealthCheckAttempt ? h : h()` — a bare promise is `TypeError: h is not a function`, and it fails on the **all-dependencies-up** path too, so the symptom reads as "500 everywhere" rather than "500 only when something is down". Separately, `HealthIndicatorService` must be a **value** import in the controller: `import type` makes `emitDecoratorMetadata` emit `Object` and the controller cannot be constructed at all.
+- [Phase 01]: [Phase 1 / 01-07]: **`MongoDBContainer`'s connection string needs `directConnection=true`, and `getConnectionString()` does not add it.** The container runs `--replSet rs0`, so the server advertises its **container hostname** as the replica-set member; the driver believes the advertisement and then fails with `getaddrinfo EAI_AGAIN <container-id>:27017` against a perfectly healthy server. `mongoUrl()` in `tooling/containers.ts` rewrites the URL. Any future plan adding a Mongo container must use `mongoUrl()`, not `getConnectionString()`.
+- [Phase 01]: [Phase 1 / 01-07]: **`StartedRedisContainer.executeCliCmd(cmd, flags)` takes the command and its arguments as SEPARATE argv entries, and `redis-cli` exits 0 on `ERR unknown command`.** `executeCliCmd('CONFIG GET maxmemory-policy')` yields one quoted argument and an `ERR unknown command` reply that a caller checking only the exit code reads as a healthy-but-unreadable instance. `readMaxMemoryPolicy()` matches the returned value against a known policy vocabulary rather than indexing lines, so a change to `CONFIG GET`'s output shape fails loudly instead of reading the *key* as the value.
+- [Phase 01]: [Phase 1 / 01-07]: **Liveness is proven by counting side effects, not by asserting a 200.** `health.controller.spec.ts` counts `mongo.ping` and both Redis `ping` calls at **zero** across two requests to `/health/live` while all three dependencies reject. A liveness test that only runs with healthy dependencies passes against a probe that touches Mongo — which is exactly the T-1-17 restart-loop bug. The same reasoning made the "container stopped" `ping()` assertion require a *server-selection or ECONNREFUSED* error rather than any throw: a `ping()` that fails for an unrelated reason also rejects.
+- [Phase 01]: [Phase 1 / 01-07]: **"Two Redis deployments" is an empirical claim, not a URL comparison.** `redis.integration.spec.ts` writes a key through the cache client and asserts it is invisible through the queue client, reads `maxmemory-policy` back off both servers, and requires the two policies to *differ* (otherwise a harness that started the same image twice satisfies both assertions). A syntactic `URL.host` check — the one `refineRedisInstancesDistinct` already makes at boot — would still pass if the split regressed to one instance. Live evidence from the run: `cache host=localhost:33143 policy=allkeys-lru`, `queue host=localhost:33142 policy=noeviction`.
+- [Phase 01]: [Phase 1 / 01-07]: **Indicators are CONSTRUCTED by the controller from injected clients, not injected as classes.** It removes the need for a `health.module.ts` the plan does not list, and it is the only way `redis_cache` and `redis_queue` are bound to their readiness keys in a single place — an injected `RedisIndicator` needs a factory per deployment and a `key` argument at every call site, which is where a swapped key comes from. Corollary: the controller now has 6 constructor parameters; that is the price of naming three deployments explicitly, and it is cheaper than a registry.
+- [Phase 01]: [Phase 1 / 01-07]: **`tooling/` is now a referenced composite tsconfig project.** `tooling/containers.ts` is a named artifact but no tsconfig covered `tooling/`, so a type error in it would not fail `npm run build` — only Vitest's esbuild transpile would run it. A cross-project relative import also fails `TS6059`/`TS6307` while `packages/platform` has `rootDir: ./src`. `tooling/tsconfig.json` includes `containers.ts` **only**, deliberately excluding `tooling/boundaries-fixtures/**`, which violate boundaries by design.
+- [Phase 01]: [Phase 1 / 01-07]: **`MongoService` takes a URL, not `ConfigService` — deliberately the opposite of 01-05's live-environment workaround.** 01-05 read `process.env` live because a *policy* must not read a possibly-stale `ConfigService` snapshot. `MONGO_URL` is fixed for the process lifetime, so the snapshot is correct, and coupling the two would have made a unit test need a Nest container just to point at a container. The rule, stated generally: **live-read for policy, snapshot-safe for fixed values.**
+- [Phase 01]: [Phase 1 / 01-07]: **`npm test` now takes ~5 min and Docker dominates it.** Three specs each start their own three-container harness; `MongoDBContainer` runs a replica-set `rs.initiate()` on a 5 s health-check interval. Vitest reports `isolate: false` would save ~16 s (3% of wall clock) by sharing module transforms across workers. **Not adopted** — it trades test isolation for 5% of a Docker-bound suite. A later phase that adds a fourth container spec should consider a shared `globalSetup` harness; that is a real decision with a real isolation cost, not a cleanup.
+- [Phase 01]: [Phase 1 / 01-07]: **A teardown hook that times out fails the FILE while every assertion passes.** `vitest.config.mts` sets `hookTimeout: 30000`; stopping three containers exceeds it. The first full-suite run reported `1 failed | 23 passed (24)` alongside `Tests 193 passed (193)`, which trains a reader to ignore the failure line. Both container specs now pass explicit `300_000` timeouts to `afterAll`, matching their `beforeAll`.
+- [Phase 01]: [Phase 1 / 01-07]: **`packages/platform/package.json`'s `exports` hand-off has now recurred THREE times** (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`). The barrels exist so plans do not have to edit the root barrel, but the map declares only `"."` and `"./crypto"`, so every deep specifier is unresolvable cross-package. Worth resolving once, deliberately, in the first plan that actually needs a deep import — not a fourth time by accident.
+- [Phase 01]: [Phase 1 / 01-07]: **`mongodb` and `ioredis` are imported by runtime code but live in root `devDependencies`.** Pre-existing repo-wide model (01-02 added `ioredis` this way, 01-04 added `pino` this way), so `npm ci --omit=dev` produces a tree that cannot boot. Not introduced here and out of this plan's scope, but it is a deployment-shape decision that should be made once, deliberately, before the first image is built.
+
 - [Phase 1]: **Draft-save blocker removed by reserving shape, not building machinery** (D-22). `action: "draft"` is in the frozen enum and must not be emitted in v1; `ak:tok:draft:{jti}` is reserved; token classes are a `{action, ttl, consume}` config table. Research flagged this as a structural blocker on Phase 2's token model — one enum value and one table row close it.
 - [Phase 1]: **Form.io File licensing and SAML are out of Phase 1** (D-29, D-30). File upload is already v2, so the licensing question gates a deferred feature and AD-3's open-source claim holds by not shipping the premium component — no spike. SAML is a *customer* fact, not a technical unknown: OIDC is the plan of record, and the question carries a deadline before Phase 5 planning (`BLD-12` is the first SSO surface). +2–3 weeks if SAML is required, which is not in the ~43-week estimate.
 - [Phase 1]: **Health topology deviates from research in favour of FND-05** (D-09). All three entrypoints use `NestFactory.create()`; `worker` and `scheduler` mount only HealthController and MetricsController. `ARCHITECTURE.md` recommended `createApplicationContext()`, but FND-05 requires each of the three to expose both endpoints. Readiness is per-dependency (Mongo, RedisCache, RedisQueue, plus per-process additions); liveness checks nothing, so a Redis blip fails readiness without restarting a healthy pod.
@@ -122,7 +137,8 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 
 ### Pending Todos
 
-None yet.
+- **[Phase 1] (01-07) `FND-05` is still PENDING and must stay that way until plan 10 mounts the controller.** Plan 01-07 delivered the *mechanism* — `HealthController` with both endpoints, per-dependency indicators, the no-leak guarantee, and the three-container proof — but no `apps/**` module mounts it. Exactly what is missing: (1) `apps/api/src/app.module.ts` still registers plan 01's own `apps/api/src/health/health.controller.ts`, which has `/health/live` and no `/health/ready`; (2) `apps/worker/src/main.ts` and `apps/scheduler/src/main.ts` are shells that print `NOT_IMPLEMENTED` and set `process.exitCode = 1`, so neither serves HTTP — D-09 requires `NestFactory.create()` on all three, mounting only `HealthController` and `MetricsController`, and `MetricsController` does not exist yet (plan 09); (3) the per-process extras are absent by design (worker's "every BullMQ Worker is listening" is plan 08, scheduler's "a Job Scheduler is running" is plan 10) — the `EXTRA_HEALTH_INDICATORS` token they will use is built and tested. **Do not check FND-05 in `REQUIREMENTS.md` on the strength of the 01-07 summary.**
+- **[Phase 1] (01-07) A fourth container spec needs a decision, not another 2 minutes.** `npm test` is ~5 min and Docker-bound. Each spec starting its own three-container harness is honest isolation; a shared `globalSetup` harness would cut it substantially at the cost of cross-file state. Recorded so plan 08 (BullMQ) makes the call explicitly rather than by accident.
 
 ### Blockers/Concerns
 
@@ -167,6 +183,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T16:58:00.000Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-10-02T16:40:00.000Z
+Stopped at: Completed 01-07-PLAN.md
 Resume file: None

@@ -89,7 +89,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [x] 01-05-PLAN.md — `KeyProvider`, the AES-256-GCM envelope, and the production key guard
-- [ ] 01-07-PLAN.md — Three-container test harness, native-driver Mongo, and per-dependency readiness
+- [x] 01-07-PLAN.md — Three-container test harness, native-driver Mongo, and per-dependency readiness
 - [ ] 01-08-PLAN.md — BullMQ queue registration, `{akane-q}` prefix, heartbeat scheduler, and business metrics
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -277,7 +277,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Platform | 4/10 | In Progress|  |
+| 1. Foundations & Platform | 7/10 | In Progress|  |
 | 2. The Vertical Slice | 0/TBD | Not started | - |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |
