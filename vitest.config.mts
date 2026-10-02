@@ -15,7 +15,11 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/**/*.spec.ts', 'apps/**/*.spec.ts'],
+    include: [
+      'packages/**/*.spec.ts',
+      'apps/**/*.spec.ts',
+      'tooling/**/*.spec.ts',
+    ],
     setupFiles: ['./test/setup-env.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,
