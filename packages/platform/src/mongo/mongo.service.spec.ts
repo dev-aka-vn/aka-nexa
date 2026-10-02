@@ -32,7 +32,7 @@ describe('MongoService over the native driver (FND-05)', () => {
   afterAll(async () => {
     await mongo?.onModuleDestroy();
     await containers?.stop();
-  });
+  }, 300_000);
 
   it('starts MongoDB, a cache Redis and a queue Redis, each addressable', async () => {
     expect(containers.mongo).toBeDefined();

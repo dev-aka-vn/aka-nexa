@@ -36,7 +36,11 @@ describe('cache / queue Redis split (D-07, D-12)', () => {
   afterAll(async () => {
     await Promise.allSettled(clients.map((client) => client.quit()));
     await containers?.stop();
-  });
+    // The global `hookTimeout` is 30 s, which the three-container teardown can
+    // exceed on a loaded machine. A teardown that times out reports the file as
+    // failed even though every assertion passed, which trains a reader to
+    // ignore the failure rather than to look at it.
+  }, 300_000);
 
   const client = (url: string, profile: 'producer' | 'blocking') => {
     const created = createRedisClient({ url, profile });
