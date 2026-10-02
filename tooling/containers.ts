@@ -153,11 +153,18 @@ export async function startThreeContainers(): Promise<ThreeContainers> {
 /**
  * Read one instance's `maxmemory-policy` back through `redis-cli`.
  *
- * `CONFIG GET` in a non-tty session prints the key and the value on separate
- * lines, so the value is extracted by matching the known policy vocabulary
- * rather than by positional indexing — a positional parse silently reads the
- * *key* as the value if Redis ever changes its output shape, and a test that
- * asserts "the value is `noeviction`" would then pass for the wrong reason.
+ * The command and its arguments go in as separate argv entries.
+ * `executeCliCmd('CONFIG GET maxmemory-policy')` builds one argument —
+ * `redis-cli "CONFIG GET maxmemory-policy"` — which the server reads as a
+ * single command name and answers with `ERR unknown command`, while redis-cli
+ * still exits 0. Without checking the output, that is an integration test that
+ * reports a healthy instance as unreadable.
+ *
+ * `CONFIG GET` prints the key and the value on separate lines, so the value is
+ * extracted by matching the known policy vocabulary rather than by positional
+ * indexing. A positional parse silently reads the *key* as the value if Redis
+ * ever changes its output shape, and a test that asserts "the value is
+ * `noeviction`" would then pass for the wrong reason.
  */
 export const EVICTING_POLICIES: readonly string[] = Object.freeze([
   'allkeys-lru',
@@ -171,7 +178,7 @@ export const EVICTING_POLICIES: readonly string[] = Object.freeze([
 export async function readMaxMemoryPolicy(
   container: StartedRedisContainer,
 ): Promise<string> {
-  const output = await container.executeCliCmd('CONFIG GET maxmemory-policy');
+  const output = await container.executeCliCmd('CONFIG', ['GET', 'maxmemory-policy']);
   const found = output
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/^"|"$/g, ''))
