@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-06-PLAN.md
-last_updated: "2026-10-02T15:58:00.000Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-10-02T16:58:00.000Z"
 last_activity: 2026-10-02
-last_activity_desc: Plan 01-06 complete - JEV v1 wire contract and read-link claim set frozen (RTE-10, LNK-07)
+last_activity_desc: Plan 01-05 complete - KeyProvider interface, AES-256-GCM envelope, and the production KMS guard (FND-10 mechanism half; vendor adapter still blocked)
 state_head: 0546099
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 5
-  percent: 50
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -29,27 +29,27 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 5 of 10 complete (01-05 — next)
+Plan: 6 of 10 complete (01-07 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-06 complete (JEV v1 + read-link contracts frozen, RTE-10/LNK-07/DAT-13/AUD-10)
+Last activity: 2026-10-02 — Plan 01-05 complete (KeyProvider + AES-256-GCM envelope + production KMS guard; **FND-10 stays Pending** — the KMS vendor adapter is still blocked on naming the deployment cloud)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 51min
-- Total execution time: 6.0 hours
+- Total execution time: 6.8 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 5 | 5 | 51min |
+| 01 | 6 | 6 | 51min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min)
+- Last 6 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min)
 - Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-06 came in at 38min — the cheapest plan so far — and the pattern is consistent: a plan whose correctness comes from **reading installed source** (pino internals, the boundaries plugin) is expensive, and a plan whose correctness comes from **asserting a contract** is not. Budget accordingly.
 
 *Updated after each plan completion*
@@ -62,6 +62,7 @@ Progress: [█████░░░░░] 50%
 | Phase 01 P03 | 62min | 3 tasks | 31 files |
 | Phase 01 P04 | 159min | 3 tasks | 11 files |
 | Phase 01 P06 | 38min | 3 tasks | 17 files |
+| Phase 01 P05 | 49min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,13 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-06]: **The boundary graph absorbed the whole contract package with no config change.** `packages/contract/src/**` is element type `contract`, allowed edge `['kernel']`, plus the position-0 third-party allow — so `zod` and intra-package relative imports were already legal. `tooling/boundaries.config.mjs`, `eslint.config.mjs`, `package.json` and `package-lock.json` are byte-identical after this plan (T-1-SC: no new package). No rule was relaxed to make these files pass.
 - [Phase 01]: [Phase 1 / 01-06]: **`perm_version` is a REQUIRED claim on the frozen set even though D-21 scopes it to read links.** The set is one `.strict()` schema; a write link does not need the epoch to mean anything, and making it optional would weaken exactly the read guarantee it exists for. **Open question for the Phase 2 link-issuing service:** a write link has no epoch value, so either it mints the current epoch (keeps the claim set single-shaped) or D-21's ruling is revisited — and the frozen key set forbids the second without a version bump. Likewise `READ_LINK_TARGET_RULES` is documentation as data; nothing yet *enforces* "no `target_id` on a `create` link", and the read-link verification service is its natural home.
 
+- [Phase 01]: [Phase 1 / 01-05]: **PD-4 is proven by construction, not by a stub.** `LocalKeyProvider.wrapDek` emits its wrapping in Vault transit's shape — `local:v1:<kid>:<iv>:<tag>:<ct>` as a UTF-8 `Buffer` — so the text-versus-bytes resolution (B-3 failure mode 2) is exercised by the one provider that actually runs, and the `scheme:version:` parsing hazard is reproduced rather than abstracted away. Adding a `wrappedIsText` discriminator would leak the vendor into the interface D-27 says must not change.
+- [Phase 01]: [Phase 1 / 01-05]: **D-25's frozen envelope has nowhere to persist a per-secret wrapped DEK, and that is a real limit, not a detail.** Standard envelope encryption stores the wrapped DEK beside the ciphertext; `{ v, alg, kid, iv, tag, ct }` has no field for it, and D-28 stores no secret in Phase 1. `encryptSecret` therefore derives the DEK from the provider by wrapping a fixed 32-byte label and unwrapping it again — deterministic in the DEK, fresh nonce per encryption. **Consequence: rotating `kid` makes previously sealed envelopes undecryptable** until the Phase 4 secret store persists the wrapping as a sibling column. That upgrade is additive and NOT DONE. Both alternatives — a `dek` envelope field and a fourth `KeyProvider` method — were rejected because each breaks an acceptance criterion D-25 / B-3 states is costly to change. `WINDOWS.md` entry 7.
+- [Phase 01]: [Phase 1 / 01-05]: **`ConfigService` serves an import-time snapshot, and a security guard must not be given one.** `ConfigModule.forRoot()` is `async` in `@nestjs/config@12` and `config.module.ts` calls it at module scope without `await`, so `ConfigService.get()` prefers a snapshot taken when `config.module.js` was imported. **Measured:** with `process.env.NODE_ENV = "production"` set before `compile()`, `ConfigService.get('NODE_ENV')` returned `"test"`. The first `CryptoModule` draft injected `ConfigService`, so the production guard did **not** fire and a production boot reached the key-file read — found by running the boot path end to end, not by reading. `CryptoModule`'s factory now reads the live environment via `readKeyProviderEnv()`, and a regression test boots under development and refuses on the very next boot in the same process. **The boot module itself is unchanged**, so every future `ConfigService` consumer still inherits the snapshot; plan 10 owns it. `WINDOWS.md` entry 6.
+- [Phase 01]: [Phase 1 / 01-05]: **The production guard is two independent refusals, not one.** `assertKeyProviderAllowed` is the cheap early abort (and runs *before* any key file is opened — a spec asserts that by supplying no key file at all and demanding the guard's error); `LocalKeyProvider`'s constructor is the backstop that holds even if the guard is bypassed. Keeping the second one means a future call site cannot reach a local key by forgetting the first.
+- [Phase 01]: [Phase 1 / 01-05]: **A missing auth tag is a LENGTH failure, not a "field present" failure — and an empty plaintext is legal.** The first draft of `decodeField` required every base64url field to be non-empty, which made an empty credential (an unset password field) unround-trippable: an empty plaintext legitimately produces an empty `ct`. Only the type is checked now; `iv` (12) and `tag` (16) carry length assertions at the call site, which is the stronger check anyway.
+- [Phase 01]: [Phase 1 / 01-05]: **`packages/platform/package.json` gained a `"./crypto"` exports entry.** The plan created `crypto/index.ts` "so plan 10 imports it without editing the top-level barrel", but the `exports` map declared only `"."`, so `@akane/platform/crypto` did not resolve cross-package — the same latent blocker 01-04 already recorded for `@akane/platform/logging`. Verified with a real `import('@akane/platform/crypto')`. `./logging` remains open and is still plan 10's.
+
 - [Phase 1]: **Draft-save blocker removed by reserving shape, not building machinery** (D-22). `action: "draft"` is in the frozen enum and must not be emitted in v1; `ak:tok:draft:{jti}` is reserved; token classes are a `{action, ttl, consume}` config table. Research flagged this as a structural blocker on Phase 2's token model — one enum value and one table row close it.
 - [Phase 1]: **Form.io File licensing and SAML are out of Phase 1** (D-29, D-30). File upload is already v2, so the licensing question gates a deferred feature and AD-3's open-source claim holds by not shipping the premium component — no spike. SAML is a *customer* fact, not a technical unknown: OIDC is the plan of record, and the question carries a deadline before Phase 5 planning (`BLD-12` is the first SSO surface). +2–3 weeks if SAML is required, which is not in the ~43-week estimate.
 - [Phase 1]: **Health topology deviates from research in favour of FND-05** (D-09). All three entrypoints use `NestFactory.create()`; `worker` and `scheduler` mount only HealthController and MetricsController. `ARCHITECTURE.md` recommended `createApplicationContext()`, but FND-05 requires each of the three to expose both endpoints. Readiness is per-dependency (Mongo, RedisCache, RedisQueue, plus per-process additions); liveness checks nothing, so a Redis blip fails readiness without restarting a healthy pod.
@@ -123,13 +131,19 @@ None yet.
 - **[Cross-phase]** The "legitimate interest" framing for 3-year audit retention needs counsel, not research. Do not treat it as settled.
 - **[Cross-phase]** MongoDB 9.0 deliberately not adopted (4 days old at verification). Revisit before the 3-year retention window bites.
 - **[Phase 8]** The 3-tier throttler's Redis cost is unmeasured — measure it in the load test, do not assume it.
+- **[Phase 1]** (01-05) **FND-10 is still PENDING and must stay that way until a deployment cloud is named.** Plan 01-05 delivered the mechanism half — the `KeyProvider` interface, the AES-256-GCM envelope, and the boot assertion — but FND-10 requires a KMS-backed master key and no vendor exists. Do not mark FND-10 complete and do not let `/gsd-ship` read this plan as closing it. Resolution owner is the customer/deployment decision, not engineering.
+- **[Phase 1]** (01-05) **`ConfigModule.forRoot()` is unawaited, so `ConfigService` is a stale import-time snapshot.** Verified by measurement, not inspection. Plan 05's crypto factory reads the live environment as a workaround; plan 10 must await `forRoot()` or load config at bootstrap, or every other `ConfigService` consumer inherits the defect. `WINDOWS.md` entry 6.
+- **[Phase 1]** (01-05) **The envelope cannot survive a `kid` rotation yet.** D-25 freezes five fields, so there is nowhere to persist a wrapped DEK; the DEK is derived from the provider instead. No real credential may be stored until the Phase 4 secret store persists the wrapping beside the envelope. `WINDOWS.md` entry 7.
+- **[Phase 1]** (01-05) **`CRYPTO_LOCAL_KEY_FILE` is read from the process environment, not from `AppConfig`.** `config.schema.ts` is deliberately not touched by plan 05, so the key-file path has no declared schema field. It is a **path**, never key material, so NFR-SEC-3 permits it; declaring it in `AppConfig` is a plan-10 change.
+- **[Phase 1]** `packages/platform/package.json`'s `exports` map declares only `"."` and `"./crypto"`, so `@akane/platform/logging` will not resolve cross-package. 01-04 created the barrel so plan 10 would not have to edit the platform index; the first plan that imports it cross-package must add a `./logging` entry (01-05 added only `./crypto`).
+
 - **[Phase 1]** KMS vendor adapter is blocked on naming the deployment cloud. FND-10 requires a KMS-backed master key, but no cloud has been named. Phase 1 ships the `KeyProvider` interface, a `LocalKeyProvider` that refuses to boot in production, and a startup assertion that `NODE_ENV=production` without `CRYPTO_KEY_PROVIDER=kms` fails boot. Ruling: 01-CONTEXT.md D-27.
-- **[Phase 1]** The production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard is still absent — deliberately owned by plan 05 inside `crypto/**`, not by this plan's config `validate:` hook (plan 01-02 prohibitions). Plan 05 must add it and must not assume the config hook already covers it.
+- [CLOSED by 01-05] The production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard was deliberately owned by plan 05 inside `crypto/**`. **Delivered and demonstrated**: production + `local` aborts boot with `CRYPTO_KEY_PROVIDER_REQUIRED:` during `compile()`, before any key file is opened.
 - **[Phase 1]** `test/setup-env.ts` now seeds the full required boot surface globally for Vitest, because `ConfigModule.forRoot({ validate })` aborts any spec that resolves it without those keys. When plan 05 adds a required field, that file must grow with it; a spec asserting the *absence* of that field must delete it explicitly rather than rely on it being unset.
 - **[Phase 1]** `vitest.config.mts` now includes `tooling/**/*.spec.ts`. Any future spec placed outside `packages/` or `apps/` will not run until that glob is extended — the boundary fixture spec is the only one today.
 - **[Phase 1]** The boundary graph does not yet reach the apps' composition roots. Plan 10 must provide `BOUNDARY_MANIFEST` per app, call `createProviderBoundaryGuard(manifest).assert(app)` in `OnApplicationBootstrap`, and add the two `export *` lines for `bootstrap/boundary-manifest.js` and `bootstrap/provider-boundary.guard.js` to `packages/platform/src/index.ts` (deliberately left out of plan 03's `files_modified`).
 - **[Phase 1]** An empty `BoundaryManifest.forbidden` makes the runtime guard permanently silent. `provider-boundary.guard.spec.ts` documents this; plan 10 must supply the manifest explicitly rather than relying on a default.
-- **[Phase 1]** (01-06) **Plan 01-05 owns the production `NODE_ENV=production` ⇒ `CRYPTO_KEY_PROVIDER=kms` boot guard and must not assume the config hook already covers it.** Unchanged from 01-04's note; re-listed because 01-05 is now the next plan to execute.
+- [CLOSED by 01-05] (01-06) The hand-off note that 01-05 owns the production boot guard. **Delivered**: `production-guard.ts` + `CryptoModule`; 01-05 indeed did not assume the config hook covered it, and the crypto module now does not use `ConfigService` at all.
 - **[Phase 1]** (01-06) **`READ_LINK_TARGET_RULES` and the frozen-key-set machinery extend to one place only — do not add key-set tests to `connector/` or `events/`.** A connector descriptor gaining a field invalidates nothing already deployed, which is the property that makes the two frozen schemas different in *kind*. Freezing the non-frozen ones turns every future connector field into a version bump.
 - **[Phase 1]** (01-06) **The Phase 2 link-issuing service must call `isEmittableInV1(action)` and must own the `TokenClass.ttl` token→seconds resolver.** Both are deliberate hand-offs recorded in 01-06-SUMMARY.md; neither has an enforcement point inside the contract package.
 - **[Phase 1]** (01-06) **`packages/contract/src/index.ts` now re-exports the full surface, so later phases import from `@akane/contract`, never from deep paths.** Its `exports` map declaring only `"."` is therefore correct. The sibling problem is unchanged and still open: `packages/platform/package.json`'s `exports` map declares only `"."`, so `@akane/platform/logging` will not resolve cross-package.
@@ -153,6 +167,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T15:58:00.000Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-10-02T16:58:00.000Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
