@@ -75,7 +75,17 @@ Four researchers converged on this shape; the deviation is stated rather than si
   3. A module that imports across a declared component boundary fails the build; a compliant tree passes, and the three entrypoints cannot drift into one process.
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
-**Plans**: TBD
+**Plans:** 10 plans
+- [ ] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
+- [ ] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
+- [ ] 01-03-PLAN.md — Build-failing module boundaries and the per-app boot boundary assertion
+- [ ] 01-04-PLAN.md — PII-safe structured logging with a frozen allowlist enforced before serialisation
+- [ ] 01-05-PLAN.md — `KeyProvider`, the AES-256-GCM envelope, and the production key guard
+- [ ] 01-06-PLAN.md — Frozen JEV v1 wire contract, read-link claim schema, and contract skeletons
+- [ ] 01-07-PLAN.md — Three-container test harness, native-driver Mongo, and per-dependency readiness
+- [ ] 01-08-PLAN.md — BullMQ queue registration, `{akane-q}` prefix, heartbeat scheduler, and business metrics
+- [ ] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
+- [ ] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
 **Notes**: Two Redis deployments are split from day one — BullMQ requires `maxmemory-policy=noeviction` while the cache wants eviction, and the policy is instance-wide. Rate limiting is **per user and per link `jti`, never per IP**, and blocks only on signature failure (`NFR-SEC-10` loses). `FR-D-12` write-once is **amended** to a single-send guarantee plus a per-connector `supports_idempotency_key` flag. The §15.4 erasure promise is narrowed to PII-excluded-by-allowlist + tombstonable `actor_ref` + defined purge windows.
 **Discovery required in this phase**: (a) resolve the Form.io `File` component licensing question — it is premium while the renderer is MIT — and drop `FR-F-10` plus its dependent object-storage gap if it cannot be rendered unlicensed; (b) decide the draft-save token model, since a resumable draft needs a second, longer-lived token class incompatible with the stateless one-time-token SPA.
 **Spike**: S3 — SAML need confirmation. This is a **customer** question, not a technical one: which IdP, and does it support OIDC? OIDC covers Entra ID, Okta, Auth0, Google Workspace, Keycloak. If SAML is genuinely required, add 2–3 weeks for `@node-saml/node-saml`.
@@ -241,7 +251,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Platform | 0/TBD | Not started | - |
+| 1. Foundations & Platform | 0/10 | Not started | - |
 | 2. The Vertical Slice | 0/TBD | Not started | - |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |

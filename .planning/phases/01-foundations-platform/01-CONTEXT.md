@@ -130,8 +130,8 @@ Explicitly **not** in this phase: any user-facing capability. No Slack adapter, 
 
 `--auto` mode resolved every area to its recommended option without prompting. No user input was taken. Two areas deserve a human eye before planning, and are flagged here rather than buried:
 
-- **D-27 (KMS vendor) is a genuine unknown, not a judgement call.** The interface and the production guard are the right answer to an unnamed deployment target, but "blocked on naming the cloud" means Phase 1 cannot be fully closed until someone answers it.
-- **D-09 (health topology) contradicts a research recommendation.** `ARCHITECTURE.md` says `createApplicationContext()` for the worker and scheduler; this phase mounts HTTP on all three to satisfy FND-05 literally. The reasoning is recorded in D-09 so a reviewer can overturn it with one line — but overturning it means amending FND-05.
+- The **KMS vendor (see D-27)** is a genuine unknown, not a judgement call. The interface and the production guard are the right answer to an unnamed deployment target, but "blocked on naming the cloud" means Phase 1 cannot be fully closed until someone answers it.
+- The **health topology (see D-09)** contradicts a research recommendation. `ARCHITECTURE.md` says `createApplicationContext()` for the worker and scheduler; this phase mounts HTTP on all three to satisfy FND-05 literally. The reasoning is recorded in D-09 so a reviewer can overturn it with one line — but overturning it means amending FND-05.
 
 Everything else is a mechanism choice with a documented reason, and a reviewer disagreeing with any of them can edit CONTEXT.md directly before planning.
 
