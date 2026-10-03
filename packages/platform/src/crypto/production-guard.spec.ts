@@ -12,11 +12,15 @@ import { assertKeyProviderAllowed } from './production-guard.js';
 /**
  * The boot guard (D-27, T-1-13).
  *
- * The three assertions below are the phase's answer to "production can never
+ * The assertions below are the phase's answer to "production can never
  * silently fall back to a local key". The fourth one matters just as much: a
  * *selected* `kms` provider fails with `KMS_PROVIDER_BLOCKED:` naming blocker
  * B-3, so the missing adapter is visible as a boot failure instead of as a
  * quiet no-op that reads like a working integration.
+ *
+ * Together with `kms` being blocked everywhere, these leave the local key
+ * reachable **only** where a developer expects it. CR-01 closed the hole that
+ * let a deployment reach it by simply not declaring `NODE_ENV`.
  */
 
 let dir: string;
@@ -41,6 +45,22 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Put a variable back exactly as it was for the duration of one test. `delete`
+ * rather than `undefined` because `process.env.X = undefined` stores the string
+ * `'undefined'` — a set variable, which is precisely what must not happen in the
+ * cases that assert an absent environment.
+ */
+function swapEnv(key: string, value: string | undefined): () => void {
+  const previous = process.env[key];
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+  return () => {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  };
+}
+
 describe('assertKeyProviderAllowed — production requires kms (D-27)', () => {
   it('aborts boot for production with the local provider', () => {
     expect(() =>
@@ -60,12 +80,68 @@ describe('assertKeyProviderAllowed — production requires kms (D-27)', () => {
     ).not.toThrow();
   });
 
-  it('allows local outside production without inspecting anything else', () => {
-    for (const nodeEnv of ['development', 'test', '']) {
+  it('allows local in development and test, the two environments a local key is for', () => {
+    for (const nodeEnv of ['development', 'test']) {
       expect(() =>
         assertKeyProviderAllowed({ NODE_ENV: nodeEnv, CRYPTO_KEY_PROVIDER: 'local' }),
       ).not.toThrow();
     }
+  });
+
+  /**
+   * CR-01 — the finding, restated as an assertion.
+   *
+   * Before the fix the guard keyed the refusal on `NODE_ENV === 'production'`
+   * alone and every caller supplied `?? 'development'` for an absent value, so
+   * `{ NODE_ENV: undefined, CRYPTO_KEY_PROVIDER: 'local' }` did not throw. With
+   * `kms` blocked in every environment (D-27), that was the only route by which
+   * a production container could reach a plaintext key file — by never declaring
+   * itself. It must throw now, and the refusal must be loud enough to name the
+   * remedy rather than leaving the operator to guess.
+   */
+  it('refuses a local key when NODE_ENV was never declared — the CR-01 hole', () => {
+    expect(() =>
+      assertKeyProviderAllowed({ NODE_ENV: undefined, CRYPTO_KEY_PROVIDER: 'local' }),
+    ).toThrowError(
+      /^CRYPTO_KEY_PROVIDER_REQUIRED: the local key provider requires NODE_ENV=development or test, or CRYPTO_LOCAL_KEY_ALLOWED=true; got NODE_ENV=\(unset\)$/,
+    );
+  });
+
+  it('refuses a local key for an empty or unrecognised environment too', () => {
+    for (const nodeEnv of ['', 'prod', 'Production', 'staging']) {
+      expect(() =>
+        assertKeyProviderAllowed({ NODE_ENV: nodeEnv, CRYPTO_KEY_PROVIDER: 'local' }),
+      ).toThrowError(/^CRYPTO_KEY_PROVIDER_REQUIRED: the local key provider requires/);
+    }
+  });
+
+  it('opens the door only on the exact opt-in value, and never for production', () => {
+    expect(() =>
+      assertKeyProviderAllowed({
+        NODE_ENV: 'staging',
+        CRYPTO_KEY_PROVIDER: 'local',
+        CRYPTO_LOCAL_KEY_ALLOWED: 'true',
+      }),
+    ).not.toThrow();
+
+    for (const optIn of ['1', 'TRUE', 'yes', 'false', '', undefined]) {
+      expect(() =>
+        assertKeyProviderAllowed({
+          NODE_ENV: 'staging',
+          CRYPTO_KEY_PROVIDER: 'local',
+          CRYPTO_LOCAL_KEY_ALLOWED: optIn,
+        }),
+      ).toThrowError(/^CRYPTO_KEY_PROVIDER_REQUIRED: the local key provider requires/);
+    }
+
+    // The opt-in is not a hole in D-27: production is still kms-only.
+    expect(() =>
+      assertKeyProviderAllowed({
+        NODE_ENV: 'production',
+        CRYPTO_KEY_PROVIDER: 'local',
+        CRYPTO_LOCAL_KEY_ALLOWED: 'true',
+      }),
+    ).toThrowError(/^CRYPTO_KEY_PROVIDER_REQUIRED: production requires kms, got local$/);
   });
 });
 
@@ -190,10 +266,66 @@ describe('CryptoModule — DI wiring', () => {
         NODE_ENV: 'production',
         CRYPTO_KEY_PROVIDER: 'local',
       });
+      // No substitution: an absent environment arrives as `undefined` so the
+      // guard can refuse it. Substituting 'development' here is CR-01.
       expect(readKeyProviderEnv({})).toMatchObject({
-        NODE_ENV: 'development',
+        NODE_ENV: undefined,
         CRYPTO_KEY_PROVIDER: 'local',
       });
+    });
+  });
+
+  /**
+   * CR-01, end to end.
+   *
+   * The unit assertion above is the rule; this is the failure. A container that
+   * exports everything a boot needs *except* `NODE_ENV` is the single most likely
+   * way a production deployment goes wrong, and before the fix it compiled a
+   * working `LocalKeyProvider` — no refusal, no log line, no error. With
+   * `kms` blocked in every environment (D-27), this is the only route left to a
+   * plaintext master key, so it is the route that had to be closed.
+   *
+   * Asserted against the real `process.env`, because the bug lived in the
+   * substitution and a hand-built config object would never have caught it.
+   */
+  describe('a boot that never declared its environment cannot reach a local key', () => {
+    it('refuses during compile() with NODE_ENV deleted from the environment', async () => {
+      const restore = swapEnv('NODE_ENV', undefined);
+      try {
+        await expect(
+          Test.createTestingModule({ imports: [CryptoModule] }).compile(),
+        ).rejects.toThrowError(
+          /^CRYPTO_KEY_PROVIDER_REQUIRED: the local key provider requires NODE_ENV=development or test, or CRYPTO_LOCAL_KEY_ALLOWED=true; got NODE_ENV=\(unset\)$/,
+        );
+      } finally {
+        restore();
+      }
+    });
+
+    it('refuses for a misspelled NODE_ENV too, not only for an absent one', async () => {
+      const restore = swapEnv('NODE_ENV', 'prod');
+      try {
+        await expect(
+          Test.createTestingModule({ imports: [CryptoModule] }).compile(),
+        ).rejects.toThrowError(/^CRYPTO_KEY_PROVIDER_REQUIRED: the local key provider requires/);
+      } finally {
+        restore();
+      }
+    });
+
+    it('boots on the opt-in alone when the environment is undeclared', async () => {
+      const restoreNodeEnv = swapEnv('NODE_ENV', undefined);
+      const restoreOptIn = swapEnv('CRYPTO_LOCAL_KEY_ALLOWED', 'true');
+      try {
+        const moduleRef = await Test.createTestingModule({ imports: [CryptoModule] }).compile();
+        expect(
+          await moduleRef.get<{ keyId(): Promise<string> }>(CRYPTO_KEY_PROVIDER).keyId(),
+        ).toMatch(/^local-[0-9a-f]{16}$/);
+        await moduleRef.close();
+      } finally {
+        restoreOptIn();
+        restoreNodeEnv();
+      }
     });
   });
 });

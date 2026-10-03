@@ -37,14 +37,33 @@ describe('AppConfigSchema — full boot surface (FND-09)', () => {
     expect(parsed.CRYPTO_KEY_PROVIDER).toBe('local');
   });
 
-  it('defaults NODE_ENV, PORT and CRYPTO_KEY_PROVIDER when absent', () => {
+  it('defaults PORT and CRYPTO_KEY_PROVIDER when absent', () => {
     const parsed = validateConfig(
-      omit(VALID_CONFIG, ['NODE_ENV', 'PORT', 'CRYPTO_KEY_PROVIDER']),
+      omit(VALID_CONFIG, ['PORT', 'CRYPTO_KEY_PROVIDER']),
     );
 
-    expect(parsed.NODE_ENV).toBe('development');
     expect(parsed.PORT).toBe(3000);
     expect(parsed.CRYPTO_KEY_PROVIDER).toBe('local');
+  });
+
+  /**
+   * CR-01. `NODE_ENV` used to carry `.default('development')`, which made a
+   * process that never declared its environment indistinguishable from a
+   * developer laptop — and the crypto guard keyed its refusal on that same
+   * value, so a production container omitting `NODE_ENV` booted on a plaintext
+   * key file with nothing refusing it. The first layer that closes it is here:
+   * an absent `NODE_ENV` is a boot failure, not a silent assumption.
+   */
+  it('refuses to boot when NODE_ENV is absent rather than assuming development', () => {
+    expect(() => validateConfig(omit(VALID_CONFIG, ['NODE_ENV']))).toThrowError(
+      /^CONFIG_INVALID: NODE_ENV invalid_value$/,
+    );
+  });
+
+  it('refuses to boot on a NODE_ENV outside the declared enum', () => {
+    expect(() => validateConfig({ ...VALID_CONFIG, NODE_ENV: 'prod' })).toThrowError(
+      /^CONFIG_INVALID: NODE_ENV/,
+    );
   });
 
   /**

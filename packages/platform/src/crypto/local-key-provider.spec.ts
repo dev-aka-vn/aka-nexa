@@ -30,6 +30,24 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Put a variable back exactly as it was for the duration of one test.
+ *
+ * `delete` rather than `undefined`: `process.env.X = undefined` stores the
+ * **string** `'undefined'`, which is a set environment — the opposite of what
+ * these cases need to observe. Vitest reuses worker processes across spec files,
+ * so every case restores before the next file runs.
+ */
+function swapEnv(key: string, value: string | undefined): () => void {
+  const previous = process.env[key];
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+  return () => {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  };
+}
+
 describe('LocalKeyProvider — refuses to exist in production (D-26, T-1-11)', () => {
   it('throws a named LOCAL_KEY_PROVIDER_FORBIDDEN error under NODE_ENV=production', () => {
     expect(() => new LocalKeyProvider({ keyFilePath, nodeEnv: 'production' })).toThrowError(
@@ -43,10 +61,62 @@ describe('LocalKeyProvider — refuses to exist in production (D-26, T-1-11)', (
     ).toThrowError(/^LOCAL_KEY_PROVIDER_FORBIDDEN: /);
   });
 
-  it('constructs under development, test, and an unset NODE_ENV', () => {
-    for (const nodeEnv of ['development', 'test', undefined]) {
+  /**
+   * CR-01. The counterfactual the whole guard exists for: a process that never
+   * declared its environment. Before the fix `nodeEnv = process.env.NODE_ENV ??
+   * 'development'` turned "unset" into the one environment where a plaintext key
+   * file is fine, so this case constructed happily. It must now refuse — and it
+   * must refuse for the *set* of environments that are not development or test
+   * too, because a deployment with a misspelled `NODE_ENV` is the same mistake.
+   *
+   * The variable is removed from the real environment rather than passed as
+   * `undefined`, because `nodeEnv = process.env.NODE_ENV` is a destructuring
+   * default: handing the property `undefined` would silently read the runner's
+   * `NODE_ENV=test` and the test would assert nothing about the unset case.
+   */
+  it('refuses when NODE_ENV is unset, so an undeclared environment is never a laptop', () => {
+    const restore = swapEnv('NODE_ENV', undefined);
+    try {
+      expect(() => new LocalKeyProvider({ keyFilePath })).toThrowError(
+        /^LOCAL_KEY_PROVIDER_FORBIDDEN: .*got NODE_ENV=\(unset\)$/,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses for a misspelled or unknown environment, not only for production', () => {
+    for (const nodeEnv of ['', 'prod', 'Production', 'staging']) {
+      expect(() => new LocalKeyProvider({ keyFilePath, nodeEnv })).toThrowError(
+        /^LOCAL_KEY_PROVIDER_FORBIDDEN: /,
+      );
+    }
+  });
+
+  it('constructs under development and test, the two environments a local key is for', () => {
+    for (const nodeEnv of ['development', 'test']) {
       expect(() => new LocalKeyProvider({ keyFilePath, nodeEnv })).not.toThrow();
     }
+  });
+
+  it('accepts the explicit opt-in outside those two, and nothing else does', () => {
+    expect(
+      () => new LocalKeyProvider({ keyFilePath, nodeEnv: 'staging', localKeyAllowed: 'true' }),
+    ).not.toThrow();
+
+    // The opt-in is exact-match. Anything else is a closed door, because
+    // guessing "probably meant true" is how a plaintext key reaches production.
+    for (const localKeyAllowed of ['1', 'TRUE', 'yes', 'false', '']) {
+      expect(
+        () => new LocalKeyProvider({ keyFilePath, nodeEnv: 'staging', localKeyAllowed }),
+      ).toThrowError(/^LOCAL_KEY_PROVIDER_FORBIDDEN: /);
+    }
+  });
+
+  it('does not let the opt-in open production', () => {
+    expect(
+      () => new LocalKeyProvider({ keyFilePath, nodeEnv: 'production', localKeyAllowed: 'true' }),
+    ).toThrowError(/^LOCAL_KEY_PROVIDER_FORBIDDEN: /);
   });
 
   it('rejects a key file that is not exactly 32 bytes', () => {

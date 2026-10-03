@@ -49,7 +49,19 @@ export const DEFAULT_PORT_BY_SERVICE: Readonly<Record<ServiceName, number>> =
  * depending on the runtime type of a schema that later gains refinements.
  */
 const AppConfigShape = {
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Required, with **no default** (CR-01).
+   *
+   * `.default('development')` made "this process never declared its environment"
+   * the same value as "this is a developer laptop", so a production container
+   * that simply omitted `NODE_ENV` booted on a plaintext key file with nothing
+   * refusing it — the one state the KMS guard exists to make unreachable.
+   * Requiring the key closes it at the first layer: such a container now aborts
+   * with `CONFIG_INVALID: NODE_ENV` before a single module resolves, and the
+   * crypto guard's fail-closed rule (which refuses an absent value too) is the
+   * second layer for anything that reaches it by another route.
+   */
+  NODE_ENV: z.enum(['development', 'test', 'production']),
   // `.optional()` rather than `.default(3000)`: the default is per-process, and
   // only `SERVICE_NAME` knows which process this is (see the transform below).
   PORT: z.coerce.number().int().positive().optional(),

@@ -55,13 +55,19 @@ import { assertKeyProviderAllowed } from './production-guard.js';
  * as an `AppConfig` field is a plan-10 change alongside the entrypoint bootstrap;
  * reading it here keeps this plan from editing a file three completed plans
  * already depend on.
+ *
+ * `CRYPTO_LOCAL_KEY_ALLOWED` is read the same way for the same reason, and is
+ * additionally **not** a schema field on purpose: it is a deliberate override of
+ * a security control rather than a value that describes the process, so it
+ * belongs to the crypto owner and is never defaulted, validated, or echoed into
+ * the configuration object (CR-01).
  */
 
 /** The `CRYPTO_KEY_PROVIDER` values the boot schema admits. */
 export type KeyProviderName = 'local' | 'kms';
 
 export interface KeyProviderConfig {
-  readonly NODE_ENV: string;
+  readonly NODE_ENV: string | undefined;
   readonly CRYPTO_KEY_PROVIDER: string;
   /**
    * Path to a file holding 32 raw bytes of key material. A path, never the key
@@ -69,6 +75,12 @@ export interface KeyProviderConfig {
    * dump, and in every CI log that echoes its environment.
    */
   readonly CRYPTO_LOCAL_KEY_FILE?: string;
+  /**
+   * The explicit operator opt-in that lets the local key run outside
+   * `development`/`test`. Only the exact string `'true'` counts, and it never
+   * relaxes `NODE_ENV=production` (CR-01) — see `production-guard.ts`.
+   */
+  readonly CRYPTO_LOCAL_KEY_ALLOWED?: string | undefined;
 }
 
 /**
@@ -118,18 +130,27 @@ function resolveLocalKeyFilePath(config: KeyProviderConfig): string {
 }
 
 /**
- * Read the two guarded values from the **live** process environment.
+ * Read the guarded values from the **live** process environment.
  *
  * See the module docblock for why this is not `ConfigService`. Exported so the
  * regression test can assert the live read rather than the snapshot.
+ *
+ * `NODE_ENV` is read **without a default** (CR-01). Substituting `'development'`
+ * for an absent value is what made a production container that never declared
+ * its environment indistinguishable from a laptop, and it did so at exactly the
+ * point where the security decision is made. `config.schema.ts` now requires
+ * `NODE_ENV`, so a real boot aborts with `CONFIG_INVALID: NODE_ENV` before this
+ * ever sees an absent value — and if this function is reached with one anyway,
+ * the guard refuses it.
  */
 export function readKeyProviderEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): KeyProviderConfig {
   return {
-    NODE_ENV: env['NODE_ENV'] ?? 'development',
+    NODE_ENV: env['NODE_ENV'],
     CRYPTO_KEY_PROVIDER: env['CRYPTO_KEY_PROVIDER'] ?? 'local',
     CRYPTO_LOCAL_KEY_FILE: env['CRYPTO_LOCAL_KEY_FILE'],
+    CRYPTO_LOCAL_KEY_ALLOWED: env['CRYPTO_LOCAL_KEY_ALLOWED'],
   };
 }
 

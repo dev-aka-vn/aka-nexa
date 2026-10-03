@@ -11,6 +11,7 @@ import {
   assertDekLength,
   type KeyProvider,
 } from './key-provider.js';
+import { localKeyProviderAllowed } from './production-guard.js';
 
 /**
  * `LocalKeyProvider` — a **development-only** `KeyProvider` backed by a key file.
@@ -25,13 +26,23 @@ import {
  *
  * ## The refusal is in the constructor, not at the call site
  *
- * `NODE_ENV=production` makes `new LocalKeyProvider(...)` throw
- * `LOCAL_KEY_PROVIDER_FORBIDDEN:`. Placing the check here rather than in
- * `CryptoModule` means the provider is unconstructable in production **no matter
- * who builds it** — a second call site, a test helper, or a future app module
- * cannot reach a local key by forgetting the guard. `assertKeyProviderAllowed`
- * (`production-guard.ts`) is the earlier, cheaper gate; this one is the backstop
- * that makes the earlier one optional to get right.
+ * `new LocalKeyProvider(...)` throws `LOCAL_KEY_PROVIDER_FORBIDDEN:` unless the
+ * process is in an environment where a local key is expected, or an operator
+ * has set `CRYPTO_LOCAL_KEY_ALLOWED=true`. Placing the check here rather than in
+ * `CryptoModule` means the provider is unconstructable outside development and
+ * test **no matter who builds it** — a second call site, a test helper, or a
+ * future app module cannot reach a local key by forgetting the guard.
+ * `assertKeyProviderAllowed` (`production-guard.ts`) is the earlier, cheaper
+ * gate; this one is the backstop that makes the earlier one optional to get
+ * right. Both call the same `localKeyProviderAllowed` predicate, so the two
+ * cannot drift apart and disagree about what is permitted.
+ *
+ * ## An unset `NODE_ENV` is a refusal, not a default (CR-01)
+ *
+ * The parameter defaults to the live `NODE_ENV` with **no** fallback. The
+ * previous `?? 'development'` meant the one process that had not declared its
+ * environment at all was treated as the one environment in which a plaintext key
+ * file is acceptable — the exact state CR-01 exists to make unreachable.
  *
  * ## The wrapping is text-shaped on purpose
  *
@@ -73,20 +84,31 @@ export interface LocalKeyProviderOptions {
    */
   readonly keyFilePath: string;
   /**
-   * Overridable so a test can exercise the production refusal without mutating
-   * `process.env`. Defaults to the real `NODE_ENV`.
+   * Overridable so a test can exercise the refusal without mutating
+   * `process.env`. Defaults to the real `NODE_ENV`, **unsubstituted** — an
+   * absent value is refused, not defaulted (CR-01).
    */
-  readonly nodeEnv?: string;
+  readonly nodeEnv?: string | undefined;
+  /**
+   * Overridable for the same reason as `nodeEnv`; defaults to the real
+   * `CRYPTO_LOCAL_KEY_ALLOWED`. Only the exact string `'true'` is an opt-in.
+   */
+  readonly localKeyAllowed?: string | undefined;
 }
 
 export class LocalKeyProvider implements KeyProvider {
   readonly #masterKey: Buffer;
   readonly #kid: string;
 
-  constructor({ keyFilePath, nodeEnv = process.env.NODE_ENV ?? 'development' }: LocalKeyProviderOptions) {
-    if (nodeEnv === 'production') {
+  constructor({
+    keyFilePath,
+    nodeEnv = process.env['NODE_ENV'],
+    localKeyAllowed = process.env['CRYPTO_LOCAL_KEY_ALLOWED'],
+  }: LocalKeyProviderOptions) {
+    // The backstop, on the same predicate as the early guard.
+    if (!localKeyProviderAllowed({ NODE_ENV: nodeEnv, CRYPTO_KEY_PROVIDER: 'local', CRYPTO_LOCAL_KEY_ALLOWED: localKeyAllowed })) {
       throw new Error(
-        'LOCAL_KEY_PROVIDER_FORBIDDEN: NODE_ENV=production requires a KMS-backed KeyProvider',
+        `LOCAL_KEY_PROVIDER_FORBIDDEN: the local key provider requires NODE_ENV=development or test, or CRYPTO_LOCAL_KEY_ALLOWED=true; got NODE_ENV=${nodeEnv ?? '(unset)'}`,
       );
     }
 

@@ -10,6 +10,7 @@ import { ConfigModule, namedValidate } from './config.module.js';
  * each test isolates the behaviour it names.
  */
 const REQUIRED_ENV = {
+  NODE_ENV: 'test',
   SERVICE_NAME: 'api',
   MONGO_URL: 'mongodb://127.0.0.1:27017/akane',
   REDIS_CACHE_URL: 'redis://127.0.0.1:6379',
@@ -49,8 +50,18 @@ describe('ConfigModule — Zod-validated boot config (FND-09)', () => {
     );
   });
 
-  it('defaults NODE_ENV and PORT when they are absent', () => {
-    const parsed = namedValidate({ ...REQUIRED_ENV });
+  it('defaults PORT when it is absent, and requires NODE_ENV rather than assuming it', () => {
+    // CR-01: `NODE_ENV` is the one declared key with no default. The schema
+    // refuses an absent one so a container that forgets to declare its
+    // environment fails here instead of inheriting developer behaviour all the
+    // way into the crypto guard.
+    const withoutNodeEnv = { ...REQUIRED_ENV };
+    delete (withoutNodeEnv as Record<string, unknown>)['NODE_ENV'];
+    expect(() => namedValidate(withoutNodeEnv)).toThrowError(
+      /^CONFIG_INVALID: NODE_ENV invalid_value$/,
+    );
+
+    const parsed = namedValidate({ ...REQUIRED_ENV, NODE_ENV: 'development' });
     expect(parsed.NODE_ENV).toBe('development');
     expect(parsed.PORT).toBe(3000);
   });
