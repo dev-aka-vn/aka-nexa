@@ -67,6 +67,20 @@ describe('MongoService over the native driver (FND-05)', () => {
   });
 
   it('rejects ping() within the selection timeout once the server is gone', async () => {
+    // Budgeted as a *teardown*, not as a test — the same reasoning the Redis
+    // and BullMQ container specs apply to their `afterAll`. The suite runs ~35
+    // workers that each start three containers, and `docker stop` under that
+    // contention has been measured exceeding 60 s. The timeout lands on this
+    // line, so it reports the file as failed while every assertion passed —
+    // which trains a reader to ignore the failure line instead of looking at it
+    // (01-07 hit exactly that and fixed the hook; the stop inside an assertion
+    // was missed).
+    //
+    // This does not weaken the test. The property under test is the driver's
+    // rejection, and the driver is bounded by `serverSelectionTimeoutMS` (3 s),
+    // so a real regression still fails fast. The budget only has to cover
+    // Docker; sizing it to the driver's own 3 s bound instead would turn suite
+    // load into a red test.
     await containers.mongo.stop();
 
     // The *reason* is asserted, not merely that something threw: a `ping()`
@@ -75,8 +89,5 @@ describe('MongoService over the native driver (FND-05)', () => {
     // down for the wrong reason — or, worse, a real outage would look like a
     // pass because the error was swallowed somewhere.
     await expect(mongo.ping()).rejects.toThrow(/server selection|ECONNREFUSED/i);
-    // Generous on purpose. The point of this test is the driver's failure
-    // *mode*, not how fast this machine tears a container down; a budget sized
-    // to the driver's own 3 s bound turns suite load into a red test.
-  }, 60_000);
+  }, 300_000);
 });
