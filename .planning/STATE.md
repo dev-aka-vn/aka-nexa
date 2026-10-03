@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 01
-current_phase_name: Foundations & Platform
-status: executing
-stopped_at: Gap G-1 and the CryptoModule advisory closed after 01-VERIFICATION.md — awaiting verifier re-run
-last_updated: "2026-10-03T19:55:00.000Z"
+current_phase: 2
+current_phase_name: The Vertical Slice — Slack + Internal Routing
+status: planning
+stopped_at: Phase 01 complete, ready to plan Phase 2
+last_updated: "2026-10-03T21:36:24.242Z"
 last_activity: 2026-10-03
-last_activity_desc: Gap-closure pass on Phase 1 verification - G-1 (the boundary lint gate was blind to every workspace SUBPATH import, so npm run build passed on a real cross-boundary import) fixed in tooling/import-resolver.cjs and pinned by 4 new assertions; CryptoModule composed into all three entrypoints so the FND-10 production guard is reachable from a real boot, demonstrated with NODE_ENV=production refusals on all three processes. Full suite 35 files / 330 tests green, npm run build exit 0
-state_head: c3671f710418b1b7150fed2384e53783244306c5
+last_activity_desc: Phase 01 complete, transitioned to Phase 2
+state_head: 4642e170a4fe5445d40c6938da00529265897961
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 10
   completed_plans: 10
-  percent: 100
+  percent: 13
 ---
 
 # Project State
@@ -28,12 +28,12 @@ rendered form, without ever logging into — or learning — the downstream syst
 
 ## Current Position
 
-Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 10 of 10 complete — **all Phase 1 plans executed**
-Status: Verified `gaps_found`; gap **G-1** and the `CryptoModule` advisory closed 2026-10-03 — **awaiting verifier re-run** before Phase 2 planning
-Last activity: 2026-10-03 — gap-closure pass. **G-1**: `tooling/import-resolver.cjs` mapped only the bare `@akane/<pkg>` specifier, so a subpath (`@akane/platform/crypto`) fell through to the package `exports` map, resolved into `node_modules/…/dist/`, was classified `external`, and was permitted by policy 0 — `packages/contract` (allowed edges `['kernel']`) importing `@akane/platform/crypto` gave `eslint` exit 0 **and** `tsc -b` exit 0, so Phase 1's success criterion #3 did not hold for the import form all three entrypoints actually use. Fixed, and pinned by assertions that fail against the pre-fix resolver. **Advisory**: `CryptoModule` is now composed into all three app modules; `NODE_ENV=production` aborts `api`, `worker` and `scheduler` with `CRYPTO_KEY_PROVIDER_REQUIRED: production requires kms, got local` on real processes. **FND-10 stays pending** — B-3/D-27 still unnamed.
+Phase: 2 — The Vertical Slice — Slack + Internal Routing
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-03 — Phase 01 complete, transitioned to Phase 2
 
-Progress: [██████████] 100%
+Progress: [█░░░░░░░░░] 13%
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 10 | 10 | 63min |
+| 01 | 10 | - | - |
 
 **Recent Trend:**
 - Last 10 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min), 01-09 (105min), 01-10 (155min, including the audit of a killed attempt's draft)
@@ -230,5 +230,5 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-10-03T19:55:00.000Z
-Stopped at: Gap G-1 and the CryptoModule advisory closed after 01-VERIFICATION.md — Phase 1 verification re-run is the next action
+Stopped at: Phase 01 complete, ready to plan Phase 2
 Resume file: None

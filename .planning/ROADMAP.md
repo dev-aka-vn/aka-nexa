@@ -53,7 +53,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Phase Numbering:**
 - Integer phases (1–8): the whole of v1, executed in numeric order.
 
-- [ ] **Phase 1: Foundations & Platform** - Three pinned entrypoints, build-failing module boundaries, and the four irreversible contracts + three conflict rulings encoded in code
+- [x] **Phase 1: Foundations & Platform** - Three pinned entrypoints, build-failing module boundaries, and the four irreversible contracts + three conflict rulings encoded in code (completed 2026-10-03)
 - [ ] **Phase 2: The Vertical Slice — Slack + Internal Routing** - `/leave request` in Slack → signed link → rendered form → audited submission in chat, with identity, per-app RBAC, and one-time link security
 - [ ] **Phase 3: Natural-Language Routing** - A user gets the right app by describing it; the system still routes with every decision provider down
 - [ ] **Phase 4: Read Path & Query DSL** - 90-day stateless view/query links that die the instant permission changes, with auto-injected authorization filters
@@ -77,7 +77,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 10/10 plans executed
+**Plans:** 10/10 plans complete
 **Verification (2026-10-03):** `gaps_found` — SC#3 failed on the subpath import form (gap G-1) and one advisory on `CryptoModule` composition. **Both closed the same day** (`44b0619`, `f813f64`); the verifier re-runs before Phase 2. FND-10 remains **pending** — composing `CryptoModule` makes the guard reachable from a real boot, it does not produce a KMS-backed key.
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
@@ -278,7 +278,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Platform | 10/10 | In Progress|  |
+| 1. Foundations & Platform | 10/10 | Complete    | 2026-10-03 |
 | 2. The Vertical Slice | 0/TBD | Not started | - |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |
