@@ -15,6 +15,31 @@ import { queueRootOptions } from './queue.provider.js';
 export const PLATFORM_HEARTBEAT_QUEUE = PLATFORM_HEARTBEAT_ID;
 
 /**
+ * The heartbeat queue as its own dynamic module, so `QueueModule` can both
+ * import it and re-export it.
+ *
+ * ## Why this is a named `const` rather than an inline `BullModule.registerQueue(...)`
+ *
+ * Nest's `exports` array accepts a `DynamicModule`, and a `DynamicModule` is
+ * matched by its computed token — which includes its `providers`. Nest does not
+ * re-run the static call for you, so `exports: [BullModule]` re-exports the
+ * *class*, not the queue providers, and `exports: [BullModule.registerQueue(…)]`
+ * calls the factory a **second** time and produces a different token from the one
+ * in `imports`. Either way `getQueueToken(PLATFORM_HEARTBEAT_QUEUE)` is not
+ * visible to the importing module and the boot fails with
+ *
+ *     UnknownDependenciesException: … "BullQueue_platform-heartbeat" …
+ *
+ * Building it once and using the same object in both arrays is the only form
+ * that works. Found by booting `apps/scheduler` against real Redis rather than
+ * by reading this module — plan 10's first defect, and the reason the walking
+ * skeleton is a boot test and not a composition test.
+ */
+const platformHeartbeatQueueModule = BullModule.registerQueue({
+  name: PLATFORM_HEARTBEAT_QUEUE,
+});
+
+/**
  * The BullMQ wiring every entrypoint shares (FND-08, D-14).
  *
  * One `forRootAsync` establishes the `{akane-q}` prefix and the queue deployment
@@ -43,7 +68,14 @@ export const PLATFORM_HEARTBEAT_QUEUE = PLATFORM_HEARTBEAT_ID;
       useFactory: (config: ConfigService) =>
         queueRootOptions(config.getOrThrow<string>('REDIS_QUEUE_URL')),
     }),
-    BullModule.registerQueue({ name: PLATFORM_HEARTBEAT_QUEUE }),
+    platformHeartbeatQueueModule,
   ],
+  /**
+   * Re-exported so a composition root can `@InjectQueue(PLATFORM_HEARTBEAT_QUEUE)`.
+   * `apps/scheduler` needs the `Queue` to register the Job Scheduler on, and it
+   * must not have to re-declare `registerQueue` — two registrations of one queue
+   * name would be two connection profiles against one deployment (D-14).
+   */
+  exports: [platformHeartbeatQueueModule],
 })
 export class QueueModule {}
