@@ -77,7 +77,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans executed
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 
@@ -96,7 +96,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
+- [x] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
 
 **Notes**: Two Redis deployments are split from day one — BullMQ requires `maxmemory-policy=noeviction` while the cache wants eviction, and the policy is instance-wide. Rate limiting is **per user and per link `jti`, never per IP**, and blocks only on signature failure (`NFR-SEC-10` loses). `FR-D-12` write-once is **amended** to a single-send guarantee plus a per-connector `supports_idempotency_key` flag. The §15.4 erasure promise is narrowed to PII-excluded-by-allowlist + tombstonable `actor_ref` + defined purge windows.
 **Discovery required in this phase**: (a) resolve the Form.io `File` component licensing question — it is premium while the renderer is MIT — and drop `FR-F-10` plus its dependent object-storage gap if it cannot be rendered unlicensed; (b) decide the draft-save token model, since a resumable draft needs a second, longer-lived token class incompatible with the stateless one-time-token SPA.
@@ -277,7 +277,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations & Platform | 8/10 | In Progress|  |
+| 1. Foundations & Platform | 10/10 | In Progress|  |
 | 2. The Vertical Slice | 0/TBD | Not started | - |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |

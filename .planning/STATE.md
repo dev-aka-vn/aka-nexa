@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-09-PLAN.md
-last_updated: "2026-10-03T10:05:00.000Z"
+stopped_at: Completed 01-10-PLAN.md — Phase 1 all 10 plans complete; FND-03, FND-04, FND-05, FND-08 and OBS-01 closed against booted processes; FND-10 still pending on D-27
+last_updated: "2026-10-03T11:58:11.231Z"
 last_activity: 2026-10-03
-last_activity_desc: Plan 01-09 complete - frozen span-attribute allowlist enforced by AllowlistSpanExporter, startOtel() with one NodeSDK and one Prometheus exporter singleton, GET /metrics (FND-07 and OBS-01 both closed)
-state_head: a642cdc
+last_activity_desc: Plan 01-10 complete - three entrypoints booted and probed (live/ready/metrics on 3000/3001/3002), SIGTERM drain measured against a no-hooks control, per-app BoundaryManifests + import-closure drift test, runtime/dev dependency split proven by a npm ci --omit=dev boot (FND-03, FND-04, FND-05, FND-08, OBS-01 closed)
+state_head: c3671f710418b1b7150fed2384e53783244306c5
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 9
-  percent: 90
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 9 of 10 complete (01-10 — next)
-Status: Ready to execute
-Last activity: 2026-10-03 — Plan 01-09 complete (frozen span-attribute allowlist + `AllowlistSpanExporter`; `startOtel()` with one NodeSDK, OTLP trace/metrics and one `preventServerStart` Prometheus singleton; `GET /metrics` from that singleton; **FND-07** and **OBS-01** both closed)
+Plan: 10 of 10 complete — **all Phase 1 plans executed**
+Status: Ready for phase verification (`/gsd-verify-phase`) before Phase 2 planning
+Last activity: 2026-10-03 — Plan 01-10 complete. All three processes were **booted and probed**, not inspected: `/health/live`, `/health/ready` and `/metrics` answer 200 on 3000/3001/3002, the worker's readiness carries `bullmq_workers` and the scheduler's carries `job_schedulers`, and SIGTERM drains in 9.9 s against 92 ms for a control process without shutdown hooks. **FND-03, FND-04, FND-05, FND-08 and OBS-01 are closed against running processes.** FND-10 stays pending (D-27). Three of this plan's defects were invisible to every spec touching the affected file and were found only by booting — most importantly a BullMQ `Worker` constructed without `prefix`, which listened on an empty queue while `/health/ready` reported it `up`.
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 58min
-- Total execution time: 11.5 hours
+- Total plans completed: 10
+- Average duration: 63min
+- Total execution time: 14.1 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 9 | 9 | 58min |
+| 01 | 10 | 10 | 63min |
 
 **Recent Trend:**
-- Last 9 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min), 01-09 (105min)
-- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-09 (105min) is the second, and for a different reason: **four of its defects were found by running the pinned library, not by reading its docs.** `Span`'s five prototype getters, `NodeSDK.start()`'s re-entrancy, the OTLP `url`-versus-`url + /v1/traces` asymmetry, and the `@nestjs/core` lazy adapter load were each invisible until a script was executed against `node_modules`. 01-07 (95min) reached the same conclusion through Docker. **Read the cost as "time spent observing reality", not as inefficiency** — and note that in both cases the isolated spec passed while the real behaviour did not.
+- Last 10 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min), 01-09 (105min), 01-10 (155min, including the audit of a killed attempt's draft)
+- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-09 (105min) is the second, and for a different reason: **four of its defects were found by running the pinned library, not by reading its docs.** `Span`'s five prototype getters, `NodeSDK.start()`'s re-entrancy, the OTLP `url`-versus-`url + /v1/traces` asymmetry, and the `@nestjs/core` lazy adapter load were each invisible until a script was executed against `node_modules`. 01-07 (95min) reached the same conclusion through Docker. **Read the cost as "time spent observing reality", not as inefficiency** — and note that in both cases the isolated spec passed while the real behaviour did not. 01-10 (155min) makes the pattern explicit for the first time: the phase's closing plan cost the most because it was the plan that had to **boot** the skeleton, and booting found three defects no spec could see — an unexported queue registration, a `Worker` on the wrong queue prefix, and a boot config snapshot taken at import time. **If a success criterion can be phrased as "it runs", an isolated spec is not evidence.**
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -66,6 +66,7 @@ Progress: [█████████░] 90%
 | Phase 01 P07 | 95min | 3 tasks | 21 files |
 | Phase 01 P08 | 78min | 3 tasks | 11 files |
 | Phase 01 P09 | 105min | 3 tasks | 16 files |
+| Phase 01 P10 | 155min | 3 tasks | 31 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,11 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-03]: **D-02's single `entrypoint` element type is split into `app-api`/`app-worker`/`app-scheduler`** so R1's `from: { element: { type: "!(app-api)" } }` can distinguish the origins. Refinement recorded in 01-ASSUMPTIONS.md §5. Option (b) (one type plus a `path` conjunction) was rejected because it depends on `type`+`path` conjunction semantics the plugin README does not demonstrate.
 - [Phase 01]: [Phase 1 / 01-03]: **`InstanceWrapper.isResolved` does not exist in `@nestjs/core@12.1.2`.** RESEARCH P1.6 cited `injector/instance-wrapper.d.ts:25`, which belongs to `interface InstancePerContext`, not the class — `wrapper.isResolved` is `undefined` for every provider. The per-context fallback is no better: `getInstanceByContextId(STATIC_CONTEXT)` *synthesises* `{ instance: null, isResolved: true }`. `createProviderBoundaryGuard` reads `wrapper.instance` instead. A guard built on either signal is permanently silent, which is worse than no guard because it looks like enforcement.
 - [Phase 01]: [Phase 1 / 01-03]: The boundary graph's element types are keyed on paths, so a 14th `packages/domain/src/<type>/` directory is **silently ignored**, not reported (`checkUnknownLocals` defaults to `false`). Adding a domain module means adding an element type, and `partialMatch: false` must stay on every descriptor or `packages/platform/src/**` also suffix-matches `apps/api/src/platform/**`.
+- [Phase 01]: Ports are derived from SERVICE_NAME by DEFAULT_PORT_BY_SERVICE in the boot schema, never written beside listen() — three processes that all default to 3000 are one process with three names, and a config-derived default is validatable and overridable (01-10).
+- [Phase 01]: Exactly ONE deep subpath was added to @akane/platform's exports map (./otel), because that is the only surface that must load before anything instrumented; every composition root imports the root barrel instead (01-10).
+- [Phase 01]: Per-app BoundaryManifests forbid platform-owned capability DI tokens (WORKER_CONSUMERS, JOB_SCHEDULER_REGISTRATIONS, INBOUND_ADAPTER_REGISTRATIONS) rather than app-local ones, because an app cannot name another app's token without importing its source — the violation the manifest exists to catch (01-10).
+- [Phase 01]: nestjs-pino is deliberately NOT wired in Phase 1: there is no HTTP request-logging surface yet, and wiring it would force a Phase-2 decision about child loggers for a Phase-1 need. WINDOWS #4 is waived with a handoff, not closed (01-10).
+- [Phase 01]: Deployment shape decided once at the root: a package the built runtime can reach is a dependency, everything else a devDependency, with the lockfile regenerated in the same commit because npm ci --omit=dev honours the lockfile's dev markers (01-10).
 
 ### Pending Todos
 
@@ -218,6 +224,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T08:00:00.000Z
-Stopped at: Completed 01-08-PLAN.md
+Last session: 2026-10-03T11:58:10.027Z
+Stopped at: Completed 01-10-PLAN.md — Phase 1 all 10 plans complete; FND-03, FND-04, FND-05, FND-08 and OBS-01 closed against booted processes; FND-10 still pending on D-27
 Resume file: None
