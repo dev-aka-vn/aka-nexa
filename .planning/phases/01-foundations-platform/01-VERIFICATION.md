@@ -1,9 +1,12 @@
 ---
 phase: 01-foundations-platform
-verified: 2026-10-03T16:21:30Z
-status: gaps_found
-score: 14/15 ROADMAP+contract truths verified
+verified: 2026-10-03T20:35:17Z
+status: passed
+score: 15/15 ROADMAP success criteria + contract truths verified
 covered_files:
+  - .planning/phases/01-foundations-platform/01-VERIFICATION.md
+  - .planning/phases/01-foundations-platform/01-REVIEW.md
+  - .planning/phases/01-foundations-platform/01-REVIEW-DISPOSITION.md
   - .planning/phases/01-foundations-platform/01-01-PLAN.md
   - .planning/phases/01-foundations-platform/01-01-SUMMARY.md
   - .planning/phases/01-foundations-platform/01-02-PLAN.md
@@ -24,6 +27,10 @@ covered_files:
   - .planning/phases/01-foundations-platform/01-09-SUMMARY.md
   - .planning/phases/01-foundations-platform/01-10-PLAN.md
   - .planning/phases/01-foundations-platform/01-10-SUMMARY.md
+  - .planning/REQUIREMENTS.md
+  - .planning/ROADMAP.md
+  - .planning/STATE.md
+  - .planning/WINDOWS.md
   - package.json
   - package-lock.json
   - .nvmrc
@@ -31,299 +38,269 @@ covered_files:
   - eslint.config.mjs
   - tooling/boundaries.config.mjs
   - tooling/import-resolver.cjs
-  - tooling/containers.ts
+  - tooling/boundaries.fixture.spec.ts
   - tooling/entrypoint-drift.spec.ts
   - tooling/deployment-shape.spec.ts
-  - packages/kernel/src/index.ts
-  - packages/platform/src/index.ts
-  - packages/platform/src/config/config.schema.ts
-  - packages/platform/src/config/config.module.ts
-  - packages/platform/src/config/redis.schema.ts
-  - packages/platform/src/crypto/key-provider.ts
-  - packages/platform/src/crypto/local-key-provider.ts
-  - packages/platform/src/crypto/envelope.ts
-  - packages/platform/src/crypto/production-guard.ts
+  - test/setup-env.ts
   - packages/platform/src/crypto/crypto.module.ts
-  - packages/platform/src/crypto/index.ts
-  - packages/platform/src/logging/log-allowlist.ts
-  - packages/platform/src/logging/log-allowlist.formatter.ts
-  - packages/platform/src/logging/pino.config.ts
-  - packages/platform/src/logging/logger.port.ts
-  - packages/platform/src/logging/error-codes.ts
-  - packages/platform/src/otel/span-attribute-allowlist.ts
-  - packages/platform/src/otel/allowlist-span-exporter.ts
-  - packages/platform/src/otel/otel.bootstrap.ts
-  - packages/platform/src/otel/otel.constants.ts
-  - packages/platform/src/health/health.controller.ts
-  - packages/platform/src/health/mongo.indicator.ts
-  - packages/platform/src/health/redis.indicator.ts
-  - packages/platform/src/health/index.ts
-  - packages/platform/src/mongo/mongo.service.ts
-  - packages/platform/src/mongo/mongo.module.ts
-  - packages/platform/src/redis/redis.provider.ts
-  - packages/platform/src/redis/redis.constants.ts
-  - packages/platform/src/queue/queue.provider.ts
-  - packages/platform/src/queue/queue.module.ts
-  - packages/platform/src/queue/job-scheduler.ts
-  - packages/platform/src/queue/platform-heartbeat.job.ts
-  - packages/platform/src/queue/queue-indicators.ts
-  - packages/platform/src/queue/queue.constants.ts
-  - packages/platform/src/queue/index.ts
-  - packages/platform/src/metrics/metrics.controller.ts
-  - packages/platform/src/metrics/metrics.module.ts
-  - packages/platform/src/metrics/business-metrics.ts
-  - packages/platform/src/metrics/index.ts
-  - packages/platform/src/bootstrap/provider-boundary.guard.ts
-  - packages/platform/src/bootstrap/provider-boundary.runner.ts
-  - packages/platform/src/bootstrap/boundary-manifest.ts
-  - packages/platform/src/bootstrap/process-capabilities.ts
+  - packages/platform/src/crypto/production-guard.ts
+  - packages/platform/src/crypto/local-key-provider.ts
+  - packages/platform/src/crypto/key-provider.ts
+  - packages/platform/src/crypto/envelope.ts
+  - packages/platform/src/config/config.schema.ts
   - packages/contract/src/index.ts
-  - packages/contract/src/jev/v1/jev-request.ts
-  - packages/contract/src/jev/v1/jev-response.ts
-  - packages/contract/src/jev/v1/index.ts
-  - packages/contract/src/jev/jev-provider.ts
-  - packages/contract/src/links/read-link-claims.ts
-  - packages/contract/src/links/token-classes.ts
-  - packages/contract/src/links/rate-limit-key.ts
-  - packages/contract/src/connector/connector.ts
-  - packages/contract/src/events/inbound-event.ts
-  - packages/contract/src/events/outbound-message.ts
-  - apps/api/src/main.ts
+  - packages/contract/src/jev/jev-v1.frozen.spec.ts
+  - packages/contract/src/links/read-link-claims.frozen.spec.ts
+  - packages/contract/src/links/rate-limit-key.spec.ts
+  - packages/contract/src/connector/connector.spec.ts
+  - packages/platform/src/logging/log-allowlist.formatter.spec.ts
+  - packages/platform/src/logging/pino.config.spec.ts
+  - packages/platform/src/otel/allowlist-span-exporter.spec.ts
+  - packages/platform/src/otel/span-attribute-allowlist.spec.ts
   - apps/api/src/app.module.ts
-  - apps/api/src/bootstrap/boundary-manifest.ts
   - apps/api/otel.mjs
-  - apps/api/package.json
-  - apps/worker/src/main.ts
   - apps/worker/src/app.module.ts
-  - apps/worker/src/bootstrap/boundary-manifest.ts
-  - apps/worker/src/processors/platform-heartbeat.processor.ts
   - apps/worker/otel.mjs
-  - apps/worker/package.json
-  - apps/scheduler/src/main.ts
   - apps/scheduler/src/app.module.ts
-  - apps/scheduler/src/bootstrap/boundary-manifest.ts
   - apps/scheduler/otel.mjs
-  - apps/scheduler/package.json
-covered_digest: "v2:sha256:73f75c717f8891e3812195914258faf42e828303fa602763c9856c68735a7465"
+covered_digest: "v2:sha256:76608334d184e723eb5049572b28117c6649fa5a2c5f581708ca7bd7489c0fc6"
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "SC3 (first clause) — a module that imports across a declared component boundary fails the build"
-    status: failed
-    reason: >-
-      Reproducible counterexample: `tooling/import-resolver.cjs` maps only the BARE
-      `@akane/<pkg>` specifier to `<workspace>/src/index.ts`. A subpath specifier
-      (`@akane/platform/crypto`, `@akane/platform/otel`) falls through to Node's
-      `exports` map, resolves into `node_modules/<pkg>/dist/...`, is classified
-      `external` by eslint-plugin-boundaries, and is therefore allowed by policy 0.
-      Planted `import { encryptSecret } from '@akane/platform/crypto'` in
-      packages/contract/src/index.ts (allowed edges: ['kernel'] only): `npx eslint`
-      exit 0 AND `npx tsc -b` exit 0, so `npm run build` passes.
-    artifacts:
-      - path: "tooling/import-resolver.cjs"
-        issue: "resolveWorkspacePackage() joins the subpath onto node_modules/@akane and realpathSync() fails; the fallback requireFromFile.resolve() lands in dist/ and classifies the edge as external."
-      - path: "tooling/boundaries.config.mjs"
-        issue: "policy 0 `allow: { to: { module: { origin: ['external','core'] } } }` is what makes the misclassification invisible."
-      - path: "tooling/boundaries.fixture.spec.ts"
-        issue: "WORKSPACE_CASES covers only the bare `@akane/platform` form; no case exercises a subpath, so the regression test cannot see it."
-    missing:
-      - "Extend resolveWorkspacePackage() to map `@akane/<pkg>/<subpath>` to `<workspace>/src/<subpath>/index.ts` (falling back to `<workspace>/src/<subpath>.ts`)."
-      - "Add a WORKSPACE_CASES entry pinning the subpath form as rejected for kernel/contract and allowed for app-api, so the regression test covers the form the three entrypoints actually use."
-      - "Re-run the negative control: `packages/contract` importing `@akane/platform/crypto` must make `npm run build` exit non-zero."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 14/15
+  gaps_closed:
+    - "SC3 (first clause) — a module that imports across a declared component boundary fails the build (G-1): independently re-verified by planting the violation against both the pre-fix and post-fix resolver and observing the build fail only on the fixed one."
+    - "Advisory (security) — CryptoModule not composed by any entrypoint, so the FND-10 production guard was unreachable from a real boot: closed by f813f64 and confirmed on three real booted processes."
+  gaps_remaining: []
+  regressions: []
+  method: "Re-verified by planting, not by reading the fix. Two before/after negative controls (the planted boundary violation and the planted `Worker` import), one reverted-resolver test-load run, one reverted-composition test-load run, a 15-case independent discrimination matrix of the boundary rule, a 21-case boot matrix across all three entrypoints, and a live three-process concurrent boot with a Redis blip."
 advisory:
-  - finding: "CryptoModule — and therefore the FND-10 production key guard — is not registered by any of the three entrypoints."
-    category: security
+  - finding: "WINDOWS #16 — `apps/{api,worker,scheduler}/otel.mjs` is outside BOTH boundary controls. Sharpened beyond the recorded evidence: `no-restricted-imports` (R1's named-binding half, the rule that forbids a BullMQ `Worker` outside `apps/worker`) is scoped `files: ['apps/api/src/**/*.ts', 'apps/scheduler/src/**/*.ts']` — path-scoped to `src/**` — so it never reached the loader either. Two controls are missing the loader, not one."
+    category: architectural
     reason: >-
-      `grep -rn CryptoModule apps/` returns nothing; the guard is reachable only
-      through `Test.createTestingModule({ imports: [CryptoModule] })`. The guard
-      logic itself is correct and proven (21 assertions in production-guard.spec.ts,
-      incl. CR-01's boot-path test with NODE_ENV deleted), so nothing insecure
-      happens today — Phase 1 stores no secret. But 01-05-SUMMARY.md line 268
-      records the hand-off "CryptoModule can be imported by all three entrypoints
-      in plan 10", plan 10 did not do it, and no WINDOWS entry records the omission.
-      Resolve by importing CryptoModule into the three app modules (it then also
-      needs CRYPTO_LOCAL_KEY_FILE, which is deliberately not a schema field), or by
-      recording the wiring as an explicit owner for the first phase that stores a secret.
-    evidence_status: "none provided"
-  - finding: "Degraded-readiness latency differs sharply between processes."
+      Measured: `import { Worker } from 'bullmq'` planted in `apps/api/otel.mjs` produces 0
+      `boundaries/dependencies` and 0 `no-restricted-imports`; the identical import in
+      `apps/api/src/main.ts` fires `no-restricted-imports`. Not a new gap in SC#3 and not
+      a regression from this pass: pre-existing, already recorded as WR-02 (WARNING, deferred)
+      in 01-REVIEW-DISPOSITION.md and now as WINDOWS entry 16 with three-way measurements.
+      Bounded to 3 files, each a single-import loader adapter whose only import
+      (`@akane/platform/otel` from an app element) is an ALLOWED edge, so no latent violation
+      sits in them; and the three are byte-identical by design. Closing it is a D-02 element-graph
+      scoping decision. The record correctly warns that widening the rule's `files` to `**/*.mjs`
+      looks like a fix and produces zero diagnostics. `WINDOWS.md` `open_count: 6` blocks
+      `/gsd-ship` while it stands.
+    evidence_status: "reproduced live (planted import; `.mjs` vs `.ts` sibling control)"
+  - finding: "`test/setup-env.ts` seeds `CRYPTO_KEY_PROVIDER: 'local'` but not `CRYPTO_LOCAL_KEY_FILE`, so any future spec that COMPILES an app module will hit `LOCAL_KEY_FILE_MISSING`."
     category: other
     reason: >-
-      Measured against live containers: with the cache Redis stopped, `/health/ready`
-      returned 503 in 0.21 s (scheduler), 0.90 s (api) and 8.22 s (worker). The worker's
-      extra `bullmq_workers` indicator serialises behind the retrying ioredis profile.
-      Not a failure — but a K8s `failureThreshold`/`timeoutSeconds` budget should be set
-      above ~10 s or the worker will be restarted for a Redis blip rather than merely
-      taken out of rotation, which is the exact outcome FND-05 exists to prevent.
-    evidence_status: "reproduced live (curl timings recorded in the Behavioral Spot-Checks table)"
-  - finding: "A `docker pause`d Redis makes `/health/ready` hang past 20 s rather than return 503."
+      Today this is a forward trap, not a present defect: the full suite is green (35 files /
+      330 tests) because `entrypoint-drift.spec.ts` reads `Reflect.getMetadata('imports', …)`
+      rather than compiling a Nest container. The first spec that does
+      `Test.createTestingModule({ imports: [AppModule] })` will fail for an environmental reason
+      rather than an assertion reason. STATE.md records this precisely. The cheap fix, when the
+      first such spec is written, is to seed a generated 32-byte temp key in `setup-env.ts` rather
+      than to make the provider lazy.
+    evidence_status: "none needed — read from test/setup-env.ts and confirmed by the green suite"
+  - finding: "Degraded-readiness latency differs sharply between processes; a restored Redis is not visible to worker/scheduler within ~5 s."
     category: other
     reason: >-
-      ioredis `ping()` on a blackholed TCP connection has no `commandTimeout`, and
-      `enableOfflineQueue` is on, so the command queues instead of rejecting. Measured
-      on all three processes. Same fix shape as the item above: probe timeouts must
-      exceed the ioredis backoff. Not a P1 gap; recorded so the runbook author knows.
-    evidence_status: "reproduced live"
-  - finding: "CONTEXT.md decision text drifts from what shipped."
+      Carried forward from the prior report and reproduced: with the cache Redis stopped, all
+      three return ready 503 naming `redis_cache: down` with zero restarts (correct); after the
+      container is restarted, api returns 200 within the 5 s sample while worker and scheduler are
+      still 503. The worker's extra `bullmq_workers` indicator serialises behind the retrying ioredis
+      profile (previously measured at 8.22 s). A K8s `failureThreshold` / `timeoutSeconds` budget
+      should sit above ~10 s or a Redis blip restarts the worker rather than merely taking it out of
+      rotation — which is the outcome FND-05 exists to prevent. Runbook owner's decision.
+    evidence_status: "reproduced live (curl timings in Behavioral Spot-Checks row 12)"
+  - finding: "`docker pause`d Redis makes `/health/ready` hang rather than return 503."
     category: other
     reason: >-
-      D-15 still says "a pino custom destination stream"; the implementation uses
-      `formatters.log` because a destination consumes already-serialised bytes. D-01/D-02
-      say "12 domain modules / subdirectories"; 13 ship (`audit` included). Both amendments
-      are recorded honestly in STATE.md and 01-ASSUMPTIONS.md — only CONTEXT.md is stale.
-    evidence_status: "none needed — documentation drift, both resolutions already recorded"
+      Carried forward unchanged. ioredis `ping()` on a blackholed TCP connection has no
+      `commandTimeout` and `enableOfflineQueue` is on, so the command queues instead of rejecting.
+      Probe timeouts must exceed the ioredis backoff. Not a P1 gap; recorded so the runbook author
+      knows before writing the probe budget.
+    evidence_status: "carried forward — not re-measured this pass"
+  - finding: "CONTEXT.md decision text still drifts from what shipped (D-15 `formatters.log` vs 'destination stream'; D-01/D-02 '12 domain modules' vs 13 shipped)."
+    category: other
+    reason: >-
+      Unchanged from the prior report. Both resolutions are honestly recorded in STATE.md and
+      01-ASSUMPTIONS.md; only CONTEXT.md is stale. Documentation-only.
+    evidence_status: "none needed — documentation drift, resolutions already recorded"
 ---
 
-# Phase 1: Foundations & Platform — Verification Report
+# Phase 1: Foundations & Platform — Re-verification Report
 
 **Phase goal:** A clean checkout builds three independently runnable processes on the pinned stack, and every irreversible design commitment plus all three requirement-conflict rulings exist in code before a single feature is written.
-**Verified:** 2026-10-03T16:21:30Z
-**Status:** `gaps_found` — 1 BLOCKER, 4 advisory
-**Re-verification:** No — initial verification
+**Verified:** 2026-10-03T20:35:17Z
+**Status:** `passed`
+**Re-verification:** Yes — after gap closure (`44b0619`, `f813f64`, `67a5208`), against a prior `gaps_found` at 14/15.
 
-**Method.** Every claim below was checked against the working tree, not against the summaries. The three entrypoints were **booted** from their own `dist/main.js` through their own `otel.mjs` loaders against real MongoDB 8.0 + two real Redis deployments, and probed. `npm run build` (`eslint . && tsc -b`) was run twice, including once with planted boundary violations as negative controls. 31 spec files / 268 assertions-bearing tests were executed in two targeted batches (exit 0 both times). The working tree was restored clean after every planted violation.
+**Method.** The prior gap was found by planting a violation and running the real commands, so it was re-verified the same way — not by reading the fix. Specifically: the G-1 violation was planted twice, once against the pre-fix resolver and once against the shipped one, and `npm run build` was run for each; the four new regression tests were run against a reverted resolver to prove they go red; the `CryptoModule` composition test was run against a reverted composition to prove it goes red; a **15-case discrimination matrix** written independently of the fixture spec confirms the rule separates allowed from disallowed rather than simply complaining more; a **21-case boot matrix** across all three entrypoints establishes the FND-10 guard's reachability and the effect of the new `CRYPTO_LOCAL_KEY_FILE` contract; and the three processes were booted concurrently and blipped live. The full suite was run (35 files / 330 tests, 837 s). The working tree was restored to `HEAD` after every planted violation — `tooling/`, `packages/` and `apps/` verified byte-identical to `67a5208` at the end.
 
 ---
 
-## Goal Achievement
+## Gap G-1 — independently confirmed CLOSED
 
-### The five ROADMAP success criteria
+### The negative control, run both ways
+
+The exact prior reproduction, planted by this verifier into `packages/contract/src/index.ts` (whose `ALLOWED_EDGES.contract` is `['kernel']` only):
+
+```
+import { encryptSecret } from '@akane/platform/crypto';
+```
+
+| Resolver in the tree | `npx eslint` | `npx tsc -b` | `npm run build` |
+|---|---|---|---|
+| **pre-fix** `5266acb:tooling/import-resolver.cjs` | exit 0 | exit 0 | **exit 0** ← G-1, reproduced exactly |
+| **shipped** `44b0619` | **exit 1** | — | **exit 1** |
+
+The shipped resolver's diagnostic is a real element-graph evaluation, not a syntax error:
+
+```
+packages/contract/src/index.ts
+  104:31  error  There is no policy allowing dependencies from elements of type "contract"
+                 to file of category "crypto-owner" belonging to elements of type "platform"
+                 boundaries/dependencies
+```
+
+`crypto-owner` is a declared file category, so the dependency resolved to a real local `platform` element and the policies were reached. **G-1 is closed.**
+
+### The converse: the rule discriminates (independent matrix)
+
+An "allowed" edge and an "unexamined" edge produce the identical observation — zero diagnostics — so the compliant direction has to be tested for *evaluation*, not merely for silence. This matrix was written for this re-verification and shares no case with `tooling/boundaries.fixture.spec.ts`. Each case plants one import into a scratch file, exports the binding so `no-unused-vars` cannot mask the result, lints exactly that file, and reports the **rule ID**.
+
+| # | From → To | Specifier form | Expected | Result |
+|---|---|---|---|---|
+| D1 | `platform` → `contract` (disallowed) | file subpath `.js` | report | ✓ `boundaries/dependencies` |
+| D2 | `kernel` → `platform` (disallowed) | barrel subpath | report | ✓ `boundaries/dependencies` |
+| D3 | `identity` → `contract` (disallowed) | file subpath | report | ✓ `boundaries/dependencies` |
+| D4 | `identity` → `contract` (disallowed) | 2nd file subpath | report | ✓ `boundaries/dependencies` |
+| D8 | `contract` → `platform` (disallowed) | barrel subpath + `/.js` | report | ✓ `boundaries/dependencies` |
+| D5 | `platform` → `platform` (internal) | barrel subpath | allow | ✓ 0 diagnostics |
+| **D6** | **`identity` → `platform` (ALLOWED)** | **barrel subpath** | **allow** | **✓ 0 diagnostics** |
+| **D7** | **`identity` → `platform` (ALLOWED)** | **barrel subpath, 2nd symbol** | **allow** | **✓ 0 diagnostics** |
+| D9 | `app-api` → `platform` (allowed) | barrel subpath | allow | ✓ 0 diagnostics |
+| D10 | `contract` → `kernel` (allowed) | trailing-slash bare | allow | ✓ 0 diagnostics |
+| C1 | `contract` → `kernel` (allowed) | bare | allow | ✓ 0 diagnostics |
+| C5 | `kernel` → `contract` (disallowed) | bare | report | ✓ `boundaries/dependencies` |
+| C12 | `app-api` → `platform` (allowed) | barrel subpath | allow | ✓ 0 diagnostics |
+| C16 | → `@nestjs/common` | third-party | allow (external) | ✓ 0 diagnostics |
+| **10 / 10 correct on valid specifiers** | | | | |
+
+**D6/D7 are the load-bearing rows.** A fix that achieved its result by making the rule complain about everything would fail them. The rule is discriminating.
+
+A first, methodologically flawed 16-case pass also produced five apparent misses; all five were traced to **my own invalid specifiers** (`@akane/platform/redis` and `@akane/contract/links` — neither names a barrel nor has a `package.json#exports` entry), and a follow-up confirmed every one is a `tsc` error, so none can be committed and passed. The declined shapes behave exactly as the resolver's docblock states: `@akane/platform/does-not-exist`, `@akane/platform/../kernel`, `@akane/nosuchpkg` all return `found: false`, which the plugin reads as external, which policy 0 allows — and `tsc` rejects all three.
+
+### The regression tests are load-bearing
+
+`tooling/import-resolver.cjs` was reverted in-tree to its `5266acb` content and `boundaries.fixture.spec.ts` re-run:
+
+**9 tests → 4 failed / 5 passed.** The four that go red are exactly the G-1 guards:
+
+1. `enforces the cross-workspace element graph on real repo paths` — `expected [] to include 'boundaries/dependencies'`
+2. `maps @akane/<pkg>/<subpath> onto the workspace source, not onto dist/` — `expected '…/dist/otel/index.js' to be '…/src/otel/index.ts'`
+3. `every violating subpath case is invisible without the subpath mapping`
+4. `a compliant subpath edge is evaluated, not silently skipped`
+
+With the shipped resolver: **9/9 pass.** The tests bind to the fix, not to the fixture.
+
+---
+
+## The `CryptoModule` advisory — closed, and it was a real fail-open
+
+`assertKeyProviderAllowed` runs inside `CryptoModule`'s provider factory, so an uncomposed module is a guard no process can trip. `f813f64` composes it into all three roots (`apps/api/src/app.module.ts:64`, `apps/worker/src/app.module.ts:64`, `apps/scheduler/src/app.module.ts:67`) and adds a drift-spec assertion that reads `Reflect.getMetadata('imports', …)`.
+
+### The prior advisory was worse than "unwired"
+
+Measured on the real pre-change tree (`f813f64^`), `NODE_ENV=production`, `CRYPTO_KEY_PROVIDER=local`, no key file: **the process booted and served `/health/live` 200 `{"status":"ok"}`.** A production process ran with a plaintext key posture and nothing refusing it. That is now impossible.
+
+### Boot matrix — real processes, port polled to disambiguate exit from listen
+
+Each case: `node --import ./apps/<app>/otel.mjs ./apps/<app>/dist/main.js` with a real Mongo 8.0 and two real Redis 8.x containers, polling `/health/live` so "still starting" cannot be mistaken for "running".
+
+| `NODE_ENV` | provider | key file | api | worker | scheduler |
+|---|---|---|---|---|---|
+| `production` | `local` | — | EXIT `CRYPTO_KEY_PROVIDER_REQUIRED: production requires kms, got local` | same | same |
+| `production` | `kms` | — | EXIT `KMS_PROVIDER_BLOCKED: no deployment cloud named (B-3); …not built` | same | same |
+| `development` | `local` | absent | EXIT `LOCAL_KEY_FILE_MISSING: …` | same | same |
+| `development` | `local` | present | **LISTENING** — live 200, ready 200, `/metrics` | **LISTENING** | **LISTENING** |
+| omitted | `local` | present | EXIT `CONFIG_INVALID: NODE_ENV invalid_value` (CR-01 still fail-closed) | — | — |
+
+The guard runs **before** any key file is opened — the production refusal fires with no `CRYPTO_LOCAL_KEY_FILE` in the environment at all. **The advisory is closed and FND-10 remains honestly Pending.**
+
+### The drift assertion is load-bearing
+
+`apps/worker/src/app.module.ts` was reverted to its pre-composition content and `entrypoint-drift.spec.ts` re-run: **18 tests → 1 failed** — `every app module composes CryptoModule, so the production key guard is reachable`. With the shipped composition: **18/18 pass.** It reads Nest's `imports` metadata rather than grepping or inspecting bindings, so the one-clause platform barrel cannot satisfy it by accident.
+
+---
+
+## Is requiring `CRYPTO_LOCAL_KEY_FILE` at boot sound, or a defect?
+
+**Sound fail-closed behaviour.** The decisive evidence is the before/after on identical workloads:
+
+| Tree | `NODE_ENV` | key file | Outcome |
+|---|---|---|---|
+| `f813f64^` | `development` | absent | **BOOTS** — live 200, ready 200, mongo + both Redis green |
+| `f813f64^` | **`production`** | absent | **BOOTS** — live 200 `{"status":"ok"}` |
+| HEAD | `development` | absent | REFUSES `LOCAL_KEY_FILE_MISSING` |
+| HEAD | `production` | absent | REFUSES `CRYPTO_KEY_PROVIDER_REQUIRED` |
+| HEAD | `production`, `kms` | — | REFUSES `KMS_PROVIDER_BLOCKED` |
+
+The only thing that stopped booting is a process that declares a crypto posture and supplies no key material — and **every such configuration today is exactly the one B-3 makes impossible to satisfy honestly**, because `kms` is a named blocker. There is no configuration that *should* boot and no longer does; the one configuration that used to boot and shouldn't have (production on a local key) now refuses. The refusal names the missing variable and what it must contain, and it is not silent.
+
+It is also the *less* surprising of the two available designs. The alternative — lazy provider construction — would restore "boots, and nothing ever checks the crypto posture", which is precisely the shape of the hole just closed. `apps/api/src/app.module.ts:56-59` states the correct trigger for revisiting it: a process that genuinely holds no secret, at which point a lazy provider is the answer — not dropping the guard from the composition root.
+
+**No tooling regression.** No CI job boots a process (build + test only, both jobs). No README run documentation exists to go stale (README is 2 lines). The three `start:*` scripts pass the environment through unchanged. The contract is documented where it is defined — `crypto.module.ts:169-184`, all three app modules, and `STATE.md`.
+
+One forward trap, recorded honestly by the executor and confirmed here: `test/setup-env.ts:26` seeds `CRYPTO_KEY_PROVIDER: 'local'` but **not** `CRYPTO_LOCAL_KEY_FILE`, so the first spec that *compiles* an app module (as opposed to reading its metadata, which is all the drift spec does) will fail for an environmental reason. Green today; advisory, not a defect.
+
+---
+
+## WINDOWS #16 — acceptable recorded residual, not a new gap in SC#3
+
+**My assessment: acceptable recorded residual.** Grounds, with one sharpening of the recorded evidence:
+
+- **Pre-existing, not a regression from this pass.** Already recorded as WR-02 (WARNING, deferred) in `01-REVIEW-DISPOSITION.md` before the gap-closure work began.
+- **Narrow and bounded.** Exactly three `.mjs` *module* files exist in the repository (`apps/{api,worker,scheduler}/otel.mjs`); the other two `.mjs` files are tooling config. Each is a loader adapter with **one** import clause, and that import — `@akane/platform/otel` from an app element — is an **allowed** edge. No latent violation sits in them today, and the three are byte-identical by design.
+- **Sharpened: two controls are missing the loader, not one.** `eslint.config.mjs:80` scopes `no-restricted-imports` to `files: ['apps/api/src/**/*.ts', 'apps/scheduler/src/**/*.ts']` — path-scoped to `src/**`. I planted `import { Worker } from 'bullmq'` (an R1 violation: the BullMQ `Worker` may only be constructed in `apps/worker`, D-13's <200 ms ack budget) into `apps/api/otel.mjs`: **0 `boundaries/dependencies`, 0 `no-restricted-imports`.** The identical import in `apps/api/src/main.ts`: `no-restricted-imports` fires. The plugin misses it because the file matches no element descriptor and `Rules/Dependencies.js` gates on `!from.file.isIgnored`; core ESLint misses it because of its own path scope.
+- **Correctly diagnosed and correctly anti-fixed.** The record measures it three ways and explicitly warns that widening the rule's `files` to `**/*.mjs` "looks like it works and does nothing" — because the plugin gates on unknown *origin* while `checkUnknownLocals` governs unknown *target*. It names the real question as a D-02 scoping decision.
+- **Cannot be forgotten.** `WINDOWS.md` `open_count: 6`; `/gsd-ship` blocks while it is above zero.
+
+SC#3's operative clause — "a module that imports across a declared component boundary fails the build" — holds for all 16 declared element types and every `.ts`/`.mts`/`.cts` file, which is every file that is a member of an element. The three loader files are not element members at all; the plugin cannot evaluate them by construction. Failing SC#3 over three single-import files whose only import is compliant would be a false negative on the criterion the phase actually had to satisfy.
+
+---
+
+## The five ROADMAP success criteria
 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | `npm ci` clean, `.nvmrc` + committed lockfile pin Node 24 / TS 6.0.3 | ✓ VERIFIED | `.nvmrc` = `24`; root `engines.node = ">=24 <25"`; `devDependencies.typescript = "6.0.3"` (exact, not a range); `package-lock.json` committed in `f1dd373`, the first code commit; both CI jobs use `node-version-file: .nvmrc`. `npm run build` → exit 0. |
-| 2 | Three processes; `/health/live` reads nothing; `/health/ready` = Mongo + **both** Redis; a Redis blip fails readiness without restarting | ✓ VERIFIED **(by boot, not by inspection)** | See Behavioral Spot-Checks rows 1–5. `docker stop` on the cache Redis: live stayed 200 on all three, **zero processes restarted**, ready → 503 naming `redis_cache: down`; container restored → 200. |
-| 3 | A cross-boundary import fails the build; a compliant tree passes; the three entrypoints cannot drift | ✗ **FAILED** | Bare form verified (`exit 1`, `boundaries/dependencies`). **Subpath form verified failing:** `packages/contract` → `@akane/platform/crypto` gives `eslint` exit 0 **and** `tsc -b` exit 0. Drift controls (3 of 3) verified. → gap **G-1**. |
-| 4 | A log line carrying a user email is dropped by the serialiser; no `submission_id` recoverable from the trace ID — both by test | ✓ VERIFIED | `log-allowlist.formatter.spec.ts` (16 tests) — three-level email proof; `pino.config.spec.ts` (14) — end-to-end serialisation; `allowlist-span-exporter.spec.ts` (12, incl. *"leaves the span context untouched, so a trace id is not derived from the attribute set"*); `span-attribute-allowlist.spec.ts` (13, frozen literal + forbidden-name tripwire). |
-| 5 | Read-link JWT claim shape + decision wire contract published as versioned schemas with a frozen-field test | ✓ VERIFIED | `read-link-claims.frozen.spec.ts` (11) and `jev-v1.frozen.spec.ts` (8) — both assert the exact sorted top-level key set against a version-named literal **and** `.strict()` rejection of an added key. `toJsonSchema()` stamps `$id: urn:akane:contract:jev:1.0:{request,response}` from `z.toJSONSchema()` output, not a hand-written second schema. |
+| 1 | `npm ci` clean; `.nvmrc` + committed lockfile pin Node 24 / TS 6.0.3 | ✓ VERIFIED | `.nvmrc` = `24`; `engines.node = ">=24 <25"`; `devDependencies.typescript = "6.0.3"` exact; `package-lock.json` tracked; added with the scaffold in `f1dd373`, the first commit containing any manifest; both CI jobs use `node-version-file: .nvmrc`. `npm run build` exit 0. |
+| 2 | Three processes; `/health/live` reads nothing; `/health/ready` = Mongo + **both** Redis; a Redis blip fails readiness without restarting | ✓ VERIFIED **(by boot)** | Spot-Checks 9–13. Three distinct PIDs concurrently; live 200 on all three; ready 200 with `bullmq_workers` on worker and `job_schedulers` on scheduler; `/metrics` shows three distinct `service_name` **and** three distinct `process_pid` (three registries, not three views). Redis blip: live stays 200, ready → 503 naming `redis_cache: down`, **all three same PID — zero restarts**. |
+| 3 | A cross-boundary import fails the build; a compliant tree passes; the three entrypoints cannot drift | ✓ VERIFIED | G-1 closed (two before/after controls above). 15-case discrimination matrix, 10/10 on valid specifiers with D6/D7 proving evaluation rather than blanket strictness. Clean `npx eslint .` exit 0 with the three real `@akane/platform/otel` subpath imports present. Drift controls: `entrypoint-drift.spec.ts` 18/18. |
+| 4 | A log line carrying a user email is dropped by the serialiser; no `submission_id` recoverable from the trace ID — both by test | ✓ VERIFIED | 53 tests across `log-allowlist.formatter.spec.ts`, `pino.config.spec.ts`, `allowlist-span-exporter.spec.ts`, `span-attribute-allowlist.spec.ts` — all green. |
+| 5 | Read-link JWT claim shape + decision wire contract published as versioned schemas with a frozen-field test | ✓ VERIFIED | `read-link-claims.frozen.spec.ts` (11) and `jev-v1.frozen.spec.ts` (8) — both assert the exact sorted top-level key set against a version-named literal and `.strict()` rejection of an added key; `toJsonSchema()` stamps `$id: urn:akane:contract:jev:1.0:{request,response}` from `z.toJSONSchema()` output. Re-run this pass: 8/8 and 11/11. |
 
-### The four irreversible Phase 1 contracts — present **and enforced**
+---
+
+## The four irreversible contracts — present **and enforced**
 
 | Contract | Present | Enforced by | Verdict |
 |---|---|---|---|
-| (a) log field-allowlist applied **before** serialisation | `log-allowlist.ts` (frozen 21), `log-allowlist.formatter.ts` (rebuild), `pino.config.ts` (`formatters.log` + `formatters.level` + `base: null` + custom `TimeFn` for `ts`) | `formatters.log`'s return value is the object pino serialises (`_asJson`, `lib/tools.js`); `LoggerPort` types the call site; `createChildLogger` pre-rebuilds bindings because `child()` discards `formatters.bindings`. Absence of `redact` and of a multistream is *asserted* in the spec. | ✓ VERIFIED + ENFORCED |
-| (b) decoupled trace ID | `span-attribute-allowlist.ts` (frozen list + `FORBIDDEN_SPAN_ATTRIBUTES` tripwire + 14 named URL/address exclusions), `allowlist-span-exporter.ts` (filter at the export boundary, prototype-preserving copy) | `AllowlistSpanExporter` wrapping `OTLPTraceExporter` in `buildOtelSdk`; `otel.bootstrap.spec.ts` asserts the exporter is never wired bare. | ✓ VERIFIED + ENFORCED |
-| (c) read-link JWT claim shape | `read-link-claims.ts` — 15 claims, `.strict()`, `READ_LINK_CLAIMS_VERSION = '1.0'`, 90-day TTL ceiling refinement, `READ_LINK_TARGET_RULES` as data | `read-link-claims.frozen.spec.ts` (11) + `TOKENCASSES` keyed by the action union with `satisfies` | ✓ VERIFIED + ENFORCED |
+| (a) log field-allowlist applied **before** serialisation | `log-allowlist.ts` (frozen 21), `log-allowlist.formatter.ts` (rebuild), `pino.config.ts` (`formatters.log`, `base: null`, custom `TimeFn`) | `formatters.log`'s return value is what pino serialises; `LoggerPort` types the call site; `createChildLogger` pre-rebuilds bindings because `child()` discards `formatters.bindings`. Absence of `redact` and of a multistream is asserted. | ✓ VERIFIED + ENFORCED |
+| (b) decoupled trace ID | `span-attribute-allowlist.ts` (frozen list + `FORBIDDEN_SPAN_ATTRIBUTES` tripwire + URL/address exclusions), `allowlist-span-exporter.ts` (filters at the export boundary, prototype-preserving copy) | `AllowlistSpanExporter` wrapping `OTLPTraceExporter` in `buildOtelSdk`; `otel.bootstrap.spec.ts` asserts the exporter is never wired bare. | ✓ VERIFIED + ENFORCED |
+| (c) read-link JWT claim shape | `read-link-claims.ts` — 15 claims, `.strict()`, `READ_LINK_CLAIMS_VERSION = '1.0'`, 90-day TTL ceiling, `READ_LINK_TARGET_RULES` as data | `read-link-claims.frozen.spec.ts` (11) + `TOKEN_CLASSES` keyed by the action union with `satisfies` | ✓ VERIFIED + ENFORCED |
 | (d) JEV wire contract | `jev-request.ts` / `jev-response.ts` — `.strict()`, `spec_version: "1.0"`, `choice` **required**, `choice.verified: boolean \| null`, `state.force_clarification`, two named abstention tokens | `jev-v1.frozen.spec.ts` (8) + `refineAbstentionIsTotal` superRefine | ✓ VERIFIED + ENFORCED |
 
-### The three ruled requirement conflicts — present in code
+---
+
+## The three ruled requirement conflicts — present in code
 
 | Ruling | Code evidence | Verdict |
 |---|---|---|
-| **1. Per-IP rate cap loses to availability** (NFR-SEC-6 vs NFR-S-1) | `packages/contract/src/links/rate-limit-key.ts` — `RateLimitScopeSchema = z.enum(['user','link'])`. There is no `ip`, `address`, `cidr` or `remote_addr` member: an address scope is **unexpressible**, not discouraged. | ✓ VERIFIED (contract half). Second half — "blocks only on signature failure" — is the link-verification path, Phase 3/4. Left Pending in REQUIREMENTS.md; the deferral is stated in `01-06-SUMMARY.md` lines 84–92. |
-| **2. `trace_id = submission_id` loses to the erasure contract** | `SPAN_ATTRIBUTE_ALLOWLIST` carries neither `submission_id` nor any URL/address attribute; `AllowlistSpanExporter` filters at export; no code path seeds a trace context. `FORBIDDEN_SPAN_ATTRIBUTES` is a second tripwire so a future allowlist addition still fails the spec. | ✓ VERIFIED + ENFORCED |
-| **3. 3-year audit retention wins; §15.4 erasure narrowed** | The narrowing is the log allowlist itself (PII excluded before serialisation) + `actor_ref` tombstonability (AUD-04, Phase 8) + defined purge windows (AUD-08, Phase 8). `FR-D-12` amended via `ConnectorDescriptorSchema.supports_idempotency_key: z.boolean()` **required** + `ConnectorExecuteInput.idempotencyKey: string \| null`. | ✓ VERIFIED (contract half). App-Builder surfacing is Phase 6. Left Pending in REQUIREMENTS.md; deferral stated in the same SUMMARY block. |
-
----
-
-## Observable Truths (per-plan must_haves, consolidated)
-
-Every truth below was read in the source and, where behaviour-dependent, exercised.
-
-| # | Truth | Status | Evidence |
-|---|---|---|---|
-| 1 | `npm ci` install, TS resolves to exactly 6.0.3 | ✓ VERIFIED | `typescript: "6.0.3"` exact; `tooling/deployment-shape.spec.ts` pins the runtime/dev split and the lockfile's `dev` flags |
-| 2 | `.nvmrc` = `24`, Node 24 engine floor declared | ✓ VERIFIED | both files read |
-| 3 | Lockfile committed with the workspace topology | ✓ VERIFIED | `f1dd373` contains `package.json` + `package-lock.json` + `.nvmrc` together. **Reading:** REQUIREMENTS.md's literal "in its first commit" — the repo's `Initial commit 9f14da1` carries only `README.md` and `.gitignore`, no manifest exists to lock. The intent (lockfile committed, not ignored) holds. |
-| 4 | `api` boots in-process and answers `/health/live` 200 `{"status":"ok"}` | ✓ VERIFIED | booted and probed |
-| 5 | `npm run build` runs lint first | ✓ VERIFIED | `package.json` `"build": "npm run lint && tsc -b"`; run twice → exit 0 |
-| 6 | CI install-guard deletes the lockfile and installs lockfile-free | ✓ VERIFIED (config) | `.github/workflows/ci.yml` job `install-guard`. ⚠️ Cannot be executed here (no Actions runtime); see WR-10 in the disposition ledger — the job's comment promises a TS-version assertion the workflow does not implement. |
-| 7 | Four packages + three app workspaces with the exact names | ✓ VERIFIED | tree walk |
-| 8 | Three concurrent boots → three independent OS processes, no shared singleton | ✓ VERIFIED **(behavioural, by observation)** | `ss -ltnp` showed 3 distinct PIDs on 3 ports simultaneously |
-| 9 | Invalid/missing config aborts boot with `CONFIG_INVALID: <key> <code>` | ✓ VERIFIED | `formatConfigError`; `config.schema.spec.ts` (11 tests) |
-| 10 | Both Redis URLs required; identical host:port aborts `REDIS_INSTANCES_NOT_DISTINCT` | ✓ VERIFIED | `redis.schema.spec.ts` (5 tests) |
-| 11 | Producer `maxRetriesPerRequest` 1..3, blocking `null`; no `keyPrefix`; `{akane-q}` prefix | ✓ VERIFIED | `buildRedisOptions`; `queue.constants.ts`; `redis.provider.spec.ts`, `queue.spec.ts`, `redis.integration.spec.ts` all assert the `keyPrefix` absence |
-| 12 | Boundary config declares 13 domain element types + 3 app types, `partialMatch: false`, `default: "disallow"` | ✓ VERIFIED | `tooling/boundaries.config.mjs` read in full |
-| 13 | A cross-boundary element import is reported | ✗ **FAILED** (subpath form) | **G-1** |
-| 14 | `no-restricted-imports` names `Worker` from `bullmq`, scoped to api + scheduler | ✓ VERIFIED | `eslint.config.mjs`; the drift spec pins that only `apps/worker/.../platform-heartbeat.processor.ts` binds `Worker` |
-| 15 | Runtime provider guard aborts with `BOUNDARY_VIOLATION:` on a resolved forbidden token | ✓ VERIFIED | `provider-boundary.guard.ts` + spec; all three manifests wired via `ProviderBoundaryGuardRunner` |
-| 16 | Log formatter rebuilds from the frozen 21-field allowlist; email dropped at 3 levels; `err` → closed-enum `error_code` | ✓ VERIFIED | `log-allowlist.formatter.spec.ts` (16 tests) |
-| 17 | The allowlist is applied in `formatters.log`, not a destination stream; no `redact`, no multistream | ✓ VERIFIED | `pino.config.ts`; both absences asserted in `pino.config.spec.ts` |
-| 18 | `LoggerPort` rejects an unlisted field at compile time | ✓ VERIFIED | `CallerLogField = Exclude<AllowlistedField, 'service'\|'env'\|'pid'>`; ten `@ts-expect-error` directives, `tsc` fails on an unused one |
-| 19 | `KeyProvider` = `keyId`/`wrapDek`/`unwrapDek`; `LocalKeyProvider` refuses production; wrong-length DEK throws | ✓ VERIFIED | `key-provider.ts`, `local-key-provider.ts` |
-| 20 | Envelope = `{v:1, alg:"A256GCM", kid, iv, tag, ct}`; round-trip; corrupted tag throws; fresh `iv` per encryption | ✓ VERIFIED | `envelope.ts`; `envelope.spec.ts` |
-| 21 | Production without KMS aborts with a named error | ✓ VERIFIED **at module level** | `production-guard.spec.ts` (21 tests) incl. the CR-01 boot-path test with `NODE_ENV` deleted. See advisory on wiring. |
-| 22 | JEV v1 request/response key sets frozen; `choice.verified` + `state.force_clarification`; abstention refinement | ✓ VERIFIED | `jev-v1.frozen.spec.ts` (8) |
-| 23 | Read-link claim key set frozen (15 claims); unlisted key fails `.strict()` | ✓ VERIFIED | `read-link-claims.frozen.spec.ts` (11) |
-| 24 | `RateLimitKeySchema` admits only `user` \| `link` | ✓ VERIFIED | `rate-limit-key.spec.ts` (5) |
-| 25 | `supports_idempotency_key` is a **required** descriptor field | ✓ VERIFIED | `connector.ts`; `connector.spec.ts` |
-| 26 | `TOKEN_CLASSES` enumerates all six actions; `draft` reserved, not emitted | ✓ VERIFIED | `token-classes.ts`; `isEmittableInV1()` gate |
-| 27 | `MongoService.ping()`; readiness always runs mongo + both Redis; live reads nothing; ready 503 names the failing dependency | ✓ VERIFIED **(by boot)** | `CORE_HEALTH_INDICATOR_KEYS` frozen; live body is a fixed literal; measured 503 naming `redis_cache` |
-| 28 | No health payload carries a connection string, credential or URL | ✓ VERIFIED | indicators drop `ReplyError`/`RedisClosedError` details; live body is a literal |
-| 29 | Cache Redis evicting / queue Redis `noeviction`, read back with `CONFIG GET` | ✓ VERIFIED | `redis.integration.spec.ts` (real containers) |
-| 30 | `registerJobScheduler` is idempotent `upsertJobScheduler`; scheduler probe reads it back out of Redis | ✓ VERIFIED | `queue.integration.spec.ts`; measured live: `job_schedulers: {scheduler: "platform-heartbeat", status: "up"}` |
-| 31 | Business instruments on the OTel meter; no `prom-client` anywhere | ✓ VERIFIED | `business-metrics.spec.ts` scans every source + every manifest |
-| 32 | Frozen `SPAN_ATTRIBUTE_ALLOWLIST`; `submission_id` stripped by the exporter, never reaching the delegate | ✓ VERIFIED | `allowlist-span-exporter.spec.ts` (12) |
-| 33 | `startOtel()` = one `NodeSDK`, idempotent (memoised handle **and** promise) | ✓ VERIFIED | `otel.bootstrap.ts`; `otel.bootstrap.spec.ts` |
-| 34 | Prometheus exporter always `preventServerStart: true`; first-write-wins singleton; `OTEL_NOT_STARTED` refusal | ✓ VERIFIED | `otel.constants.ts`, `metrics.module.ts` |
-| 35 | `/metrics` served from the single exporter, on all three processes, each its own registry | ✓ VERIFIED **(by boot)** | measured `target_info{service_name="api"\|"worker"\|"scheduler"}` on three distinct PIDs |
-| 36 | Three entrypoints `NestFactory.create()` on config-derived ports; `enableShutdownHooks()`; `otel.mjs` + dynamic `app.module.js` import | ✓ VERIFIED | three `main.ts` byte-identical apart from the docblock; `DEFAULT_PORT_BY_SERVICE` |
-| 37 | Only `apps/worker` constructs a `Worker`; only `apps/scheduler` registers the Job Scheduler | ✓ VERIFIED | three independent controls; `entrypoint-drift.spec.ts` (17 tests) with non-vacuity assertions first |
-| 38 | Per-app `BoundaryManifest` + import-closure drift test | ✓ VERIFIED | `entrypoint-drift.spec.ts` |
-| 39 | **CR-01 fix is real**: `NODE_ENV` required with no default; local key only in `development`/`test` or explicit `CRYPTO_LOCAL_KEY_ALLOWED=true`; `production` is kms-only and the opt-in cannot relax it | ✓ VERIFIED | `config.schema.ts` (`z.enum` with **no** `.default()`), `production-guard.ts` (`localKeyProviderAllowed` fails closed), `local-key-provider.ts` (constructor reads live `NODE_ENV` with no `?? 'development'`), `readKeyProviderEnv()` returns `NODE_ENV: string \| undefined`. Commit `4732c30` present. |
-| 40 | **CR-02 fix is real**: both Redis clients `QUIT` in `onModuleDestroy` via `allSettled`; registered in all three entrypoints | ✓ VERIFIED | `redis.provider.ts`; `redis.provider.spec.ts` incl. "drains the other connection even when one quit rejects"; commit `a458258` present |
-
-**Score: 39/40 plan truths verified.** SC/contract score: **14/15**.
-
----
-
-## Required Artifacts
-
-| Artifact | Status | Detail |
-|---|---|---|
-| `package.json`, `.nvmrc`, `package-lock.json` | ✓ VERIFIED | exact pins; lockfile tracked |
-| `eslint.config.mjs`, `tooling/boundaries.config.mjs`, `tooling/import-resolver.cjs` | ⚠️ PRESENT, one gap | exists, substantive, wired — **G-1** in the resolver |
-| `packages/platform/src/{config,logging,otel,health,mongo,redis,queue,metrics,crypto,bootstrap}/` | ✓ VERIFIED | all barrels exist; `crypto/index.ts` and `otel/index.ts` exported; every deep barrel has an `exports` entry except the ones the drift spec reaches by source |
-| `packages/contract/src/{jev/v1,links,connector,events}/` | ✓ VERIFIED | all four frozen/`.strict()` |
-| `apps/{api,worker,scheduler}/{src/main.ts,src/app.module.ts,src/bootstrap/boundary-manifest.ts,otel.mjs}` | ✓ VERIFIED | 3 × 4, all present and wired |
-| `tooling/entrypoint-drift.spec.ts` | ✓ VERIFIED | 17 tests, non-vacuity + negative controls |
-| `tooling/deployment-shape.spec.ts` | ✓ VERIFIED | 7 tests pinning the runtime/dev dependency split |
-| `.github/workflows/ci.yml` | ✓ VERIFIED | `build` + `install-guard` |
-
-No stubs. No orphan sources. `apps/api/src/health/*` (plan 01's tracer controller) is **deleted** — exactly one definition of each health route exists in the tree.
-
----
-
-## Key Link Verification
-
-| From → To | Via | Status | Detail |
-|---|---|---|---|
-| `pino.config.ts` → `log-allowlist.formatter.ts` | `formatters.log` | ✓ WIRED | rebuild hook is the serialised value |
-| `LoggerPort` → the allowlist | `CallerLogField` derived from the frozen list | ✓ WIRED | |
-| `startOtel` → `AllowlistSpanExporter(OTLPTraceExporter)` | exporter wrap | ✓ WIRED | pinned by spec |
-| `startOtel` → `PrometheusExporter` → `MetricsController` | first-write-wins singleton → DI token | ✓ WIRED | `OTEL_NOT_STARTED` refuses rather than substituting |
-| `plan-08 instruments` → OTel meter → Prometheus → `/metrics` | `business-metrics.ts` | ✓ WIRED | measured `target_info` on all three |
-| `registerJobScheduler` → `Queue.upsertJobScheduler` | idempotent | ✓ WIRED | measured live |
-| `boundary-manifest` (per app) → `BOUNDARY_MANIFEST` → `ProviderBoundaryGuardRunner` | boot-time container walk | ✓ WIRED | all three app modules |
-| `otel.mjs --import` → `startOtel()` → `main.ts` dynamic `import('./app.module.js')` | ordering | ✓ WIRED | verified by boot + by reading all three |
-| **`resolver` → `boundaries/dependencies` element graph** | `@akane/<pkg>` → workspace `src` | ✗ **NOT WIRED for subpaths** | **G-1** — bare only |
-| `CryptoModule` → an entrypoint | `imports: [...]` | ✗ **NOT WIRED** | advisory — no app imports it |
-
----
-
-## Behavioral Spot-Checks (all run by this verifier)
-
-| # | Behaviour | Command | Result |
-|---|---|---|---|
-| 1 | All three processes boot independently | `node --import ./apps/{api,worker,scheduler}/otel.mjs ./apps/{…}/dist/main.js` with a real env | ✓ 3 PIDs, 3 ports (`ss -ltnp`) |
-| 2 | `/health/live` on all three | `curl /health/live` ×3 | ✓ 200 `{"status":"ok"}` on 13000 / 3001 / 3002 |
-| 3 | `/health/ready` green | `curl /health/ready` ×3 | ✓ 200 · `mongo:up, redis_cache:up, redis_queue:up` on all three, **plus** `bullmq_workers:{workers:1,up}` on worker and `job_schedulers:{scheduler:"platform-heartbeat",up}` on scheduler |
-| 4 | `/metrics` on all three | `curl /metrics` ×3 | ✓ 200 · `target_info{service_name="api"\|"worker"\|"scheduler"}`, three distinct `process_pid` — three registries, not three views of one |
-| 5 | Redis blip fails readiness, not liveness | `docker stop api-cache`, then re-probe | ✓ live 200 on all three; **0 processes restarted**; ready → 503 naming `redis_cache: down` (latency 0.21 s / 0.90 s / 8.22 s — see advisory). Container restored → 200 on all three. |
-| 6 | Boundary violation fails the build — **bare form** | plant `import { DEFAULT_PORT_BY_SERVICE } from '@akane/platform'` in `packages/kernel/src/index.ts` | ✓ `eslint` exit 1, `There is no policy allowing dependencies from elements of type "kernel" to elements of type "platform"` |
-| 7 | Boundary violation fails the build — **subpath form** | plant `import { encryptSecret } from '@akane/platform/crypto'` in `packages/contract/src/index.ts` | ✗ `eslint` exit 0 **and** `tsc -b` exit 0 → **G-1** |
-| 8 | Compliant tree passes | `npx eslint .` | ✓ exit 0 |
-| 9 | `npm run build` on a clean tree | `npm run build` | ✓ exit 0 (run twice: once dirty, once after restore) |
-| 10 | Targeted suites (logging, contract, otel, metrics, bootstrap, redis, config, crypto guard, boundary fixtures, drift) | `npx vitest run …` | ✓ **25 files / 217 tests**, exit 0, 337.9 s |
-| 11 | Container-backed suites (mongo, health, queue, deployment shape) | `npx vitest run …` | ✓ **6 files / 51 tests**, exit 0, 202.0 s |
-| 12 | Boundary fixture smoke test — non-inertness | `boundaries.fixture.spec.ts` | ✓ 6 tests, incl. *"checkAllOrigins is set, and stripping it silently disables R2 and R3"* and *"the custom import resolver is load-bearing for every relative import"* |
-
-**Working tree restored to `git status --porcelain` clean** (only the three pre-existing untracked `.planning/` artifacts remain) after every planted violation.
-
----
-
-## Probe Execution
-
-None declared. Phase 1 ships no `scripts/**/tests/probe-*.sh`.
+| **1. Per-IP rate cap loses to availability** (NFR-SEC-6 vs NFR-S-1) | `packages/contract/src/links/rate-limit-key.ts` — `RateLimitScopeSchema = z.enum(['user','link'])`. No `ip`/`address`/`cidr`/`remote_addr` member: an address scope is **unexpressible**, not discouraged. `rate-limit-key.spec.ts` (5) asserts *"rejects a third scope — the union has exactly two members"* — re-run green. | ✓ VERIFIED (contract half). "Blocks only on signature failure" is the link-verification path, Phase 3/4. Left Pending in REQUIREMENTS.md; deferral stated in `01-06-SUMMARY.md`. |
+| **2. `trace_id = submission_id` loses to the erasure contract** | `SPAN_ATTRIBUTE_ALLOWLIST` carries neither `submission_id` nor any URL/address attribute; `AllowlistSpanExporter` filters at export; no code path seeds a trace context. `FORBIDDEN_SPAN_ATTRIBUTES` is a second tripwire. | ✓ VERIFIED + ENFORCED |
+| **3. 3-year audit retention wins; §15.4 erasure narrowed** | The narrowing is the log allowlist (PII excluded before serialisation) + `actor_ref` tombstonability (AUD-04, Phase 8) + defined purge windows (AUD-08, Phase 8). `FR-D-12` amended via `ConnectorDescriptorSchema.supports_idempotency_key: z.boolean()` **required** + `ConnectorExecuteInput.idempotencyKey: string \| null`; `connector.spec.ts` (4) asserts it is required and that a `"false"` **string** cannot read as truthy. | ✓ VERIFIED (contract half). App-Builder surfacing is Phase 6. Left Pending; deferral stated in the same SUMMARY block. |
 
 ---
 
@@ -331,52 +308,65 @@ None declared. Phase 1 ships no `scripts/**/tests/probe-*.sh`.
 
 | ID | Source plan | Status | Evidence |
 |---|---|---|---|
-| **FND-01** | 01-01 | ✅ Complete | `.nvmrc`, `engines.node`, exact TS pin, lockfile, `npm run build` exit 0 |
-| **FND-02** | 01-01 | ✅ Complete | lockfile committed (`f1dd373`) with the topology; `.nvmrc` = 24; both CI jobs consume it. *Reading noted on "first commit" above — intent met.* |
-| **FND-03** | 01-01, 01-03, 01-10 | ✅ Complete | three processes booted concurrently on three ports; three independent controls, all wired and covered |
-| **FND-04** | 01-03, 01-10 | ⚠️ **One gap** | bare form fails the build (verified); compliant tree passes (verified); **subpath form does not** → **G-1** |
-| **FND-05** | 01-02, 01-07, 01-10 | ✅ Complete | measured live on all three, degraded and restored |
-| **FND-06** | 01-04 | ✅ Complete | 30 tests across two specs; allowlist applied pre-serialisation |
-| **FND-07** | 01-09 | ✅ Complete | exporter-boundary enforcement; 25 tests |
-| **FND-08** | 01-08, 01-10 | ✅ Complete | scheduler registered and read back out of Redis while running; worker is the sole `Worker` |
-| **FND-09** | 01-02 | ✅ Complete | `CONFIG_INVALID:` named errors; `ConfigModule` validates at DI time, not import time |
-| **FND-10** | 01-05 | ⏸ **Pending by design (D-27 / B-3)** | Interface, envelope, guard all real and proven; **no KMS adapter, no KMS-backed key** — exactly as decided. CR-01's fail-open fix confirmed real. ⚠️ One advisory: the guard is not composed into any process. |
-| **LNK-07** | 01-06 | ✅ Complete | 15-claim set frozen and version-stamped; 11 tests |
-| **RTE-10** | 01-06 | ✅ Complete | JEV v1 frozen with both D-23 additions; 8 tests; published as `z.toJSONSchema()` output |
-| **AUD-10** | 01-06 | ⏸ **Pending by design (contract half)** | `user` \| `link` scopes shipped; "blocks only on signature failure" is Phase 3/4. Deferral stated in `01-06-SUMMARY.md` §84–92 and left unchecked in REQUIREMENTS.md — honest. |
+| **FND-01** | 01-01 | ✅ Complete | `.nvmrc`, `engines.node`, exact TS pin, tracked lockfile, `npm run build` exit 0 |
+| **FND-02** | 01-01 | ✅ Complete | Lockfile committed with the topology; both CI jobs consume `.nvmrc`. *Reading:* REQUIREMENTS.md's literal "in its first commit" — the repo's `Initial commit 9f14da1` carries only `README.md` and `.gitignore`, so no manifest exists to lock. The intent (committed, not ignored) holds. |
+| **FND-03** | 01-01, 01-03, 01-10 | ✅ Complete | Three distinct PIDs booted concurrently; three independent controls, all wired; `entrypoint-drift.spec.ts` 18/18 |
+| **FND-04** | 01-03, 01-10 | ✅ **Complete — G-1 closed** | Bare form and **subpath form** (barrel, file, `.js`, trailing-slash) all fail the build on disallowed edges; all allowed edges pass; 15-case independent matrix; 4 new regression tests proven load-bearing against a reverted resolver |
+| **FND-05** | 01-02, 01-07, 01-10 | ✅ Complete | Measured live on all three, degraded and restored; zero restarts under a Redis blip |
+| **FND-06** | 01-04 | ✅ Complete | 53 tests across the logging and span specs; allowlist applied pre-serialisation |
+| **FND-07** | 01-09 | ✅ Complete | Exporter-boundary enforcement |
+| **FND-08** | 01-08, 01-10 | ✅ Complete | `job_schedulers:{scheduler:"platform-heartbeat",status:"up"}` read back while running; worker is the sole `Worker` |
+| **FND-09** | 01-02 | ✅ Complete | `CONFIG_INVALID: <key> <code>` observed live, including `CONFIG_INVALID: NODE_ENV` with `NODE_ENV` omitted |
+| **FND-10** | 01-05 | ⏸ **Pending by design (B-3 / D-27)** | Interface, envelope, and guard all real; **composed into all three entrypoints and proven reachable on real boots**; **still no KMS adapter and no KMS-backed key**, exactly as decided. `CRYPTO_KEY_PROVIDER=kms` refuses with `KMS_PROVIDER_BLOCKED:` on all three processes. |
+| **LNK-07** | 01-06 | ✅ Complete | 15-claim set frozen and version-stamped; 11 tests re-run green |
+| **RTE-10** | 01-06 | ✅ Complete | JEV v1 frozen with both D-23 additions; 8 tests re-run green; published as `z.toJSONSchema()` output |
+| **AUD-10** | 01-06 | ⏸ **Pending by design (contract half)** | `user` \| `link` scopes shipped and tested; "blocks only on signature failure" is Phase 3/4. Deferral stated in `01-06-SUMMARY.md` and left unchecked in REQUIREMENTS.md — honest. |
 | **DAT-13** | 01-06 | ⏸ **Pending by design (contract half)** | `supports_idempotency_key` required + `idempotencyKey` on the execute input; App-Builder surfacing is Phase 6. Same deferral note. |
-| **OBS-01** | 01-08, 01-09, 01-10 | ✅ Complete | one OTel meter → one `preventServerStart` Prometheus exporter → `/metrics` on all three; no `prom-client` (asserted by scan); `OTEL_NOT_STARTED` refusal |
+| **OBS-01** | 01-08, 01-09, 01-10 | ✅ Complete | One OTel meter → one `preventServerStart` Prometheus exporter → `/metrics` on all three, three distinct registries; no `prom-client`; `OTEL_NOT_STARTED` refusal |
 
-**Orphaned requirements:** none. All 15 IDs in the ROADMAP/PLAN set appear in REQUIREMENTS.md's Phase 1 traceability table, and no Phase 1 requirement is unclaimed.
+**Orphaned requirements:** none. All 15 IDs appear in REQUIREMENTS.md's Phase 1 traceability table, and no Phase 1 requirement is unclaimed. `FND-04`'s row additionally records the honest history — that the requirement did not hold for the subpath form between 01-03 and `44b0619`.
 
 ---
 
-## Known-deliberate-state items — checked for honesty, not re-litigated
+## Known-deliberate state — checked for honesty, not re-litigated
 
 | # | Item | Verdict |
 |---|---|---|
-| 1 | **FND-10 pending by design.** CR-01's guard was defeatable by omitting `NODE_ENV`; fixed in `4732c30`. | ✅ **Honest and the fix is real.** `NODE_ENV` is now a required enum with **no** `.default()`; `localKeyProviderAllowed` **fails closed** — the local key is permitted only in `development`/`test` or on an explicit `CRYPTO_LOCAL_KEY_ALLOWED=true`; `production` is kms-only and the opt-in cannot relax it; `LocalKeyProvider`'s constructor reads the live `NODE_ENV` with **no** `?? 'development'` fallback. Both refusal sites share one exported predicate so they cannot drift. The commit exists and the code matches it. FND-10 correctly stays unchecked; the "no KMS-backed key" state is stated plainly in REQUIREMENTS.md rather than papered over. ⚠️ One genuine addition: the guard is not wired into any process (advisory). |
-| 2 | **AUD-10 / DAT-13 pending by design.** | ✅ **Honest.** The contract halves are real and tested; the missing halves are named precisely ("blocks only on signature failure" → Phase 3/4; "surfaced in the App Builder at publish time" → Phase 6) in `01-06-SUMMARY.md` and mirrored in REQUIREMENTS.md's unchecked boxes. No over-claim found. |
-| 3 | **21 WARNING/INFO findings deferred with owners.** | ✅ **Honest.** `01-REVIEW-DISPOSITION.md` accounts for all 23 findings: 2 BLOCKERs (`blockers_fixed: 2`, commits `4732c30` / `a458258`, both present and both re-verified in code) + 12 WARNINGs + 9 INFOs, each with a one-line owner. **No BLOCKER-severity finding is standing.** Spot-checked the deferrals that touch this report's scope: WR-05 (kernel zero-dep unenforced) is real and correctly WARNING; WR-10 (install-guard promises an assertion) is real; WR-02 (`.mjs` loaders escape the R1 controls) is real — I confirmed all three `otel.mjs` files sit outside every control's glob. |
-| 4 | **WINDOWS #5 and #7 open on purpose.** | ✅ **Recorded, not silently dropped.** #5 (`msg` is the one channel the allowlist cannot filter) is `open`, and the fact is stated in `pino.config.ts`'s own docblock rather than claimed as covered — a claim that the allowlist covers `msg` would have been false, and the code says so. #7 (the envelope derives its DEK from the provider, so rotating `kid` breaks prior envelopes) is `open`, named as Phase 4 work, and `envelope.ts` carries the same warning inline. Both need a human ruling / later phase respectively — correctly not closed. |
+| 1 | **FND-10 pending by design.** Composing `CryptoModule` makes the guard reachable; it does **not** produce a KMS-backed key. | ✅ **Honest.** REQUIREMENTS.md leaves `[ ] FND-10` unchecked and marks it `Pending`; ROADMAP.md's verification line repeats it verbatim; STATE.md says it explicitly. I confirmed on real boots that `kms` refuses with the B-3 blocker and that no KMS adapter exists. The `production-guard.spec.ts` coverage (21 assertions, including CR-01's boot-path test with `NODE_ENV` deleted) is intact, and CR-01 still fails closed: a live boot with `NODE_ENV` omitted aborts with `CONFIG_INVALID: NODE_ENV`. |
+| 2 | **AUD-10 / DAT-13 pending by design.** | ✅ **Honest.** The contract halves are real and tested; the missing halves are named precisely in `01-06-SUMMARY.md` and mirrored in REQUIREMENTS.md's unchecked boxes. No over-claim. |
+| 3 | **21 WARNING/INFO findings deferred; no BLOCKER standing.** | ✅ **Honest.** `01-REVIEW-DISPOSITION.md` accounts for all 23: 2 BLOCKERs (`blockers_fixed: 2`, `4732c30` / `a458258`, both present and both re-verified in code) + 12 WARNINGs + 9 INFOs, each with a one-line owner. **No BLOCKER-severity finding is standing.** Spot-checked the deferrals touching this report's scope: WR-02 (`.mjs` loaders escape R1) — confirmed and now sharpened below; WR-05 (kernel zero-dep unenforced) real; WR-10 (install-guard comment promises an assertion) real. |
+| 4 | **WINDOWS #5 and #7 open on purpose.** | ✅ **Recorded, not silently dropped.** #5 (`msg` is the one channel the allowlist cannot filter) is `open`, and `pino.config.ts`'s own docblock says so rather than claiming coverage — a claim that the allowlist covers `msg` would have been false. #7 (the envelope derives its DEK from the provider, so rotating `kid` breaks prior envelopes) is `open`, named as Phase 4 work, with the same warning inline in `envelope.ts`. Both correctly not closed. |
+| 5 | **WINDOWS #16 — `.mjs` loaders invisible to the boundary gate.** | ✅ **Acceptable recorded residual.** Assessed in full above. Pre-existing (WR-02), bounded to 3 single-import files whose only import is compliant, correctly diagnosed with an explicit anti-fix warning, blocking `/gsd-ship` via `open_count: 6`. Recorded here as an advisory with one sharpening: `no-restricted-imports` is path-scoped to `apps/*/src/**`, so R1's `Worker` ban misses the loader as well — two controls, not one. |
 
 ---
 
-## Test Quality Audit
+## Behavioral Spot-Checks (all run by this verifier)
 
-| Linked req | Test file(s) | Active | Skipped | Circular | Assertion level | Verdict |
-|---|---|---|---|---|---|---|
-| FND-04 | `tooling/boundaries.fixture.spec.ts`, `tooling/entrypoint-drift.spec.ts` | 23 | 0 | none | **behavioural** (lint on fixtures + planted violations; import-closure walk) | ⚠️ Non-vacuity pinned, but the **subpath form is not covered** → G-1 |
-| FND-05/08 | `health.controller.spec.ts`, `health.indicators.spec.ts`, `queue.integration.spec.ts`, `redis.integration.spec.ts` | real containers | 0 | none | **behavioural** (`CONFIG GET maxmemory-policy` readback; `upsertJobScheduler` ×N → 1) | ✓ |
-| FND-06 | `log-allowlist.formatter.spec.ts`, `pino.config.spec.ts` | 30 | 0 | none | **behavioural** (serialised output inspected, three nesting levels) | ✓ |
-| FND-07 | `allowlist-span-exporter.spec.ts`, `span-attribute-allowlist.spec.ts`, `otel.bootstrap.spec.ts` | 25 | 0 | none | **behavioural** (real `TracerProvider`, five spans → five distinct trace ids) | ✓ |
-| FND-10 | `production-guard.spec.ts`, `local-key-provider.spec.ts`, `envelope.spec.ts`, `key-provider.contract.spec.ts` | — | 0 | **no** — `writeFileSync` only writes *key fixtures* (inputs), never expected values | **behavioural** (boot-path compile, tag corruption, rotation) | ✓ |
-| LNK-07/RTE-10 | `read-link-claims.frozen.spec.ts`, `jev-v1.frozen.spec.ts` | 19 | 0 | none | **value** (exact key-set arrays) | ✓ |
+| # | Behaviour | Command | Result |
+|---|---|---|---|
+| 1 | **G-1 reproduction, pre-fix resolver** | plant `contract` → `@akane/platform/crypto`; `npm run build` | ✓ `exit 0` / `tsc -b exit 0` — G-1 reproduced exactly |
+| 2 | **G-1 fixed, same plant** | same plant, shipped resolver | ✓ `eslint exit 1` (`boundaries/dependencies`), `npm run build exit 1` |
+| 3 | **Regression tests load-bearing** | revert resolver to `5266acb`, run `boundaries.fixture.spec.ts` | ✓ **4 red / 5 green**; all four are the G-1 guards |
+| 4 | Regression tests green | `npx vitest run tooling/boundaries.fixture.spec.ts` | ✓ 9/9 |
+| 5 | **Discrimination matrix (15 valid cases)** | plant one import per case, lint, report rule ID | ✓ 10/10 authoritative cases correct; D6/D7 prove allowed subpath edges are *evaluated*, not skipped |
+| 6 | Invalid subpaths unreachable | `tsc -b` on each declined shape | ✓ 5/5 rejected by `tsc` — none can ship |
+| 7 | Compliant tree passes | `npx eslint .` | ✓ exit 0, with three real `@akane/platform/otel` subpath imports present |
+| 8 | **CryptoModule drift test load-bearing** | revert `apps/worker/src/app.module.ts`, run drift spec | ✓ **1 red / 17 green** on the exact new assertion |
+| 9 | Drift spec green | `npx vitest run tooling/entrypoint-drift.spec.ts` | ✓ 18/18 |
+| 10 | **Three processes, concurrent** | launch all three on 14000/14001/14002 | ✓ 3 distinct PIDs, all up |
+| 11 | `/health/live` | curl ×3 | ✓ 200 `{"status":"ok"}` on all three |
+| 12 | `/health/ready` | curl ×3 | ✓ 200 · `mongo:up, redis_cache:up, redis_queue:up`, plus `bullmq_workers:{workers:1,up}` on worker and `job_schedulers:{scheduler:"platform-heartbeat",up}` on scheduler |
+| 13 | `/metrics` | curl ×3 | ✓ three distinct `service_name` **and** three distinct `process_pid` — three registries |
+| 14 | **Redis blip** | `docker stop` the cache Redis | ✓ live 200 on all three; ready → 503 naming `redis_cache: down`; **all three same PID — zero restarts** |
+| 15 | **FND-10 guard, real boots (21 cases)** | `NODE_ENV` × provider × key-file across all three apps | ✓ see Boot matrix above — every refusal and every listen is as required |
+| 16 | **Pre-change tree, production** | `f813f64^`, `NODE_ENV=production`, local provider, no key file | ✓ **BOOTED**, live 200 — the advisory was a genuine production fail-open |
+| 17 | **Pre-change tree, development** | `f813f64^`, `NODE_ENV=development`, no key file | ✓ **BOOTED**, ready 200 all green — the only posture that lost the ability to boot |
+| 18 | Contract suites | `read-link-claims.frozen` + `jev-v1.frozen` + `rate-limit-key` + `connector` | ✓ 20 tests green; the two frozen specs re-run individually (11 and 8) |
+| 19 | Logging + OTel span suites | 4 spec files | ✓ 53 tests green |
+| 20 | **Full suite** | `npm test` | ✓ **35 files / 330 tests, exit 0**, 837.3 s |
+| 21 | `npm run build` | `npm run lint && tsc -b` | ✓ exit 0 |
 
-- **Disabled tests on requirements:** 0 (repo-wide scan for `it.skip` / `describe.skip` / `xit` / `test.todo` / `.only` → no hits).
-- **Circular patterns:** 0.
-- **Insufficient assertions:** 0 — every requirement-linked spec asserts values or behaviour, none stops at existence/type.
-- **Negative controls present and effective:** `checkAllOrigins` stripping turns 4 R2/R3 cases red; substituting a fresh Prometheus exporter turns 3 of 5 red; the closure-walk non-vacuity test runs *first* precisely because every other assertion is a `not.toContain`.
+**Working tree restored.** `git diff --quiet tooling/ packages/ apps/` → clean; all three match `67a5208` byte-for-byte. `dist/` rebuilt with no planted artifact. Only the three pre-existing untracked `.planning/` artifacts and the pre-existing `.planning/config.json` modification remain.
 
 ---
 
@@ -384,63 +374,39 @@ None declared. Phase 1 ships no `scripts/**/tests/probe-*.sh`.
 
 | Pattern | Severity | Result |
 |---|---|---|
-| Debt markers (`TBD`/`FIXME`/`XXX`) in phase-touched sources | — | **0** (repo-wide scan) |
-| `TODO`/`HACK`/`PLACEHOLDER`/`not yet implemented` | — | **0** |
-| `return null` / `return {}` / `return []` stubs | — | **0** |
-| Hardcoded empty props / disconnected data | — | **0** — no UI in this phase; every returned value traces to a real query (container readback, `getJobScheduler`, exporter collect) |
-| `console.log`-only implementations | — | **0** |
-| `NOT_IMPLEMENTED` entrypoint shells | — | **0** — both worker and scheduler shells replaced; WINDOWS #2/#3 `fixed` |
-
----
-
-## Decision Coverage (non-blocking)
-
-`01-CONTEXT.md` declares 33 decisions (D-01…D-33). All load-bearing ones were traced to code: D-05/D-06 (`build` chains `lint`; dedicated `install-guard` job), D-09 (`NestFactory.create()` + `enableShutdownHooks()` on all three), D-10 (per-dependency readiness, liveness reads nothing), D-12/D-13/D-14 (both URLs required + distinct; two connection profiles; `{akane-q}`, no `keyPrefix`), D-15/D-16/D-17 (allowlist + `formatters.log` + three-level email test), D-18/D-19 (export-boundary span allowlist + the logs↔traces asymmetry), D-20 (SDK first, dynamic `app.module.js` import), D-21/D-22/D-23/D-24 (frozen claims, reserved `draft`, JEV v1, mechanical freeze), D-25/D-26/D-27/D-28 (envelope, `KeyProvider`, named blocker, no secret stored), D-29/D-30/D-31/D-32/D-33 (scope decisions, recorded).
-
-Two decisions have **documented deviations**, both honestly recorded outside CONTEXT.md:
-- **D-15** — CONTEXT says "pino custom destination stream"; the implementation uses `formatters.log` because a destination receives already-serialised bytes. Amendment recorded in `STATE.md` and `01-04-SUMMARY.md`. (advisory)
-- **D-01/D-02** — CONTEXT says "12 domain modules"; 13 ship (`audit`). Recorded in `01-ASSUMPTIONS.md`.
-
-One decision was **deliberately overturned by the executor with the reasoning quoted in source**: 01-03's prohibition `MUST NOT enable checkAllOrigins`. `tooling/boundaries.config.mjs` documents the reversal against the installed plugin source and pins it with an executable assertion. That is a well-founded, reviewable deviation, not drift.
+| Debt markers (`TBD`/`FIXME`/`XXX`) in files touched by the three commits | — | **0 in implementation files.** The only hits are `.planning/ROADMAP.md`'s `**Plans**: TBD` placeholders for *unplanned future phases*, and historical narrative in `STATE.md`/`WINDOWS.md` describing shells that were since resolved. |
+| `TODO`/`HACK`/`PLACEHOLDER`/`not yet implemented`/`NOT_IMPLEMENTED` | — | **0** in the seven changed implementation files |
+| `return {}` / `=> {}` / `NOT_IMPLEMENTED` stubs | — | **0** |
+| Hardcoded empty data / disconnected values | — | **0** — no UI; every returned value traces to a real query (container readback, `getJobScheduler`, exporter collect) |
+| Orphaned sources | — | **0** — the resolver's new branch is exercised by both an assertion and a live lint |
+| Widened-rule anti-pattern | 🛑 avoided | The executor did **not** widen the rule's `files` to reach `.mjs`. That would have looked like a fix and produced zero diagnostics — the exact trap WINDOWS #16 warns about. |
 
 ---
 
 ## Human Verification
 
-**N/A — Infrastructure/foundation phase with no user-facing elements.** All five ROADMAP success criteria are technical and were settled programmatically (specs, `npm run build`, negative controls, and a live boot of all three processes). No `⚠️ PRESENT_BEHAVIOR_UNVERIFIED` truths remain and no `verification: backstop` truth abstained, so no behaviour-evidence item is carried forward.
+**N/A — infrastructure/foundation phase with no user-facing elements.** All five ROADMAP success criteria are technical and were settled programmatically: the boundary rule by planting violations and reading the real exit codes, the guard by booting real processes and reading the real refusals, the contracts by running the real specs. No `⚠️ PRESENT_BEHAVIOR_UNVERIFIED` truth remains and no `verification: backstop` truth abstained, so no behaviour-evidence item is carried forward.
 
-The one thing this verifier **could not** execute is the GitHub Actions `install-guard` job — there is no Actions runtime here. Its shape was verified by reading `.github/workflows/ci.yml`, and WR-10 already records that its comment promises an assertion the workflow does not implement. That is a deferred review finding with an owner, not a gap.
+The one thing this verifier could not execute is the GitHub Actions `install-guard` job — there is no Actions runtime here. Its shape was verified by reading `.github/workflows/ci.yml`, and WR-10 already records that its comment promises an assertion the workflow does not implement. That is a deferred review finding with an owner, not a gap in this phase.
 
 ---
 
 ## Gaps Summary
 
-**One BLOCKER.**
+**No gaps.** Zero must-have truth is FAILED, zero artifact is missing or stubbed, zero key link is unwired, and no blocking anti-pattern was found.
 
-**G-1 — the build-failing boundary lint rule has a silent blind spot for every workspace subpath import.**
+**G-1 is closed**, established independently of the fix by planting the violation against both the pre-fix and post-fix resolvers and observing `npm run build` go from exit 0 to exit 1 — and by a 15-case discrimination matrix establishing that the fix discriminates rather than merely tightens.
 
-`FND-04` requires that "a lint rule fails the build when a module imports across a declared component boundary." It does for the bare form and not for the subpath form. `tooling/import-resolver.cjs`'s `resolveWorkspacePackage()` builds `node_modules/@akane/<pkg>/<subpath>` and calls `realpathSync()` on it, which throws for any subpath; the code then falls through to `requireFromFile.resolve()`, which resolves through the package `exports` map into `node_modules/<pkg>/dist/...`. `eslint-plugin-boundaries` classifies that as origin `external`, and policy 0 — `allow: { to: { module: { origin: ['external', 'core'] } } }` — permits it. The element graph is never consulted.
+**The `CryptoModule` advisory is closed and understated the problem**: the pre-change tree booted a `NODE_ENV=production` process with a plaintext key posture and nothing refusing it. All three entrypoints now refuse on a real boot, and the drift assertion is proven load-bearing.
 
-Reproduced twice, by this verifier, in the real tree:
+**The `CRYPTO_LOCAL_KEY_FILE` boot requirement is a sound fail-closed default, not a defect.** The only posture that lost the ability to boot is the one that had no key material, and B-3 makes every such configuration impossible to satisfy honestly today. The correct future fix — a lazy provider, for a process that genuinely holds no secret — is already stated in the source.
 
-```
-# packages/contract/src/index.ts — ALLOWED_EDGES.contract === ['kernel'] only
-import { encryptSecret } from '@akane/platform/crypto';
-$ npx eslint packages/contract/src/index.ts   → exit 0
-$ npx tsc -b                                  → exit 0
-```
+**Five advisories** are recorded in the frontmatter: WINDOWS #16 (sharpened — `no-restricted-imports` is also path-scoped away from the loader, so two controls miss it); the `test/setup-env.ts` trap for future app-module-compiling specs; the degraded-readiness latency spread and the `docker pause` hang (both carried forward, runbook owner's budget decision); and CONTEXT.md's documentation drift.
 
-The same package with the **bare** specifier fails immediately and correctly (`exit 1`, *"There is no policy allowing dependencies from elements of type … "*) — so the mechanism works and this is a resolver gap, not a broken rule.
-
-Why this is a gap rather than a note: the subpath form is not hypothetical. All three entrypoints import `@akane/platform/otel` today, and `@akane/platform/crypto` is exported, so `@akane/platform/<subpath>` is the *habitual* way to import across a workspace in this repository. The day someone writes `@akane/platform/crypto` from `packages/domain/src/authz/…` or `@akane/platform/otel` from `packages/kernel/…`, `npm run build` goes green on a real element-graph violation — in the one control the phase named as irreversible. `tooling/boundaries.fixture.spec.ts` cannot catch it: its `WORKSPACE_CASES` exercise only the bare form, so the regression test mirrors the blind spot.
-
-No violation of this kind exists in the tree today, and `tooling/entrypoint-drift.spec.ts` — which *does* resolve subpaths into source — partially compensates for the app-scoped cases. But it enforces the entrypoint drift vocabulary, not the element graph, and does not reach `packages/**` at all.
-
-Fix: extend `resolveWorkspacePackage()` to map `@akane/<pkg>/<subpath>` to `<workspace>/src/<subpath>/index.ts` (falling back to `<workspace>/src/<subpath>.ts`), add a `WORKSPACE_CASES` entry pinning the subpath form as rejected for `kernel`/`contract` and allowed for `app-api`, then re-run the negative control above and require `npm run build` to exit non-zero.
-
-**Four advisories** are recorded in the frontmatter: the unwired `CryptoModule` (security category — the guard logic is correct and proven, it is simply not composed into any process, and no window records the omission); the 8.2 s vs 0.2 s degraded-readiness latency spread across processes; `docker pause` making readiness hang past 20 s rather than return 503; and CONTEXT.md drift on D-15 / D-01 / D-02.
+**Phase 1 goal achieved.** Ready to proceed to Phase 2.
 
 ---
 
-_Verified: 2026-10-03T16:21:30Z_
+_Verified: 2026-10-03T20:35:17Z_
 _Verifier: the agent (gsd-verifier)_
+_Not committed — the orchestrator handles that._
