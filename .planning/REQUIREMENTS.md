@@ -43,8 +43,39 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **FND-01**: A clean checkout builds and runs with `npm ci` without breaking, on Node 24 LTS, NestJS 12, and a hard-pinned TypeScript 6.0.3
 - [x] **FND-02**: The repository commits `package-lock.json` in its first commit, and `.nvmrc` pins the Node major
 - [x] **FND-03**: The codebase contains three independently runnable process entrypoints — `api`, `worker`, and `scheduler` — that never drift into a single process
-- [ ] **FND-04**: A lint rule fails the build when a module imports across a declared component boundary
-- [ ] **FND-05**: `api`, `worker`, and `scheduler` each expose `/health/live` and `/health/ready`, where liveness checks no dependency and readiness checks MongoDB and both Redis deployments
+  - **(01-10) Complete — verified by booting, not by inspection.** Three `dist/main.js`
+    entrypoints, three `otel.mjs` loaders, three `app.module.ts` composition roots, three
+    per-app `BoundaryManifest`s, and three ports (3000/3001/3002, derived from `SERVICE_NAME`
+    by `DEFAULT_PORT_BY_SERVICE` in the boot schema rather than written next to `listen()`).
+    All three boot for real against MongoDB + two Redis deployments and answer `/health/live`,
+    `/health/ready` and `/metrics` on their own ports, each reporting its own `service_name`
+    on its own exporter. Three independent controls hold them apart: the lint gate
+    (`boundaries/dependencies` with `checkAllOrigins: true`, plus a scoped
+    `no-restricted-imports` on the `Worker` binding), the boot-time `ProviderBoundaryGuard`
+    (aborts in `OnApplicationBootstrap`, before `listen()` binds), and
+    `tooling/entrypoint-drift.spec.ts` (an import-closure walk from each `main.ts`). Each has
+    been negatively controlled by planting the violation it exists to catch.
+- [x] **FND-04**: A lint rule fails the build when a module imports across a declared component boundary
+  - **(01-03 delivered; re-verified by 01-10 against the real `npm run build`.)** `npm run build`
+    is `npm run lint && tsc -b`, so a violation fails a local build and CI identically. 01-10
+    planted a real cross-component import and confirmed the build exits non-zero, and planted a
+    `Worker` binding in `apps/api` and confirmed `no-restricted-imports` fires. Two of the
+    rule's silent non-enforcement modes are pinned by executable assertions rather than trusted
+    by inspection: `checkAllOrigins` (without it R2/R3 are dead configuration) and the custom
+    import resolver (without it every relative import is invisible and the rule reports zero).
+- [x] **FND-05**: `api`, `worker`, and `scheduler` each expose `/health/live` and `/health/ready`, where liveness checks no dependency and readiness checks MongoDB and both Redis deployments
+  - **(01-10) Complete — verified against running processes.** Booted evidence, each process
+    from its own `dist` entrypoint through its own `otel.mjs` loader: `/health/live` → 200
+    `{"status":"ok"}`; `/health/ready` → 200 with `mongo: up`, `redis_cache: up`,
+    `redis_queue: up` on all three, plus `bullmq_workers: {workers: 1, status: "up"}` on the
+    worker and `job_schedulers: {scheduler: "platform-heartbeat", status: "up"}` on the
+    scheduler. Liveness reads no dependency by construction — its body is a fixed literal, so
+    a Redis blip fails readiness without triggering a restart loop. The tracer's app-local
+    live-only controller was **deleted**, so exactly one definition of each route exists in
+    the repository. The same boot run also produced a negative control worth recording:
+    `/health/ready` reported `bullmq_workers: up` while the worker was listening on the wrong
+    queue prefix and consuming nothing, which is why "every registered Worker is listening"
+    (D-10) is now backed by a prefix assertion and not by `Worker.isRunning()` alone.
 - [x] **FND-06**: Structured JSON logs exclude PII by a **field allowlist applied before serialisation**, not a denylist filter
 - [x] **FND-07**: The OpenTelemetry trace ID is generated independently of `submission_id` and is not correlatable back to it
   - **(01-09) Delivered and proven.** `SPAN_ATTRIBUTE_ALLOWLIST` is a frozen constant enforced by
@@ -52,18 +83,39 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     `SpanProcessor.onStart` receives a `Span` with no read and no delete. Five spans carrying one
     `submission_id` through a real `TracerProvider` get five distinct trace ids, and no exported span's
     attributes match `/submission/i`. Fourteen URL/address attributes the HTTP instrumentation emits on
-    every span are named and excluded, because a URL path carries the submission id. **Not yet deployed:**
-    the ordering that starts OTel before the app module is measured (7 spans vs 1, in a real `node`
-    process) but no `main.ts` calls `startOtel()` yet — that is plan 10's `apps/*/otel.mjs`.
-- [ ] **FND-08**: Long-running scheduled work runs on BullMQ Job Schedulers, so a task registered once runs on every replica
-  - **(01-08) Mechanism delivered, NOT complete.** `registerJobScheduler` over
-    `Queue.upsertJobScheduler` exists and is proven idempotent against live Redis (registering three
-    times leaves `getJobSchedulersCount() === 1`), and the `platform-heartbeat` scheduler is
-    registered by `registerPlatformHeartbeat`. **No process calls it yet**: `apps/scheduler` must
-    call it at boot on *every* replica and `apps/worker` must construct the consuming `Worker` —
-    both plan 10's composition-root work. Keep this unchecked until all three processes run.
+    every span are named and excluded, because a URL path carries the submission id. **Deployed by
+    01-10:** all three entrypoints start the SDK through `apps/*/otel.mjs` before any application
+    module is loaded, and again defensively at the top of `main.ts` before the dynamic
+    `import('./app.module.js')` — the ordering 01-09 measured (7 spans vs 1) is now the shape
+    every process actually runs, not a counterfactual.
+- [x] **FND-08**: Long-running scheduled work runs on BullMQ Job Schedulers, so a task registered once runs on every replica
+  - **(01-08) Mechanism delivered. (01-10) Complete — verified against running processes.** The
+    requirement has two halves and both are now demonstrated on live Redis rather than asserted.
+    *Registered once, runs on every replica:* `apps/scheduler` calls `registerPlatformHeartbeat`
+    (an idempotent `upsertJobScheduler`) from `onApplicationBootstrap` on **every** boot with no
+    leader election, and a booted scheduler's `/health/ready` reads the scheduler back **out of
+    Redis** (`job_schedulers: {scheduler: "platform-heartbeat", status: "up"}`) rather than
+    reporting a cached flag. *The work actually runs:* `apps/worker` is the only process that
+    constructs a `Worker`, and after 75 s of a booted worker+scheduler pair Redis held
+    `{akane-q}:platform-heartbeat:completed` and the worker's own `/metrics` served
+    `platform_heartbeat_total{otel_scope_name="akane"} 2` — the plan-08 instrument moved, on the
+    OTel meter, through the one Prometheus exporter. **This needed a boot to get right:** 01-10's
+    draft worker was constructed without `prefix`, so it listened on BullMQ's default
+    `bull:platform-heartbeat` while the producer and scheduler used D-14's `{akane-q}` — and
+    `/health/ready` still reported `bullmq_workers: up`, because `Worker.isRunning()` asks only
+    whether the blocking loop is alive. `platformHeartbeatWorkerOptions()` is now one assertable
+    value pinned against `queueRootOptions`' prefix.
 - [x] **FND-09**: All configuration is validated at boot by Zod; an invalid or missing required value fails startup with a named error
 - [ ] **FND-10**: Secrets are encrypted at rest with AES-256-GCM under a KMS-backed master key, and no secret appears in code, config files, or plaintext env vars
+  - **STAYS PENDING. Nothing in plan 10 touches it and nothing could.** The AES-256-GCM envelope,
+    the `KeyProvider` interface and the production guard (`NODE_ENV=production` without
+    `CRYPTO_KEY_PROVIDER=kms` refuses to boot) all landed in 01-05 and are proven. The one part
+    that is not delivered is the **KMS vendor adapter**, which D-27 names as blocked on naming the
+    deployment cloud (blocker B-3 / D-27). The requirement says "under a KMS-backed master key",
+    and no KMS-backed master key exists yet — only a local one, correctly refused in production.
+    Phase 1 also stores no real secret (D-28), so nothing is currently exposed by the gap; the
+    *first* stored secret is a connector credential in Phase 5, and WINDOWS.md entry 7 is open
+    against that point.
 
 ### Identity & User Resolution
 
@@ -199,8 +251,13 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     the end-to-end proof of plan 08's meter hand-off. A process that never started OTel refuses to
     compose the module with a named `OTEL_NOT_STARTED` rather than serving a permanently empty page.
     A second registry was negatively controlled: substituting a fresh exporter turns 3 of 5 tests red.
-    **Residual, plan 10's job:** `MetricsModule` is not yet mounted by `api`, `worker` or `scheduler`,
-    so no process exposes `/metrics` until plan 10's composition roots import it.
+  - **(01-10) Residual discharged — all three processes serve it.** `MetricsModule` is now mounted
+    by `api`, `worker` and `scheduler`, so `GET /metrics` answers 200 on 3000, 3001 and 3002. Each
+    process owns its own registry and each reports its own `target_info{service_name=…}` — three
+    registries, not three views of one — which is the reason all three must serve the endpoint
+    rather than one aggregating for the others. The `OTEL_NOT_STARTED` refusal was observed for
+    real by booting a process that skipped `startOtel()`, and the plan-08 instrument was observed
+    moving in a booted worker: `platform_heartbeat_total{otel_scope_name="akane"} 2`.
 - [ ] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
@@ -343,19 +400,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | FND-01 | Phase 1 | Complete |
 | FND-02 | Phase 1 | Complete |
-| FND-03 | Phase 1 | Complete |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Complete (01-10) |
+| FND-04 | Phase 1 | Complete (01-03, re-verified 01-10) |
+| FND-05 | Phase 1 | Complete (01-10) |
 | FND-06 | Phase 1 | Complete |
 | FND-07 | Phase 1 | Complete (01-09) |
-| FND-08 | Phase 1 | Pending |
+| FND-08 | Phase 1 | Complete (01-10) |
 | FND-09 | Phase 1 | Complete |
 | FND-10 | Phase 1 | Pending |
 | LNK-07 | Phase 1 | Complete |
 | RTE-10 | Phase 1 | Complete |
 | AUD-10 | Phase 1 | Pending |
 | DAT-13 | Phase 1 | Pending |
-| OBS-01 | Phase 1 | Complete (01-09) |
+| OBS-01 | Phase 1 | Complete (01-09, mounted 01-10) |
 | IDN-01 | Phase 2 | Pending |
 | IDN-02 | Phase 2 | Pending |
 | IDN-03 | Phase 2 | Pending |
