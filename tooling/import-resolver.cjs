@@ -13,16 +13,29 @@
  * under-enforcement FND-04 exists to prevent, so the mapping has to exist
  * somewhere. This is the smallest place to put it.
  *
- * Two responsibilities, both load-bearing:
+ * Three responsibilities, all load-bearing:
  *
  * 1. `./foo.js` -> `./foo.ts` for relative specifiers.
- * 2. `@akane/<pkg>` -> `<workspace>/src/index.ts`. Node resolution honours the
- *    package `exports` map, which sends every cross-workspace import to
- *    `dist/index.js` under `node_modules`. `node_modules` is the plugin's
- *    definition of `external`, so `import { X } from '@akane/platform'` inside
- *    `packages/kernel` would be classified an external dependency and pass
- *    unexamined — a cross-package boundary violation that reads like ordinary
- *    element graph inside the local-origin branch the rules are written for.
+ * 2. `@akane/<pkg>` -> `<workspace>/src/index.ts`.
+ * 3. `@akane/<pkg>/<subpath>` -> `<workspace>/src/<subpath>/index.ts`, falling
+ *    back to `<workspace>/src/<subpath>.ts`.
+ *
+ * 2 and 3 are the same responsibility and they have to be fixed together.
+ * `package.json#exports` sends **every** workspace specifier, subpath or not,
+ * to `dist/…js` under `node_modules`. `node_modules` is the plugin's definition
+ * of `external`, and policy 0 allows `external` unconditionally, so
+ * `import { X } from '@akane/platform'` inside `packages/kernel` would be
+ * classified a third-party dependency and pass unexamined — a cross-package
+ * boundary violation that reads like ordinary element graph inside the
+ * local-origin branch the rules are written for.
+ *
+ * Mapping only the **bare** form (as this file originally did) leaves the
+ * subpath form exactly as invisible, and the subpath form is not hypothetical:
+ * all three entrypoints import `@akane/platform/otel`, which `package.json`
+ * declares as a deep entry precisely so it can load before the instrumented
+ * modules (D-20). `tooling/boundaries.fixture.spec.ts` pins both forms, in the
+ * violation direction and in the compliant direction, because a resolver that
+ * maps one and misses the other is precisely as blind as one that maps neither.
  *
  * Everything else is delegated to Node unchanged, so `@nestjs/*` still resolves
  * into `node_modules` and is classified `external` as intended.
@@ -47,31 +60,91 @@ const WORKSPACE_LINKS = path.join(REPO_ROOT, 'node_modules', '@akane');
 /** Extensions tried for an extensionless or `.js`-suffixed relative specifier. */
 const TS_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts'];
 const JS_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs'];
+/** Every extension a workspace entry may carry, TS first. */
+const ENTRY_EXTENSIONS = [...TS_EXTENSIONS, ...JS_EXTENSIONS];
 
 /**
- * `@akane/<pkg>` -> the workspace's own `src/index.ts`.
+ * The first candidate that exists as a file, or `null`.
+ *
+ * @param {readonly string[]} candidates
+ * @returns {string | null}
+ */
+function firstFile(candidates) {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+/**
+ * NodeNext's output convention again, one level up: `@akane/platform/otel.js`
+ * names `src/otel.ts` (or `src/otel/index.ts`) on disk.
+ *
+ * @param {string} specifier workspace subpath, without the package name
+ * @returns {string}
+ */
+function stripJsExtension(specifier) {
+  const extension = path.extname(specifier);
+  return JS_EXTENSIONS.includes(extension) ? specifier.slice(0, -extension.length) : specifier;
+}
+
+/**
+ * `@akane/<pkg>` -> the workspace's own `src/index.ts`, and
+ * `@akane/<pkg>/<subpath>` -> the workspace's own `src/<subpath>`.
  *
  * npm workspaces symlinks each package into `node_modules/@akane`, and the
  * package `exports` map points at `dist/index.js`. Following that map would
  * classify a cross-workspace import as `external` — the plugin's word for a
  * third-party dependency — and the element graph would never see it. Following
- * the symlink to the real package root and entering at `src/index.ts` keeps
- * the import inside the local-origin branch the policies are written for.
+ * the symlink to the real package root and entering at `src/` keeps the import
+ * inside the local-origin branch the policies are written for.
  *
- * @param {string} source bare specifier, e.g. `@akane/platform`
+ * The **subpath** half is not optional tidiness: it is the same defect. An
+ * `exports` entry like `"./otel"` sends the specifier into
+ * `node_modules/@akane/platform/dist/otel/index.js`, which is `external`, which
+ * policy 0 allows unconditionally — so `@akane/platform/crypto` imported from
+ * `packages/contract` (whose only allowed edges are `['kernel']`) reads as
+ * compliant. That is gap G-1 in `01-VERIFICATION.md`, and it defeats Phase 1's
+ * third success criterion: "a module that imports across a declared component
+ * boundary fails the build".
+ *
+ * `src/<subpath>/index.ts` is tried before `src/<subpath>.ts` because every
+ * subfolder barrel in this repo is a directory, which is also the shape
+ * `package.json#exports` declares (`"./otel" -> ./dist/otel/index.js`).
+ *
+ * @param {string} source bare specifier, e.g. `@akane/platform` or
+ *   `@akane/platform/otel`
  * @returns {{ found: true, path: string } | { found: false }}
  */
 function resolveWorkspacePackage(source) {
-  const link = path.join(WORKSPACE_LINKS, source.slice('@akane/'.length));
+  const [, name, ...rest] = source.split('/');
+  const subpath = rest.join('/');
+  // A workspace name or subpath that walks out of the package root is not a
+  // workspace specifier; let it fall through to Node's own resolution, which is
+  // the authority on what a real package layout is.
+  if (!name || name === '.' || name === '..' || subpath.split('/').includes('..')) {
+    return { found: false };
+  }
+
   let realRoot;
   try {
-    realRoot = fs.realpathSync(link);
+    realRoot = fs.realpathSync(path.join(WORKSPACE_LINKS, name));
   } catch {
     return { found: false };
   }
 
-  const entry = path.join(realRoot, 'src', 'index.ts');
-  return fs.existsSync(entry) ? { found: true, path: entry } : { found: false };
+  const srcRoot = path.join(realRoot, 'src');
+  if (subpath === '') {
+    const root = firstFile(ENTRY_EXTENSIONS.map((ext) => path.join(srcRoot, `index${ext}`)));
+    return root === null ? { found: false } : { found: true, path: root };
+  }
+
+  const stem = stripJsExtension(subpath);
+  const entry =
+    firstFile(ENTRY_EXTENSIONS.map((ext) => path.join(srcRoot, stem, `index${ext}`))) ??
+    firstFile(ENTRY_EXTENSIONS.map((ext) => path.join(srcRoot, `${stem}${ext}`)));
+
+  return entry === null ? { found: false } : { found: true, path: entry };
 }
 
 /**

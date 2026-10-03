@@ -37,6 +37,7 @@
  */
 
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import boundaries from 'eslint-plugin-boundaries';
@@ -49,6 +50,9 @@ import {
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE_ROOT = 'tooling/boundaries-fixtures';
 const RESOLVER_PATH = path.join(REPO_ROOT, 'tooling', 'import-resolver.cjs');
+
+/** POSIX separators, so a path assertion reads the same on every platform. */
+const toPosix = (value: string): string => value.split(path.sep).join('/');
 
 /** The exported element types, re-rooted at the fixture tree. */
 const FIXTURE_ELEMENTS = boundariesSettings['boundaries/elements'].map(
@@ -326,7 +330,15 @@ const COMPLIANT_CASES: ReadonlyArray<{
  * `external`, and pass unexamined — while every fixture case still passed. So
  * these two assertions run the real `boundariesSettings` against real paths.
  */
-function createRepoEslint(): ESLint {
+/**
+ * @param rule        the `boundaries/dependencies` rule body under test
+ * @param useResolver whether `tooling/import-resolver.cjs` is installed. The
+ *   backstop tests flip this to prove the resolver is load-bearing.
+ */
+function createRepoEslint(
+  rule: unknown = boundariesDependenciesRule,
+  useResolver = true,
+): ESLint {
   return new ESLint({
     ignore: false,
     cwd: REPO_ROOT,
@@ -337,9 +349,9 @@ function createRepoEslint(): ESLint {
         plugins: { boundaries },
         settings: {
           ...boundariesSettings,
-          'import/resolver': { [RESOLVER_PATH]: null },
+          ...(useResolver ? { 'import/resolver': { [RESOLVER_PATH]: null } } : {}),
         },
-        rules: { 'boundaries/dependencies': boundariesDependenciesRule },
+        rules: { 'boundaries/dependencies': rule },
       },
     ],
   });
@@ -350,6 +362,13 @@ const WORKSPACE_CASES: ReadonlyArray<{
   readonly file: string;
   readonly code: string;
   readonly expectViolation: boolean;
+  /**
+   * Whether this case depends on the **subpath** branch of
+   * `tooling/import-resolver.cjs` rather than on the bare-specifier branch.
+   * The resolver backstop below keys off this: with the default Node resolver
+   * every one of them goes silent.
+   */
+  readonly subpathOnly?: boolean;
 }> = [
   {
     name: 'kernel importing @akane/platform is rejected (workspace edge)',
@@ -362,6 +381,53 @@ const WORKSPACE_CASES: ReadonlyArray<{
     file: 'apps/api/src/index.ts',
     code: "import { REDIS } from '@akane/platform';",
     expectViolation: false,
+  },
+
+  // ---- The SUBPATH form, which is the form the tree actually uses ----
+  //
+  // Gap G-1 (`01-VERIFICATION.md`): the resolver mapped only the bare
+  // `@akane/<pkg>` specifier. A subpath fell through to Node's `exports` map,
+  // resolved into `node_modules/<pkg>/dist/…js`, was classified `external`, and
+  // policy 0 allows `external` unconditionally — so `packages/contract` (whose
+  // only allowed edge is `['kernel']`) importing `@akane/platform/crypto` passed
+  // both `eslint` and `tsc`, and `npm run build` went green on a real
+  // cross-boundary import. All three entrypoints use the subpath form
+  // (`@akane/platform/otel`, D-20), so the compliant cases below are not
+  // hypothetical either: they are the tree as it stands.
+  {
+    name: 'contract importing @akane/platform/crypto is rejected (subpath workspace edge)',
+    file: 'packages/contract/src/index.ts',
+    code: "import { encryptSecret } from '@akane/platform/crypto';",
+    expectViolation: true,
+    subpathOnly: true,
+  },
+  {
+    name: 'kernel importing @akane/platform/crypto is rejected (subpath workspace edge)',
+    file: 'packages/kernel/src/index.ts',
+    code: "import { encryptSecret } from '@akane/platform/crypto';",
+    expectViolation: true,
+    subpathOnly: true,
+  },
+  {
+    name: 'platform importing a domain type through a subpath is rejected',
+    file: 'packages/platform/src/index.ts',
+    code: "import { l } from '@akane/contract/links/read-link-claims.js';",
+    expectViolation: true,
+    subpathOnly: true,
+  },
+  {
+    name: 'app-api importing @akane/platform/otel is an allowed subpath workspace edge',
+    file: 'apps/api/src/index.ts',
+    code: "import { startOtel } from '@akane/platform/otel';",
+    expectViolation: false,
+    subpathOnly: true,
+  },
+  {
+    name: 'a NodeNext ".js" subpath is the same edge as the bare subpath',
+    file: 'apps/api/src/index.ts',
+    code: "import { startOtel } from '@akane/platform/otel.js';",
+    expectViolation: false,
+    subpathOnly: true,
   },
 ];
 
@@ -432,6 +498,133 @@ describe('boundaries fixture smoke test (FND-04)', () => {
         testCase.expectViolation,
       );
     }
+  });
+
+  /**
+   * G-1 backstop: the subpath mapping is the *fix*, so the fix gets the same
+   * treatment as the `./foo.js` mapping above it — asserted directly against the
+   * resolver, then asserted to be the only reason those cases are visible.
+   *
+   * The second half matters more than the first. A resolver that maps the bare
+   * form and declines the subpath form is not "partially enforcing": the plugin
+   * reads a declined workspace specifier as `external`, policy 0 allows
+   * `external` unconditionally, and the tree reports zero problems while holding
+   * a real violation. Removing the subpath branch reproduces G-1 exactly, and
+   * this test goes red rather than green.
+   */
+  describe('workspace subpath resolution (G-1)', () => {
+    it('maps @akane/<pkg>/<subpath> onto the workspace source, not onto dist/', () => {
+      const resolver = createRequire(import.meta.url)(RESOLVER_PATH) as {
+        resolve: (source: string, file: string) => { found: boolean; path: string | null };
+      };
+      const from = path.join(REPO_ROOT, 'apps', 'api', 'src', 'main.ts');
+
+      for (const [specifier, expected] of [
+        ['@akane/platform', 'packages/platform/src/index.ts'],
+        ['@akane/platform/otel', 'packages/platform/src/otel/index.ts'],
+        ['@akane/platform/crypto', 'packages/platform/src/crypto/index.ts'],
+        ['@akane/platform/otel.js', 'packages/platform/src/otel/index.ts'],
+        ['@akane/kernel', 'packages/kernel/src/index.ts'],
+        ['@akane/contract', 'packages/contract/src/index.ts'],
+        // A subpath may name a module directly as well as a barrel directory.
+        ['@akane/platform/redis/redis.provider.js', 'packages/platform/src/redis/redis.provider.ts'],
+      ] as const) {
+        const resolved = resolver.resolve(specifier, from);
+        expect(resolved.found, `${specifier} must resolve`).toBe(true);
+        expect(toPosix(resolved.path ?? '')).toBe(path.posix.join(toPosix(REPO_ROOT), expected));
+        expect(resolved.path, `${specifier} must not resolve into dist/`).not.toContain('/dist/');
+        expect(resolved.path, `${specifier} must not resolve into node_modules`).not.toContain(
+          '/node_modules/',
+        );
+      }
+
+      // And the shapes it must decline rather than guess at. Declining is not
+      // free — the plugin reads `found: false` as `external`, which policy 0
+      // allows — but an unresolvable specifier is a `tsc` error, and inventing
+      // a path for it would put a file the compiler never named into the
+      // element graph.
+      expect(resolver.resolve('@akane/platform/does-not-exist', from).found).toBe(false);
+      expect(resolver.resolve('@akane/platform/../kernel', from).found).toBe(false);
+      expect(resolver.resolve('@akane/nosuchpkg', from).found).toBe(false);
+    });
+
+    it('every violating subpath case is invisible without the subpath mapping', async () => {
+      const withoutSubpathMapping = createRepoEslint(boundariesDependenciesRule, false);
+      const violatingSubpathCases = WORKSPACE_CASES.filter(
+        (testCase) => testCase.subpathOnly === true && testCase.expectViolation,
+      );
+      expect(
+        violatingSubpathCases.length,
+        'the subpath backstop needs at least one violating case to be a backstop',
+      ).toBeGreaterThan(0);
+
+      for (const testCase of violatingSubpathCases) {
+        // Control: with the shipped resolver, the violation is reported.
+        const enforced = await lintAt(createRepoEslint(), testCase.file, testCase.code);
+        expect(
+          enforced.map((message) => message.ruleId),
+          `${testCase.name} — control run must observe the shipped resolver`,
+        ).toContain('boundaries/dependencies');
+
+        // Without the subpath mapping the same source is reported as clean. This
+        // is the tree G-1 shipped: `npm run build` green, cross-boundary import
+        // in it, and the two are indistinguishable from the outside.
+        const silent = await lintAt(withoutSubpathMapping, testCase.file, testCase.code);
+        expect(
+          silent.map((message) => message.ruleId),
+          `${testCase.name} — a resolver that declines the subpath form must produce no diagnostics`,
+        ).toEqual([]);
+      }
+    });
+
+    /**
+     * The other half, and the half a "make it stricter everywhere" fix would
+     * fail: `@akane/platform/otel` from `apps/api` is allowed **and examined**.
+     *
+     * An allowed edge and an unexamined edge are the same observation — zero
+     * diagnostics — so the compliant subpath cases above prove nothing on their
+     * own. This one removes `app-api`'s allowed-edge policy from the shipped
+     * rule and asserts the *same* import then fails. It can only fail-then-pass
+     * if the subpath resolved to a real local `platform` element that the
+     * policies actually reached — i.e. the resolver fix did not achieve its
+     * result by making the rule complain about everything.
+     */
+    it('a compliant subpath edge is evaluated, not silently skipped', async () => {
+      const compliant = WORKSPACE_CASES.find(
+        (testCase) => testCase.name ===
+          'app-api importing @akane/platform/otel is an allowed subpath workspace edge',
+      );
+      if (!compliant) throw new Error('compliant subpath case not found');
+
+      const shipped = await lintAt(createRepoEslint(), compliant.file, compliant.code);
+      expect(shipped, 'the shipped rule must allow the subpath edge the tree uses').toEqual([]);
+
+      const [, options] = boundariesDependenciesRule as [
+        string,
+        { policies: ReadonlyArray<Record<string, unknown>> },
+      ];
+      // Drop only the `app-api` element-edge policy. R1's `!(app-api)` selector
+      // and the third-party allow keep their own `from`, and neither is the
+      // literal string `app-api`, so nothing else is disturbed.
+      const tightened = createRepoEslint([
+        'error',
+        {
+          ...options,
+          policies: options.policies.filter(
+            (policy) =>
+              (policy['from'] as { element?: { type?: string } } | undefined)?.element?.type !==
+              'app-api',
+          ),
+        },
+      ]);
+
+      const tightenedResult = await lintAt(tightened, compliant.file, compliant.code);
+      expect(
+        tightenedResult.map((message) => message.ruleId),
+        'an allowed subpath edge that no policy reaches would report nothing here, ' +
+          'which means the rule never examined it',
+      ).toContain('boundaries/dependencies');
+    });
   });
 
   // ========================================================================= //
