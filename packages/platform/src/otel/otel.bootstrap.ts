@@ -9,6 +9,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 // codebase imports directly must not be reached through a transitive hoist.
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
+import { APP_CONFIG_KEYS, AppConfigSchema, formatConfigError } from '../config/config.schema.js';
 import { AllowlistSpanExporter } from './allowlist-span-exporter.js';
 import {
   createPrometheusExporter,
@@ -173,4 +174,71 @@ export async function startOtel(config: OtelBootstrapConfig): Promise<OtelHandle
   }
   await startOnce;
   return started;
+}
+
+let stopped = false;
+
+/**
+ * Stop the SDK so buffered spans and metrics are flushed (T-1-24).
+ *
+ * ## Why the three entrypoints must call this
+ *
+ * A `BatchSpanProcessor` holds finished spans in memory on a timer. Without an
+ * explicit `shutdown()` those spans die with the process — so a rolling deploy
+ * is precisely the moment telemetry is most likely to be short, and the gap
+ * always coincides with a deploy, which is what makes it look like "the
+ * exporter drops spans under load" rather than "we threw them away".
+ *
+ * Called from each `AppModule`'s `onApplicationShutdown`, which
+ * `enableShutdownHooks()` makes reachable from SIGTERM (D-09). Idempotent, and a
+ * no-op when the process never started an SDK — otherwise a process that died
+ * before `startOtel()` would replace a useful error with a confusing one on the
+ * way out.
+ */
+export async function shutdownOtel(): Promise<void> {
+  if (started === undefined || stopped) {
+    return;
+  }
+  stopped = true;
+  await started.sdk.shutdown();
+}
+
+/**
+ * The bootstrap slice of the validated boot config, read from the **live**
+ * process environment (FND-09, WINDOWS.md entry 12).
+ *
+ * `startOtel()` runs before Nest exists — that is the whole of D-20's ordering
+ * rule — so there is no `ConfigService` to ask, and it runs before any app
+ * module, so asking one later would be too late even if one existed. The
+ * environment is therefore read directly and validated through the *same*
+ * `AppConfigSchema` the boot module uses rather than through a second, narrower
+ * schema: two schemas over overlapping keys is how
+ * `OTEL_EXPORTER_OTLP_ENDPOINT` came to be read by the SDK and validated by
+ * nobody (entry 12).
+ *
+ * Narrowing to `APP_CONFIG_KEYS` mirrors `namedValidate`, so `process.env`'s
+ * hundreds of unrelated keys cannot trip `.strict()`.
+ */
+export function otelBootstrapConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): OtelBootstrapConfig {
+  const candidate: Record<string, unknown> = {};
+  for (const key of APP_CONFIG_KEYS) {
+    if (key in env) {
+      candidate[key] = env[key];
+    }
+  }
+
+  const result = AppConfigSchema.safeParse(candidate);
+  if (!result.success) {
+    // The same named boot error as the DI-time module, deliberately: an operator
+    // who mistypes MONGO_URL should not get a different diagnostic depending on
+    // whether OTel happened to notice first.
+    throw new Error(formatConfigError(result.error.issues[0]));
+  }
+
+  return {
+    SERVICE_NAME: result.data.SERVICE_NAME,
+    OTEL_EXPORTER_OTLP_ENDPOINT: result.data.OTEL_EXPORTER_OTLP_ENDPOINT,
+  };
 }

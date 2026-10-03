@@ -54,4 +54,63 @@ describe('ConfigModule — Zod-validated boot config (FND-09)', () => {
     expect(parsed.NODE_ENV).toBe('development');
     expect(parsed.PORT).toBe(3000);
   });
+
+  /**
+   * WINDOWS.md entry 6. `ConfigModule.forRoot()` is async and was called at
+   * module scope, so `ConfigService` served a snapshot taken at **import** time
+   * and preferred it over the live environment. This test is the regression
+   * guard: the value is set after this file's imports have already run, which is
+   * exactly the window in which the old implementation answered `test`.
+   */
+  it('reads the environment at DI time, not at module-import time (WINDOWS.md 6)', async () => {
+    const restore = swapEnv('NODE_ENV', 'production');
+    try {
+      const moduleRef = await Test.createTestingModule({
+        imports: [ConfigModule],
+      }).compile();
+
+      expect(moduleRef.get(ConfigService).get<string>('NODE_ENV')).toBe('production');
+
+      await moduleRef.close();
+    } finally {
+      restore();
+    }
+  });
+
+  it('still fails boot with a named CONFIG_INVALID error (FND-09)', async () => {
+    const restore = swapEnv('MONGO_URL', undefined);
+    try {
+      await expect(
+        Test.createTestingModule({ imports: [ConfigModule] }).compile(),
+      ).rejects.toThrowError(/^CONFIG_INVALID: MONGO_URL/);
+    } finally {
+      restore();
+    }
+  });
 });
+
+/**
+ * Set a boot key for the duration of one test and put it back exactly as it was.
+ *
+ * `test/setup-env.ts` seeds these globally and vitest reuses worker processes
+ * across spec files, so "set it and forget it" would leak into whichever file
+ * runs next — including the assertion that a *missing* key is a boot failure.
+ * Deleting rather than writing `undefined` matters: `process.env.X = undefined`
+ * stores the **string** `'undefined'`, which Zod would happily accept as a URL
+ * scheme-relative string and fail on for a reason that is not the one under test.
+ */
+function swapEnv(key: string, value: string | undefined): () => void {
+  const previous = process.env[key];
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+  return () => {
+    if (previous === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = previous;
+    }
+  };
+}

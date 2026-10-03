@@ -21,7 +21,9 @@ export {
 } from './otel.constants.js';
 export {
   buildOtelSdk,
+  otelBootstrapConfigFromEnv,
   otlpSignalUrl,
+  shutdownOtel,
   startOtel,
   type OtelBootstrapConfig,
   type OtelHandle,

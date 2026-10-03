@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./otel": {
+      "types": "./dist/otel/index.d.ts",
+      "import": "./dist/otel/index.js",
+      "default": "./dist/otel/index.js"
+    },
     "./crypto": {
       "types": "./dist/crypto/index.d.ts",
       "import": "./dist/crypto/index.js",

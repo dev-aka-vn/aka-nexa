@@ -2,6 +2,42 @@ import { z } from 'zod';
 import { REDIS_URL_FIELDS, refineRedisInstancesDistinct } from './redis.schema.js';
 
 /**
+ * The three process names (D-01). Declared as a value, not restated inline, so
+ * `SERVICE_NAME`'s enum and the per-process port table cannot disagree.
+ */
+export const SERVICE_NAMES = Object.freeze(['api', 'worker', 'scheduler'] as const);
+
+export type ServiceName = (typeof SERVICE_NAMES)[number];
+
+/**
+ * The port each process listens on when `PORT` is not set (FND-03, D-09).
+ *
+ * ## Why the default lives in the schema
+ *
+ * FND-03 is "three independently runnable processes", and 3000/3001/3002 is
+ * part of that contract: three processes that all default to one port are not
+ * three processes, they are one process with a name. So the default has to be
+ * **derived from something that identifies the process**, and the only such
+ * value in the environment is `SERVICE_NAME`.
+ *
+ * The alternative — three literal `app.listen(3001)` calls — is what this table
+ * exists to avoid. It would put the port next to `listen()`, where it is
+ * invisible to config validation, un-overridable without editing code, and
+ * impossible to assert in a test that does not boot a process. Here it is
+ * overridable with one env var and assertable with `validateConfig`.
+ *
+ * Three distinct ports is also what lets all three run on one host during
+ * development, which is the only way an operator can see the three-process
+ * topology behave like three processes before it is deployed.
+ */
+export const DEFAULT_PORT_BY_SERVICE: Readonly<Record<ServiceName, number>> =
+  Object.freeze({
+    api: 3000,
+    worker: 3001,
+    scheduler: 3002,
+  });
+
+/**
  * Boot configuration schema (FND-09).
  *
  * `.strict()` is deliberate: when the schema is parsed directly, any field not
@@ -14,22 +50,62 @@ import { REDIS_URL_FIELDS, refineRedisInstancesDistinct } from './redis.schema.j
  */
 const AppConfigShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
-  SERVICE_NAME: z.enum(['api', 'worker', 'scheduler']),
+  // `.optional()` rather than `.default(3000)`: the default is per-process, and
+  // only `SERVICE_NAME` knows which process this is (see the transform below).
+  PORT: z.coerce.number().int().positive().optional(),
+  SERVICE_NAME: z.enum(SERVICE_NAMES),
   MONGO_URL: z.string().url(),
   ...REDIS_URL_FIELDS,
   CRYPTO_KEY_PROVIDER: z.enum(['local', 'kms']).default('local'),
+  /**
+   * Base OTLP/HTTP collector endpoint (OBS-01, D-20).
+   *
+   * Optional on purpose: telemetry failing to export must never be the reason a
+   * pod does not start, so an absent collector is a legal configuration. What
+   * is not legal is a *malformed* one — a typo'd endpoint that silently exports
+   * nothing is how a platform ends up with no traces and no error. The OTel SDK
+   * reads this variable straight from `process.env` when no exporter `url` is
+   * given, so it was previously unvalidated at every level (WINDOWS.md entry 12).
+   */
+  OTEL_EXPORTER_OTLP_ENDPOINT: z
+    .string()
+    .url()
+    // `z.string().url()` is not enough on its own: `new URL('collector:4318')`
+    // parses successfully — `collector` is a scheme, `4318` is a path — so a
+    // missing `http://` would pass validation and then be silently ignored by
+    // the exporters. An OTLP endpoint has to be reachable over HTTP.
+    .refine((value) => /^https?:\/\//i.test(value), 'expected an http(s) OTLP endpoint')
+    .optional(),
 };
 
 /**
- * The boot contract. `.strict()` rejects unknown keys; the `superRefine` adds
- * D-12's distinct-instance cross-field rule so both failure modes share one
- * named boot error.
+ * The object half of the boot contract: `.strict()` unknown-key rejection and
+ * D-12's distinct-instance cross-field rule, before the per-process port default
+ * is applied.
+ *
+ * Split out so the declared key set is assertable (`AppConfigSchema` is a
+ * `ZodPipe` once `.transform` is chained onto it, and a pipe has no `.shape`).
+ * Exported for that assertion and nothing else — **do not parse configuration
+ * with it**, which is precisely why its one visible defect (an unresolved
+ * `PORT`) is a trap.
  */
-export const AppConfigSchema = z
+export const AppConfigObjectSchema = z
   .object(AppConfigShape)
   .strict()
   .superRefine(refineRedisInstancesDistinct);
+
+/**
+ * The boot contract, plus the per-process port default.
+ *
+ * The transform is the last stage deliberately: it must see a `SERVICE_NAME`
+ * that already passed the enum, and it must not be able to mask a refinement
+ * failure — a boot that collapses both Redis deployments onto one instance has
+ * to fail with `CONFIG_INVALID`, not come back with a filled-in `PORT`.
+ */
+export const AppConfigSchema = AppConfigObjectSchema.transform((config) => ({
+  ...config,
+  PORT: config.PORT ?? DEFAULT_PORT_BY_SERVICE[config.SERVICE_NAME],
+}));
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
