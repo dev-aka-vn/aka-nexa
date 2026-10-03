@@ -38,6 +38,7 @@
  * is named explicitly here and the queue barrel keeps its own copy.
  */
 export * from './bootstrap/boundary-manifest.js';
+export * from './bootstrap/process-capabilities.js';
 export * from './bootstrap/provider-boundary.guard.js';
 export * from './bootstrap/provider-boundary.runner.js';
 export * from './config/config.schema.js';
