@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-07-PLAN.md
-last_updated: "2026-10-02T17:10:00.000Z"
-last_activity: 2026-10-02
-last_activity_desc: Plan 01-07 complete - three-container harness, native-driver MongoService, per-dependency readiness (FND-05 mechanism delivered; the three entrypoints still do not mount it)
-state_head: 124a774
+stopped_at: Completed 01-08-PLAN.md
+last_updated: "2026-10-03T08:00:00.000Z"
+last_activity: 2026-10-03
+last_activity_desc: Plan 01-08 complete - BullMQ queue floor with a proven {akane-q} hash tag, idempotent upsertJobScheduler registration, two bounded readiness indicators, OTel business metrics (FND-08, OBS-01)
+state_head: 38b6212
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 7
-  percent: 70
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 7 of 10 complete (01-08 — next)
+Plan: 8 of 10 complete (01-09 — next)
 Status: Ready to execute
-Last activity: 2026-10-02 — Plan 01-07 complete (three-container harness + `MongoService` + `HealthController`; **FND-05 stays PENDING** — no `apps/**` module mounts the controller yet)
+Last activity: 2026-10-03 — Plan 01-08 complete (BullMQ queue module + idempotent `upsertJobScheduler` registration + two readiness indicators + OTel business metrics; **FND-08** and **OBS-01** closed as mechanisms — no process registers or consumes yet, that is plan 10)
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 55min
-- Total execution time: 8.5 hours
+- Total plans completed: 8
+- Average duration: 56min
+- Total execution time: 9.8 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 7 | 7 | 55min |
+| 01 | 8 | 8 | 56min |
 
 **Recent Trend:**
-- Last 7 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min)
-- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-07 is the second costliest, and the reason generalises: **Docker dominates it.** A plan whose correctness comes from *asserting a contract* is cheap; one that must observe a real server pays roughly two minutes of container startup per spec that starts its own harness, and three specs did. The library-behaviour corrections (terminus indicator functions, `directConnection`, `executeCliCmd` argv, `connectTimeoutMS`) were each found by running the code, not by reading it — the same pattern as 01-04, cheaper per finding. **Read the cost as "time spent observing reality", not as inefficiency.**
+- Last 8 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min)
+- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-07 (95min) and 01-08 (78min) are next, and the same reason generalises: **Docker dominates them.** A plan whose correctness comes from *asserting a contract* is cheap; one that must observe a real server pays roughly two minutes of container startup per spec that starts its own harness. 01-08 got that cost down by starting **two Redis containers instead of three** — the MongoDB replica-set handshake is the expensive part and proved nothing about queue keys. The library-behaviour corrections (terminus indicator functions, `directConnection`, `executeCliCmd` argv, `connectTimeoutMS`, BullMQ's non-rejecting `waitUntilReady`) were each found by running the code, not by reading it. **Read the cost as "time spent observing reality", not as inefficiency.**
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -64,6 +64,7 @@ Progress: [███████░░░] 70%
 | Phase 01 P06 | 38min | 3 tasks | 17 files |
 | Phase 01 P05 | 49min | 3 tasks | 10 files |
 | Phase 01 P07 | 95min | 3 tasks | 21 files |
+| Phase 01 P08 | 78min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,19 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: [Phase 1 / 01-07]: **`packages/platform/package.json`'s `exports` hand-off has now recurred THREE times** (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`). The barrels exist so plans do not have to edit the root barrel, but the map declares only `"."` and `"./crypto"`, so every deep specifier is unresolvable cross-package. Worth resolving once, deliberately, in the first plan that actually needs a deep import — not a fourth time by accident.
 - [Phase 01]: [Phase 1 / 01-07]: **`mongodb` and `ioredis` are imported by runtime code but live in root `devDependencies`.** Pre-existing repo-wide model (01-02 added `ioredis` this way, 01-04 added `pino` this way), so `npm ci --omit=dev` produces a tree that cannot boot. Not introduced here and out of this plan's scope, but it is a deployment-shape decision that should be made once, deliberately, before the first image is built.
 
+- [Phase 01]: [Phase 1 / 01-08]: **`upsert` IS FND-08 — no leader election, no lock, no "am I the scheduler pod" flag.** One idempotent `Queue.upsertJobScheduler(id, repeatOpts, template)` per boot on every replica converges on a single registered scheduler; proven by registering THREE times and reading `getJobSchedulersCount() === 1` back off a live Redis. The alternatives are worse in ways only concurrency reveals: a leader-election lock can deadlock against the scheduler it elects, and "only the first replica registers" turns a rolling deploy into a window where nothing schedules at all.
+- [Phase 01]: [Phase 1 / 01-08]: **A Job Scheduler id and its queue name are ONE string and must be ONE constant.** `QueueModule` registers `PLATFORM_HEARTBEAT_QUEUE`, which is now `= PLATFORM_HEARTBEAT_ID` rather than a second literal — two literals for one string is exactly how a job gets scheduled onto a queue nothing consumes.
+- [Phase 01]: [Phase 1 / 01-08]: **`maxRetriesPerRequest` bounds QUEUED COMMANDS, not connection establishment — an unbounded readiness probe hangs instead of failing.** A `Queue` pointed at an unreachable Redis leaves `getJobScheduler()` **pending forever**, not rejected: ioredis's default `retryStrategy` retries with backoff and BullMQ's `RedisConnection.init()` awaits a `ready` event that never arrives. `jobSchedulerReadyIndicator`'s `try/catch` was therefore unreachable in the only case it existed for; it is now bounded by `Promise.race` against an `unref()`'d 3 s timer. **This is 01-07's `connectTimeoutMS` bug a second time, in a different driver** — a `catch` a linter is happy with can still be dead code.
+- [Phase 01]: [Phase 1 / 01-08]: **BullMQ's `checkBlockingOptions` fires on TRUTHINESS, and only logs.** A blocking connection given `maxRetriesPerRequest: 2` does not throw — it prints `BullMQ: WARNING! Your redis options maxRetriesPerRequest must be null` on every worker boot and silently overrides it. Hence `toBeNull()` rather than `not.toBe(0)` / `not.toBe(false)` in the test, and hence `blockingConnectionOptions` setting `null` explicitly instead of relying on the override.
+- [Phase 01]: [Phase 1 / 01-08]: **`bullmq` 6.3.11 resolves to its CJS build even under `"type": "module"`** (no `"type"` field in its `package.json`, so `dist/esm/*.js` loads as CJS via Node's syntax detection). That makes a deep import of the internal `QueueKeys` class *appear* to work, which is why `queueKeyNames` mirrors the key layout instead. BullMQ **also throws** when handed a raw client instance carrying `keyPrefix` — D-14's prohibition is enforced by the library, independently of our scan.
+- [Phase 01]: [Phase 1 / 01-08]: **Prove a hash tag by computing the cluster slot, not by grepping for `{`.** `queue.integration.spec.ts` reimplements Redis Cluster's `CRC16(tag) mod 16384` in 15 lines, pinned against three real `CLUSTER KEYSLOT` answers from Redis 8.10 (`foo`→12182, `bar`→5061, `hello`→866). Asserting only "every key contains `{akane-q}`" passes against a Redis that ignores hash tags; asserting only "all keys share a slot" passes by accident. The counterfactual — the same key name untagged lands elsewhere — is what gives the assertion meaning.
+- [Phase 01]: [Phase 1 / 01-08]: **A source-text guard must strip comments, or documentation explaining a prohibition becomes the violation.** All four scans in this plan (keyPrefix, removed repeatable-job API, prom-client ×2) hit that on first run, because explaining a rule requires naming it. One shared `stripComments` shape fixes it; the line-comment rule requires whitespace before `//` so a `redis://` URL inside a string literal survives.
+- [Phase 01]: [Phase 1 / 01-08]: **Every lint-like guard in this plan was negatively controlled before it was trusted.** A planted `keyPrefix`, a planted `getRepeatableJobs`, a planted manifest `prom-client` entry and a planted `import 'prom-client'` were each confirmed to fail the scanning test, then reverted. **A guard that cannot fail is indistinguishable from a guard that passes** — 01-03's lesson applied forward, and the cheapest verification in the plan.
+- [Phase 01]: [Phase 1 / 01-08]: **A memoised module under test needs `vi.resetModules()` + dynamic import per test.** `registerBusinessMetrics()` memoises in module scope (that IS the behaviour), so a static import carries the first test's recording provider's cache into every later assertion — the file becomes a description of its own execution order. Found by a test failing for the right reason at 6 passed | 1 failed.
+- [Phase 01]: [Phase 1 / 01-08]: **`queue.oldest.item.age` is a NAME, not a registered instrument.** An observable gauge needs a callback observing live queue state; registering it first exports a permanently-zero series, which satisfies a dashboard's existence check while telling an operator the queue is empty. The plan asked for a name constant and a test asserts no instrument is registered under it.
+- [Phase 01]: [Phase 1 / 01-08]: **Plan 08's integration harness starts TWO Redis containers, not three.** `mongo:8.0`'s replica-set handshake is the most expensive part of 01-07's harness and proves nothing about queue keys. Images and policies are imported from `tooling/containers.ts` so this harness cannot drift from the suite's. Suite wall clock is now ~6.5 min; `isolate: false` would save ~25 s (5%) and is still declined on 01-07's reasoning.
+- [Phase 01]: [Phase 1 / 01-08]: **`package.json` gained `bullmq@6.3.11`, `@nestjs/bullmq@12.0.0`, `@opentelemetry/api@1.9.1`** (exact STACK.md §14 pins, `--save-exact`, registry-verified first) — all three named by T-1-SC and absent from every manifest. Added as root **dev** dependencies, matching how `ioredis` and `pino` were added, so the `npm ci --omit=dev` caveat above is now four packages wide.
+
 - [Phase 1]: **Draft-save blocker removed by reserving shape, not building machinery** (D-22). `action: "draft"` is in the frozen enum and must not be emitted in v1; `ak:tok:draft:{jti}` is reserved; token classes are a `{action, ttl, consume}` config table. Research flagged this as a structural blocker on Phase 2's token model — one enum value and one table row close it.
 - [Phase 1]: **Form.io File licensing and SAML are out of Phase 1** (D-29, D-30). File upload is already v2, so the licensing question gates a deferred feature and AD-3's open-source claim holds by not shipping the premium component — no spike. SAML is a *customer* fact, not a technical unknown: OIDC is the plan of record, and the question carries a deadline before Phase 5 planning (`BLD-12` is the first SSO surface). +2–3 weeks if SAML is required, which is not in the ~43-week estimate.
 - [Phase 1]: **Health topology deviates from research in favour of FND-05** (D-09). All three entrypoints use `NestFactory.create()`; `worker` and `scheduler` mount only HealthController and MetricsController. `ARCHITECTURE.md` recommended `createApplicationContext()`, but FND-05 requires each of the three to expose both endpoints. Readiness is per-dependency (Mongo, RedisCache, RedisQueue, plus per-process additions); liveness checks nothing, so a Redis blip fails readiness without restarting a healthy pod.
@@ -140,6 +154,11 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 
 - **[Phase 1] (01-07) `FND-05` is still PENDING and must stay that way until plan 10 mounts the controller.** Plan 01-07 delivered the *mechanism* — `HealthController` with both endpoints, per-dependency indicators, the no-leak guarantee, and the three-container proof — but no `apps/**` module mounts it. Exactly what is missing: (1) `apps/api/src/app.module.ts` still registers plan 01's own `apps/api/src/health/health.controller.ts`, which has `/health/live` and no `/health/ready`; (2) `apps/worker/src/main.ts` and `apps/scheduler/src/main.ts` are shells that print `NOT_IMPLEMENTED` and set `process.exitCode = 1`, so neither serves HTTP — D-09 requires `NestFactory.create()` on all three, mounting only `HealthController` and `MetricsController`, and `MetricsController` does not exist yet (plan 09); (3) the per-process extras are absent by design (worker's "every BullMQ Worker is listening" is plan 08, scheduler's "a Job Scheduler is running" is plan 10) — the `EXTRA_HEALTH_INDICATORS` token they will use is built and tested. **Do not check FND-05 in `REQUIREMENTS.md` on the strength of the 01-07 summary.**
 - **[Phase 1] (01-07) A fourth container spec needs a decision, not another 2 minutes.** `npm test` is ~5 min and Docker-bound. Each spec starting its own three-container harness is honest isolation; a shared `globalSetup` harness would cut it substantially at the cost of cross-file state. Recorded so plan 08 (BullMQ) makes the call explicitly rather than by accident.
+  - **[CLOSED by 01-08]** The call was made explicitly: plan 08 started its own harness of **two Redis containers and no MongoDB**, reusing `tooling/containers.ts`'s exported images and policies so it cannot drift. It is still per-spec isolation (no `globalSetup`), on the reasoning that a shared harness trades test isolation for ~5% of a Docker-bound suite. The suite is now 27 files / ~6.5 min. **Still open for plan 09+, which adds a fifth container spec: if a shared `globalSetup` is adopted, do it as a deliberate change, not by accumulation.**
+
+- **[Phase 1] (01-08) `packages/platform/package.json`'s `exports` hand-off has now recurred FOUR times** (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`, 01-08 `./queue` + `./metrics`). The barrels exist so no plan has to edit the root barrel, but the map declares only `"."` and `"./crypto"`, so `@akane/platform/queue` and `@akane/platform/metrics` do **not** resolve cross-package. **Plan 10 is the first plan that must actually import one of them** (it mounts `QueueModule` and both readiness indicators), so resolve it there deliberately — add the entries, or import from the root barrel — rather than a fifth time by accident.
+- **[Phase 1] (01-08) Plan 10 must wrap both readiness indicators — they return plain booleans.** `workerListeningIndicator` and `jobSchedulerReadyIndicator` return `Promise<boolean>`, which is what the plan specified. `@nestjs/terminus` needs a `HealthIndicatorFunction`, so plan 10 wraps them in `HealthIndicatorService.check(key).up()/.down()` under `EXTRA_HEALTH_INDICATORS`, **and the wrapper must not throw** or the terminus 500 returns (01-07's lesson). `scheduler` calls `registerPlatformHeartbeat(queue)` at boot on **every replica** — that is the whole of FND-08 and a leader-election flag would defeat it.
+- **[Phase 1] (01-08) Plan 09 must not read an empty `platform.heartbeat` series as a missing exporter.** `registerBusinessMetrics()` obtains its meter **per call** (not at import time) precisely so plan 09's bootstrap can install the provider afterwards. `platform.heartbeat` only moves once a worker consumes a heartbeat job, which is plan 10's wiring — so between 09 and 10 the series is registered and flat. `queue.job.failures` stays flat until connectors land.
 
 ### Blockers/Concerns
 
@@ -184,6 +203,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-02T17:10:00.000Z
-Stopped at: Completed 01-07-PLAN.md
+Last session: 2026-10-03T08:00:00.000Z
+Stopped at: Completed 01-08-PLAN.md
 Resume file: None

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 9
+open_count: 11
 waived_count: 0
 fixed_count: 0
-total_count: 9
-last_updated: 2026-10-02T16:45:00.000Z
+total_count: 11
+last_updated: 2026-10-03T08:00:00.000Z
 ---
 
 # Broken Windows Ledger
@@ -24,8 +24,11 @@ last_updated: 2026-10-02T16:45:00.000Z
 | 7 | 01 | deviation | packages/platform/src/crypto/envelope.ts | 88 | The envelope derives its DEK from the provider by wrapping a fixed 32-byte label, because D-25 freezes the envelope at five fields with nowhere to persist a per-secret wrapped DEK and D-28 stores no secret. Consequence: rotating `kid` makes previously sealed envelopes undecryptable until the Phase 4 secret store persists the wrapping beside the envelope. The upgrade is additive (the five envelope fields do not change); it is NOT DONE and no real credential may be stored before it is | open |  | 2026-10-02T17:00:00.000Z |  |
 | 8 | 01 | unmet-truth | package.json |  | `mongodb@7.7.0` and `ioredis@6.0.0` are imported by runtime code (`packages/platform/src/mongo/mongo.service.ts` and `packages/platform/src/redis/redis.provider.ts` compile into `dist/`) but live in root **devDependencies** — the repo-wide pattern 01-02 (`ioredis`) and 01-04 (`pino`) established. `npm ci --omit=dev` therefore produces a tree that cannot boot. Not introduced by 01-07 and out of its scope, but it is a deployment-shape decision that must be made once, deliberately, before the first image is built | open |  | 2026-10-02T16:45:00.000Z |  |
 | 9 | 01 | deviation | packages/platform/src/health/health.controller.ts |  | **FND-05 is NOT complete.** The `HealthController` and its three dependency indicators are built and proven, but no `apps/**` module mounts it: `apps/api` still registers plan 01's own live-only controller (no `/health/ready`), and `apps/worker` / `apps/scheduler` `main.ts` are `NOT_IMPLEMENTED` shells that serve no HTTP. D-09 requires all three entrypoints to expose both endpoints, and `MetricsController` (which they must also mount) does not exist until plan 09. Owner: plan 10. Do not check FND-05 in REQUIREMENTS.md before then | open |  | 2026-10-02T16:45:00.000Z |  |
+| 10 | 01 | deviation | packages/platform/src/queue/platform-heartbeat.job.ts |  | **FND-08 and OBS-01 are NOT complete**, and both stay unchecked in REQUIREMENTS.md. FND-08: the mechanism is delivered and proven (idempotent `upsertJobScheduler`, registered three times against live Redis → `getJobSchedulersCount() === 1`), but `registerPlatformHeartbeat` has no caller and no process constructs the consuming `Worker` — owner plan 10. OBS-01: the instruments are on the OTel meter `akane` and a second `prom-client` path is proven absent, but the requirement names "a Prometheus exporter" and `exporter-prometheus` + the `NodeSDK` bootstrap are plan 09's files — owner plan 09. Closing either requires running processes, not this summary | open |  | 2026-10-03T08:00:00.000Z |  |
+| 11 | 01 | deviation | packages/platform/package.json | 8 | The `exports` map still declares only `"."` and `"./crypto"`, so `@akane/platform/queue`, `/metrics`, `/health` and `/mongo` do **not** resolve cross-package. The barrels exist precisely so plans need not edit the root barrel, so this has now recurred FOUR times (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`, 01-08 `./queue` + `./metrics`). Plan 10 is the first plan that must actually deep-import one of them; resolve it there deliberately — add the entries, or import from the root barrel — rather than a fifth time by accident | open |  | 2026-10-03T08:00:00.000Z |  |
 
-````json[
+```json
+[
   {
     "id": 1,
     "kind": "stub",
@@ -142,6 +145,32 @@ last_updated: 2026-10-02T16:45:00.000Z
     "recorded_at": "2026-10-02T16:45:00.000Z",
     "resolved_at": null,
     "milestone": null
+  },
+  {
+    "id": 10,
+    "kind": "deviation",
+    "phase": "01",
+    "file": "packages/platform/src/queue/platform-heartbeat.job.ts",
+    "line": null,
+    "description": "**FND-08 and OBS-01 are NOT complete**, and both stay unchecked in REQUIREMENTS.md. FND-08: the mechanism is delivered and proven (idempotent `upsertJobScheduler`, registered three times against live Redis → `getJobSchedulersCount() === 1`), but `registerPlatformHeartbeat` has no caller and no process constructs the consuming `Worker` — owner plan 10. OBS-01: the instruments are on the OTel meter `akane` and a second `prom-client` path is proven absent, but the requirement names \"a Prometheus exporter\" and `exporter-prometheus` + the `NodeSDK` bootstrap are plan 09's files — owner plan 09. Closing either requires running processes, not this summary",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-03T08:00:00.000Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 11,
+    "kind": "deviation",
+    "phase": "01",
+    "file": "packages/platform/package.json",
+    "line": 8,
+    "description": "The `exports` map still declares only `\".\"` and `\"./crypto\"`, so `@akane/platform/queue`, `/metrics`, `/health` and `/mongo` do **not** resolve cross-package. The barrels exist precisely so plans need not edit the root barrel, so this has now recurred FOUR times (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`, 01-08 `./queue` + `./metrics`). Plan 10 is the first plan that must actually deep-import one of them; resolve it there deliberately — add the entries, or import from the root barrel — rather than a fifth time by accident",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-03T08:00:00.000Z",
+    "resolved_at": null,
+    "milestone": null
   }
 ]
-````
+```

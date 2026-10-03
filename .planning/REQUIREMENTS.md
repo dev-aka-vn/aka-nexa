@@ -48,6 +48,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **FND-06**: Structured JSON logs exclude PII by a **field allowlist applied before serialisation**, not a denylist filter
 - [ ] **FND-07**: The OpenTelemetry trace ID is generated independently of `submission_id` and is not correlatable back to it
 - [ ] **FND-08**: Long-running scheduled work runs on BullMQ Job Schedulers, so a task registered once runs on every replica
+  - **(01-08) Mechanism delivered, NOT complete.** `registerJobScheduler` over
+    `Queue.upsertJobScheduler` exists and is proven idempotent against live Redis (registering three
+    times leaves `getJobSchedulersCount() === 1`), and the `platform-heartbeat` scheduler is
+    registered by `registerPlatformHeartbeat`. **No process calls it yet**: `apps/scheduler` must
+    call it at boot on *every* replica and `apps/worker` must construct the consuming `Worker` —
+    both plan 10's composition-root work. Keep this unchecked until all three processes run.
 - [x] **FND-09**: All configuration is validated at boot by Zod; an invalid or missing required value fails startup with a named error
 - [ ] **FND-10**: Secrets are encrypted at rest with AES-256-GCM under a KMS-backed master key, and no secret appears in code, config files, or plaintext env vars
 
@@ -175,6 +181,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### Observability & Operations
 
 - [ ] **OBS-01**: One metric path exists — the OpenTelemetry metrics API with a Prometheus exporter — not a second `prom-client` path
+  - **(01-08) Half delivered, NOT complete.** The *instruments* are on the OTel meter `akane` and a
+    second path is proven absent (no manifest declares `prom-client`, no source file imports it,
+    and `business-metrics.ts`'s bare-import list is exactly `['@opentelemetry/api']`). **The
+    Prometheus exporter does not exist** — `exporter-prometheus` and the OTel `NodeSDK` bootstrap
+    are plan 09's files, and there is no scrape endpoint to scrape. The requirement names the
+    exporter explicitly, so it stays unchecked until plan 09 lands.
 - [ ] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
