@@ -209,10 +209,19 @@ describe('startOtel (D-20, OBS-01)', () => {
     // our own source must be declared, not reached through a hoist. This walks
     // the bare specifiers out of the observability sources and checks each one
     // against the manifest.
+    //
+    // **`dependencies`, not `devDependencies`.** The whole observability surface
+    // is loaded by `apps/*/otel.mjs` before the process imports anything else, so
+    // these packages are runtime, not tooling: `npm ci --omit=dev` has to produce
+    // a tree that can start tracing. 01-10 split the root manifest for exactly
+    // that reason (WINDOWS.md #8), and this assertion moves with it — the
+    // assertion being kept is "declared at the pinned version", not "declared in
+    // the dev half", which was an accident of the manifest's earlier shape.
     const manifest = JSON.parse(sourceOf('../../../../package.json')) as {
+      dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
     };
-    const declared = new Set(Object.keys(manifest.devDependencies));
+    const declared = new Set(Object.keys(manifest.dependencies));
     const imported = new Set<string>();
 
     for (const file of ['./otel.bootstrap.ts', './otel.constants.ts', './allowlist-span-exporter.ts', './span-attribute-allowlist.ts']) {
@@ -221,14 +230,24 @@ describe('startOtel (D-20, OBS-01)', () => {
       }
     }
 
+    expect(imported.size, 'the scan must actually find OTel imports').toBeGreaterThan(4);
     expect([...imported].filter((specifier) => !declared.has(specifier))).toEqual([]);
-    expect(manifest.devDependencies['@opentelemetry/sdk-node']).toBe('0.222.0');
-    expect(manifest.devDependencies['@opentelemetry/core']).toBe('2.11.0');
-    expect(manifest.devDependencies['@opentelemetry/api']).toBe('1.9.1');
-    expect(manifest.devDependencies['@opentelemetry/auto-instrumentations-node']).toBe('0.80.0');
-    expect(manifest.devDependencies['@opentelemetry/exporter-trace-otlp-http']).toBe('0.222.0');
-    expect(manifest.devDependencies['@opentelemetry/exporter-metrics-otlp-http']).toBe('0.222.0');
-    expect(manifest.devDependencies['@opentelemetry/exporter-prometheus']).toBe('0.222.0');
+    // Belt and braces: nothing observable may have been left behind in the dev half
+    // by the split, where `npm ci --omit=dev` would prune it.
+    for (const specifier of imported) {
+      expect(
+        manifest.devDependencies[specifier],
+        `${specifier} must not also be listed as a devDependency`,
+      ).toBeUndefined();
+    }
+
+    expect(manifest.dependencies['@opentelemetry/sdk-node']).toBe('0.222.0');
+    expect(manifest.dependencies['@opentelemetry/core']).toBe('2.11.0');
+    expect(manifest.dependencies['@opentelemetry/api']).toBe('1.9.1');
+    expect(manifest.dependencies['@opentelemetry/auto-instrumentations-node']).toBe('0.80.0');
+    expect(manifest.dependencies['@opentelemetry/exporter-trace-otlp-http']).toBe('0.222.0');
+    expect(manifest.dependencies['@opentelemetry/exporter-metrics-otlp-http']).toBe('0.222.0');
+    expect(manifest.dependencies['@opentelemetry/exporter-prometheus']).toBe('0.222.0');
   });
 });
 
