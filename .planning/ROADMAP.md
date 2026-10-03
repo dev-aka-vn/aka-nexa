@@ -78,6 +78,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
 **Plans:** 10/10 plans executed
+**Verification (2026-10-03):** `gaps_found` — SC#3 failed on the subpath import form (gap G-1) and one advisory on `CryptoModule` composition. **Both closed the same day** (`44b0619`, `f813f64`); the verifier re-runs before Phase 2. FND-10 remains **pending** — composing `CryptoModule` makes the guard reachable from a real boot, it does not produce a KMS-backed key.
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 

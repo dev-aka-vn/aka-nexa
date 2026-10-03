@@ -401,7 +401,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-01 | Phase 1 | Complete |
 | FND-02 | Phase 1 | Complete |
 | FND-03 | Phase 1 | Complete (01-10) |
-| FND-04 | Phase 1 | Complete (01-03, re-verified 01-10) |
+| FND-04 | Phase 1 | Complete (01-03, re-verified 01-10, re-verified again after gap G-1 closure — the subpath import form was unmapped until 2026-10-03, so this requirement did not hold for `@akane/platform/<subpath>` between 01-03 and that fix) |
 | FND-05 | Phase 1 | Complete (01-10) |
 | FND-06 | Phase 1 | Complete |
 | FND-07 | Phase 1 | Complete (01-09) |

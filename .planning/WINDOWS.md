@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 6
 waived_count: 1
 fixed_count: 9
-total_count: 15
-last_updated: 2026-10-03T11:15:22.622Z
+total_count: 16
+last_updated: 2026-10-03T19:50:00.000Z
 ---
 
 # Broken Windows Ledger
@@ -30,6 +30,7 @@ last_updated: 2026-10-03T11:15:22.622Z
 | 13 | 01 | deviation | packages/platform/src/otel/otel.bootstrap.ts |  | The auto-instrumentation bundle is un-narrowed; net and dns emit a span per socket (tcp.connect appears in the captured spans). Deliberate: narrowing is an observability-policy decision. Owner: the phase that owns tracing cost | open |  | 2026-10-03T10:05:00.000Z |  |
 | 14 | 01 | deviation | packages/platform/src/otel/otel.bootstrap.node-ordering.spec.ts |  | The D-20 ordering counterfactual only reproduces outside Vitest, so this spec spawns node and costs ~26s; it also depends on per-file module isolation | open |  | 2026-10-03T10:05:00.000Z |  |
 | 15 | 01 | deviation | vitest.config.mts |  | isolate:false now saves ~42s (~10% of a 7.5 min suite), up from ~16s in 01-07. Still declined, and plan 09 adds a hard reason: the ordering counterfactual depends on per-file isolation | open |  | 2026-10-03T10:05:00.000Z |  |
+| 16 | 01 | unmet-truth | eslint.config.mjs | 44 | The boundary gate does not reach `apps/*/otel.mjs`, the D-20 loader entry: outside the rule's `files` block **and** outside every element pattern, so `from.file.isIgnored` is true and no dependency it declares is evaluated (measured, incl. a planted violation). Closing it is an element-graph decision, not a one-liner — see entry 16 in the JSON mirror | open |  | 2026-10-03T19:50:00.000Z |  |
 
 ````json
 [
@@ -222,6 +223,18 @@ last_updated: 2026-10-03T11:15:22.622Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-03T10:05:00.000Z",
+    "resolved_at": null
+  },
+  {
+    "id": 16,
+    "kind": "unmet-truth",
+    "phase": "01",
+    "file": "eslint.config.mjs",
+    "line": 44,
+    "description": "The boundary gate does not reach `apps/{api,worker,scheduler}/otel.mjs` — the D-20 loader entry that must load before anything instrumented. Its imports are declared and never evaluated. Two independent reasons, both measured: the rule's `files` block is scoped to `**/*.{ts,mts,cts}`, AND every element pattern is `apps/<app>/src/**`, so the file matches no element descriptor and `Rules/Dependencies.js` gates the evaluation on `!dependency.from.file.isIgnored`. Measured: 0 diagnostics today; widening `files` to `**/*.mjs` still gives 0, including for a planted cross-boundary import; `checkUnknownLocals: true` also gives 0, because it governs an unknown *target*, not an unknown origin. Closing it is an element-graph decision (does a loader entry belong to the `app-<name>` element?), which is D-02's explicit scoping — not a one-liner. Found while closing gap G-1; G-1's own subpath blind spot is fixed and pinned by tests",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-03T19:50:00.000Z",
     "resolved_at": null
   }
 ]

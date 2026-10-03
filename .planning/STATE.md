@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-10-PLAN.md — Phase 1 all 10 plans complete; FND-03, FND-04, FND-05, FND-08 and OBS-01 closed against booted processes; FND-10 still pending on D-27
-last_updated: "2026-10-03T11:58:11.231Z"
+stopped_at: Gap G-1 and the CryptoModule advisory closed after 01-VERIFICATION.md — awaiting verifier re-run
+last_updated: "2026-10-03T19:55:00.000Z"
 last_activity: 2026-10-03
-last_activity_desc: Plan 01-10 complete - three entrypoints booted and probed (live/ready/metrics on 3000/3001/3002), SIGTERM drain measured against a no-hooks control, per-app BoundaryManifests + import-closure drift test, runtime/dev dependency split proven by a npm ci --omit=dev boot (FND-03, FND-04, FND-05, FND-08, OBS-01 closed)
+last_activity_desc: Gap-closure pass on Phase 1 verification - G-1 (the boundary lint gate was blind to every workspace SUBPATH import, so npm run build passed on a real cross-boundary import) fixed in tooling/import-resolver.cjs and pinned by 4 new assertions; CryptoModule composed into all three entrypoints so the FND-10 production guard is reachable from a real boot, demonstrated with NODE_ENV=production refusals on all three processes. Full suite 35 files / 330 tests green, npm run build exit 0
 state_head: c3671f710418b1b7150fed2384e53783244306c5
 progress:
   total_phases: 8
@@ -30,8 +30,8 @@ rendered form, without ever logging into — or learning — the downstream syst
 
 Phase: 01 (Foundations & Platform) — EXECUTING
 Plan: 10 of 10 complete — **all Phase 1 plans executed**
-Status: Ready for phase verification (`/gsd-verify-phase`) before Phase 2 planning
-Last activity: 2026-10-03 — Plan 01-10 complete. All three processes were **booted and probed**, not inspected: `/health/live`, `/health/ready` and `/metrics` answer 200 on 3000/3001/3002, the worker's readiness carries `bullmq_workers` and the scheduler's carries `job_schedulers`, and SIGTERM drains in 9.9 s against 92 ms for a control process without shutdown hooks. **FND-03, FND-04, FND-05, FND-08 and OBS-01 are closed against running processes.** FND-10 stays pending (D-27). Three of this plan's defects were invisible to every spec touching the affected file and were found only by booting — most importantly a BullMQ `Worker` constructed without `prefix`, which listened on an empty queue while `/health/ready` reported it `up`.
+Status: Verified `gaps_found`; gap **G-1** and the `CryptoModule` advisory closed 2026-10-03 — **awaiting verifier re-run** before Phase 2 planning
+Last activity: 2026-10-03 — gap-closure pass. **G-1**: `tooling/import-resolver.cjs` mapped only the bare `@akane/<pkg>` specifier, so a subpath (`@akane/platform/crypto`) fell through to the package `exports` map, resolved into `node_modules/…/dist/`, was classified `external`, and was permitted by policy 0 — `packages/contract` (allowed edges `['kernel']`) importing `@akane/platform/crypto` gave `eslint` exit 0 **and** `tsc -b` exit 0, so Phase 1's success criterion #3 did not hold for the import form all three entrypoints actually use. Fixed, and pinned by assertions that fail against the pre-fix resolver. **Advisory**: `CryptoModule` is now composed into all three app modules; `NODE_ENV=production` aborts `api`, `worker` and `scheduler` with `CRYPTO_KEY_PROVIDER_REQUIRED: production requires kms, got local` on real processes. **FND-10 stays pending** — B-3/D-27 still unnamed.
 
 Progress: [██████████] 100%
 
@@ -170,6 +170,8 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: Per-app BoundaryManifests forbid platform-owned capability DI tokens (WORKER_CONSUMERS, JOB_SCHEDULER_REGISTRATIONS, INBOUND_ADAPTER_REGISTRATIONS) rather than app-local ones, because an app cannot name another app's token without importing its source — the violation the manifest exists to catch (01-10).
 - [Phase 01]: nestjs-pino is deliberately NOT wired in Phase 1: there is no HTTP request-logging surface yet, and wiring it would force a Phase-2 decision about child loggers for a Phase-1 need. WINDOWS #4 is waived with a handoff, not closed (01-10).
 - [Phase 01]: Deployment shape decided once at the root: a package the built runtime can reach is a dependency, everything else a devDependency, with the lockfile regenerated in the same commit because npm ci --omit=dev honours the lockfile's dev markers (01-10).
+- [Phase 01]: **The boundary lint gate's resolver maps BOTH workspace import forms to source.** `@akane/<pkg>` → `src/index.ts` and `@akane/<pkg>/<subpath>` → `src/<subpath>/index.ts`, never `dist/`. Mapping only the bare form was not a narrower version of the rule — it was the same blindness, because `package.json#exports` sends subpaths into `node_modules` too and `external` is permitted unconditionally by policy 0. Any future resolver change must keep both; `tooling/boundaries.fixture.spec.ts` asserts each one fires and each compliant one still passes (gap G-1 closure, `44b0619`).
+- [Phase 01]: **`CryptoModule` is composed into all three composition roots with no consumer of it, on purpose.** The FND-10 guard runs inside that module's provider factory, so an uncomposed module is a guard no process can trip. The consequence is that boot now declares a crypto posture: a process selecting `local` must also set `CRYPTO_LOCAL_KEY_FILE` (a path, never the key), and `NODE_ENV=production` refuses first, before any key file is opened. If a future process genuinely holds no secret, the fix is a lazy provider — not dropping the guard from the composition root (`f813f64`).
 
 ### Pending Todos
 
@@ -182,6 +184,9 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - **[Phase 1] (01-08) Plan 09 must not read an empty `platform.heartbeat` series as a missing exporter.** `registerBusinessMetrics()` obtains its meter **per call** (not at import time) precisely so plan 09's bootstrap can install the provider afterwards. `platform.heartbeat` only moves once a worker consumes a heartbeat job, which is plan 10's wiring — so between 09 and 10 the series is registered and flat. `queue.job.failures` stays flat until connectors land.
 
 ### Blockers/Concerns
+
+- **[Phase 1]** **`apps/{api,worker,scheduler}/otel.mjs` is outside the boundary gate entirely — an open element-graph decision, not a lint line.** The rule's `files` block covers `**/*.{ts,mts,cts}` and every element pattern is `apps/<app>/src/**`, so the D-20 loader entry matches no element descriptor and `Rules/Dependencies.js` gates evaluation on `!dependency.from.file.isIgnored`. Measured: 0 diagnostics today; widening `files` to `**/*.mjs` still gives 0, including for a planted cross-boundary import; `checkUnknownLocals: true` also gives 0 because it governs an unknown *target*, not an unknown origin. **Do not "fix" this by widening `files` alone** — it looks like it works and does nothing. The real question is whether a loader entry belongs to the `app-<name>` element (widen D-02's patterns) or needs its own element type. `WINDOWS.md` entry 16. Found while closing G-1; the subpath blind spot in the same rule is fixed and pinned.
+- **[Phase 1]** **Boot now requires `CRYPTO_LOCAL_KEY_FILE` for every process, and that is intended.** Composing `CryptoModule` makes the provider eager, so a process that selects `local` must name a key file (a path — never the key). `NODE_ENV=production` refuses first with `CRYPTO_KEY_PROVIDER_REQUIRED:`, and `CRYPTO_KEY_PROVIDER=kms` refuses with `KMS_PROVIDER_BLOCKED:` (B-3), so there is currently **no** configuration that boots without the key file. The contract and the dev one-liner are documented in `crypto.module.ts`; `test/setup-env.ts` does **not** seed `CRYPTO_LOCAL_KEY_FILE`, so any future spec that compiles an app module must supply its own temp key file rather than rely on the global seed.
 
 - **[Phase 3]** Tool-selection accuracy at 100–800 candidates is **unmeasured**. The PRD's ">90% accuracy" and "p95 <500 ms" are not jointly achievable as specified. Needs AI-SPEC.md + `--research-phase` before planning.
 - **[Phase 3]** Decision provider, host, and cost profile were explicitly out of scope for stack research.
@@ -224,6 +229,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T11:58:10.027Z
-Stopped at: Completed 01-10-PLAN.md — Phase 1 all 10 plans complete; FND-03, FND-04, FND-05, FND-08 and OBS-01 closed against booted processes; FND-10 still pending on D-27
+Last session: 2026-10-03T19:55:00.000Z
+Stopped at: Gap G-1 and the CryptoModule advisory closed after 01-VERIFICATION.md — Phase 1 verification re-run is the next action
 Resume file: None
