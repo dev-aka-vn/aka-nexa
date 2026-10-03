@@ -17,15 +17,18 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@nestjs/bullmq": "12.0.0",
     "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.1.2",
     "@nestjs/platform-express": "^12.1.2",
     "@nestjs/terminus": "12.1.0",
     "@nestjs/testing": "^12.1.2",
+    "@opentelemetry/api": "1.9.1",
     "@testcontainers/mongodb": "12.2.0",
     "@testcontainers/redis": "12.2.0",
     "@types/node": "^24.19.1",
+    "bullmq": "6.3.11",
     "eslint": "10.11.0",
     "eslint-plugin-boundaries": "7.2.0",
     "ioredis": "6.0.0",
