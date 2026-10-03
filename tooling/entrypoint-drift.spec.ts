@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CryptoModule,
   INBOUND_ADAPTER_REGISTRATIONS,
   JOB_SCHEDULER_REGISTRATIONS,
   QUEUE_PRODUCER_TOKEN,
@@ -667,6 +668,44 @@ describe('per-app BoundaryManifest wiring (D-03, T-1-23)', () => {
       expect(source, `${app} must provide BOUNDARY_MANIFEST`).toContain('BOUNDARY_MANIFEST');
       expect(source, `${app} must run the shared guard`).toContain('ProviderBoundaryGuardRunner');
       expect(source, `${app} must name its own manifest`).toContain(expected[app]);
+    }
+  });
+
+  /**
+   * The FND-10 production guard must be **reachable from a real boot**
+   * (advisory in `01-VERIFICATION.md`).
+   *
+   * `assertKeyProviderAllowed` runs inside `CryptoModule`'s provider factory, so
+   * a module nothing composes is a guard nothing can trip — the guard was
+   * provable only through `Test.createTestingModule({ imports: [CryptoModule] })`
+   * and no process could reach it. This asserts the composition itself, against
+   * Nest's own module metadata rather than a grep, so a rename or a barrel
+   * re-export cannot satisfy it by accident.
+   *
+   * Read from `imports` and not from the app module's *bindings* for the reason
+   * the tests above already rely on: one barrel clause carries every symbol the
+   * platform exports, so "does the app module bind the name `CryptoModule`" is
+   * true for all three roots whether or not the module is in `imports`.
+   */
+  it('every app module composes CryptoModule, so the production key guard is reachable', async () => {
+    const { AppModule: ApiAppModule } = await import('../apps/api/src/app.module.js');
+    const { AppModule: WorkerAppModule } = await import('../apps/worker/src/app.module.js');
+    const { AppModule: SchedulerAppModule } = await import(
+      '../apps/scheduler/src/app.module.js'
+    );
+
+    const modules: Record<AppName, unknown> = {
+      api: ApiAppModule,
+      worker: WorkerAppModule,
+      scheduler: SchedulerAppModule,
+    };
+
+    for (const app of APPS) {
+      const imports = Reflect.getMetadata('imports', modules[app] as object) as unknown[];
+      expect(
+        imports,
+        `${app} does not compose CryptoModule — the FND-10 guard is unreachable from this boot`,
+      ).toContain(CryptoModule);
     }
   });
 });

@@ -6,6 +6,7 @@ import type { Queue } from 'bullmq';
 import {
   BOUNDARY_MANIFEST,
   ConfigModule,
+  CryptoModule,
   EXTRA_HEALTH_INDICATORS,
   HealthController,
   JOB_SCHEDULER_REGISTRATIONS,
@@ -50,10 +51,20 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
  * `SCHEDULER_BOUNDARY_MANIFEST` refuses `WORKER_CONSUMERS` at boot, and
  * `tooling/entrypoint-drift.spec.ts` fails CI if the `bullmq` `Worker` binding
  * enters this app's import closure.
+ *
+ * ## Why `CryptoModule` is here with no consumer of it
+ *
+ * Nothing here injects `CRYPTO_KEY_PROVIDER` yet (Phase 1 stores no secret), but
+ * the module is what runs the FND-10 production guard: it is composed so that a
+ * `NODE_ENV=production` process refuses to boot on a local key at all, rather
+ * than at some later point when a consumer first asks for a provider. See the
+ * same paragraph in `apps/api/src/app.module.ts`; it is identical in all three
+ * roots on purpose.
  */
 @Module({
   imports: [
     ConfigModule,
+    CryptoModule,
     MongoModule,
     QueueModule,
     TerminusModule.forRoot(),

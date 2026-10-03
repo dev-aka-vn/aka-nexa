@@ -157,8 +157,31 @@ export function readKeyProviderEnv(
 /**
  * Registers the selected provider under {@link CRYPTO_KEY_PROVIDER}.
  *
- * Imported by the three entrypoints in plan 10, which is also where the
- * `BOUNDARY_MANIFEST` provider-boundary guard from plan 03 has to be applied.
+ * Composed into all three composition roots (`apps/{api,worker,scheduler}`),
+ * which is what makes the FND-10 guard reachable from a **real boot**: the
+ * factory below runs while Nest instantiates instances, so a
+ * `NODE_ENV=production` process refuses to start on a local key even though
+ * nothing in Phase 1 injects the token yet. Until the gap-closure pass this
+ * module was reachable only from
+ * `Test.createTestingModule({ imports: [CryptoModule] })` — a guard that was
+ * provable and unreachable, i.e. a security control nothing could trip.
+ *
+ * ## The boot-time contract this creates, stated rather than discovered
+ *
+ * Because the provider is constructed eagerly, a process that selects `local`
+ * must also name its key file. On a developer machine:
+ *
+ * ```sh
+ * head -c 32 /dev/urandom > .dev-local-key   # 32 raw bytes; the PATH, never the key
+ * export CRYPTO_LOCAL_KEY_FILE="$PWD/.dev-local-key"
+ * ```
+ *
+ * `NODE_ENV=production` refuses with `CRYPTO_KEY_PROVIDER_REQUIRED:` **before**
+ * any of that — the guard runs first, so a production container never reads a key
+ * file it was about to be refused for holding. And `CRYPTO_KEY_PROVIDER=kms`
+ * refuses with `KMS_PROVIDER_BLOCKED:`, so today *every* boot needs the local
+ * key file; the day B-3 names a vendor, that stops being true and this paragraph
+ * goes with it.
  */
 @Module({
   providers: [

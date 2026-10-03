@@ -4,6 +4,7 @@ import { HealthIndicatorService, TerminusModule } from '@nestjs/terminus';
 import {
   BOUNDARY_MANIFEST,
   ConfigModule,
+  CryptoModule,
   EXTRA_HEALTH_INDICATORS,
   HealthController,
   MetricsModule,
@@ -47,10 +48,20 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
  * 01-07's core indicators and 01-08's `workerListeningIndicator` were built to.
  * An empty worker list is `false`, not vacuously `true`: a worker that registered
  * no consumer must not report itself ready while consuming nothing.
+ *
+ * ## Why `CryptoModule` is here with no consumer of it
+ *
+ * Nothing here injects `CRYPTO_KEY_PROVIDER` yet (Phase 1 stores no secret), but
+ * the module is what runs the FND-10 production guard: it is composed so that a
+ * `NODE_ENV=production` process refuses to boot on a local key at all, rather
+ * than at some later point when a consumer first asks for a provider. See the
+ * same paragraph in `apps/api/src/app.module.ts`; it is identical in all three
+ * roots on purpose.
  */
 @Module({
   imports: [
     ConfigModule,
+    CryptoModule,
     MongoModule,
     QueueModule,
     TerminusModule.forRoot(),
