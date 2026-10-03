@@ -10,6 +10,7 @@ import {
   ProviderBoundaryGuardRunner,
   redisCacheProvider,
   redisQueueProvider,
+  redisShutdownProvider,
   shutdownOtel,
 } from '@akane/platform';
 
@@ -49,6 +50,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
   providers: [
     redisCacheProvider,
     redisQueueProvider,
+    redisShutdownProvider,
     { provide: BOUNDARY_MANIFEST, useValue: API_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
   ],

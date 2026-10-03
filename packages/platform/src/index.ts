@@ -62,6 +62,8 @@ export {
   PRODUCER_MAX_RETRIES_PER_REQUEST as REDIS_PRODUCER_MAX_RETRIES_PER_REQUEST,
   redisCacheProvider,
   redisQueueProvider,
+  redisShutdownProvider,
+  RedisShutdown,
   type RedisClientConfig,
   type RedisProfile,
 } from './redis/redis.provider.js';

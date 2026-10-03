@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Test } from '@nestjs/testing';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   EVICTING_POLICIES,
@@ -8,10 +9,12 @@ import {
   type ThreeContainers,
 } from '../../../../tooling/containers.js';
 import { RedisConfigSchema } from '../config/redis.schema.js';
+import { REDIS_CACHE, REDIS_QUEUE } from './redis.constants.js';
 import {
   buildRedisOptions,
   createRedisClient,
   PRODUCER_MAX_RETRIES_PER_REQUEST,
+  redisShutdownProvider,
 } from './redis.provider.js';
 
 /**
@@ -117,4 +120,48 @@ describe('cache / queue Redis split (D-07, D-12)', () => {
     expect(cacheClient).not.toBe(queueClient);
     expect(blockingClient).not.toBe(queueClient);
   });
+
+  /**
+   * CR-02, against live servers. The unit spec asserts the lifecycle *wiring*;
+   * this asserts the observable outcome on a real socket, which is the property
+   * D-09 states — a rolling deploy drains, it does not sever.
+   *
+   * `RedisShutdown` QUITs rather than `disconnect()`ing precisely so the server
+   * gets to close its side of the connection: a severed socket is indistinguishable
+   * from a network partition to the deployment on the other end, and `REDIS_QUEUE`
+   * carries in-flight producer commands.
+   */
+  it('drains a live connection on shutdown rather than severing it', async () => {
+    const live = createRedisClient({ url: containers.urls.cache, profile: 'producer' });
+    const quits: string[] = [];
+    const originalQuit = live.quit.bind(live);
+    vi.spyOn(live, 'quit').mockImplementation(async () => {
+      const reply = await originalQuit();
+      quits.push(String(reply));
+      return reply;
+    });
+
+    await live.set('ak:pv:drain-probe', 'v');
+    expect(live.status, 'precondition: the client is connected').toBe('ready');
+
+    // ioredis resolves the QUIT reply *before* the socket close lands, so `end`
+    // is reached asynchronously — subscribed before the close rather than polled
+    // after it.
+    const ended = new Promise<void>((resolve) => live.once('end', resolve));
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        { provide: REDIS_CACHE, useValue: live },
+        { provide: REDIS_QUEUE, useValue: client(containers.urls.queue, 'producer') },
+        redisShutdownProvider,
+      ],
+    }).compile();
+    await moduleRef.close();
+
+    // The server answered 'OK': the QUIT reached the deployment, which is what
+    // distinguishes a drain from a sever. `disconnect()` produces no reply.
+    expect(quits).toEqual(['OK']);
+    await ended;
+    expect(live.status).toBe('end');
+  }, 60_000);
 });

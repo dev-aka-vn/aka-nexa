@@ -12,6 +12,7 @@ import {
   QueueModule,
   redisCacheProvider,
   redisQueueProvider,
+  redisShutdownProvider,
   shutdownOtel,
   WORKER_CONSUMERS,
   workerListeningIndicator,
@@ -59,6 +60,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
   providers: [
     redisCacheProvider,
     redisQueueProvider,
+    redisShutdownProvider,
     PlatformHeartbeatProcessor,
     platformHeartbeatWorkersProvider,
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },

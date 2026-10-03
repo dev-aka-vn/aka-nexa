@@ -19,6 +19,7 @@ import {
   QueueModule,
   redisCacheProvider,
   redisQueueProvider,
+  redisShutdownProvider,
   registerPlatformHeartbeat,
   shutdownOtel,
 } from '@akane/platform';
@@ -62,6 +63,7 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
   providers: [
     redisCacheProvider,
     redisQueueProvider,
+    redisShutdownProvider,
     { provide: BOUNDARY_MANIFEST, useValue: SCHEDULER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
     {
