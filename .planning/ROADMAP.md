@@ -77,7 +77,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 8/10 plans executed
+**Plans:** 9/10 plans executed
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 
@@ -93,7 +93,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] 01-08-PLAN.md — BullMQ queue registration, `{akane-q}` prefix, heartbeat scheduler, and business metrics
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
+- [x] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test

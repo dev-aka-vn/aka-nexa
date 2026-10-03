@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Foundations & Platform
 status: executing
-stopped_at: Completed 01-08-PLAN.md
-last_updated: "2026-10-03T08:00:00.000Z"
+stopped_at: Completed 01-09-PLAN.md
+last_updated: "2026-10-03T10:05:00.000Z"
 last_activity: 2026-10-03
-last_activity_desc: Plan 01-08 complete - BullMQ queue floor with a proven {akane-q} hash tag, idempotent upsertJobScheduler registration, two bounded readiness indicators, OTel business metrics (FND-08, OBS-01)
-state_head: 38b6212
+last_activity_desc: Plan 01-09 complete - frozen span-attribute allowlist enforced by AllowlistSpanExporter, startOtel() with one NodeSDK and one Prometheus exporter singleton, GET /metrics (FND-07 and OBS-01 both closed)
+state_head: a642cdc
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State
@@ -29,28 +29,28 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 01 (Foundations & Platform) — EXECUTING
-Plan: 8 of 10 complete (01-09 — next)
+Plan: 9 of 10 complete (01-10 — next)
 Status: Ready to execute
-Last activity: 2026-10-03 — Plan 01-08 complete (BullMQ queue module + idempotent `upsertJobScheduler` registration + two readiness indicators + OTel business metrics; **FND-08** and **OBS-01** closed as mechanisms — no process registers or consumes yet, that is plan 10)
+Last activity: 2026-10-03 — Plan 01-09 complete (frozen span-attribute allowlist + `AllowlistSpanExporter`; `startOtel()` with one NodeSDK, OTLP trace/metrics and one `preventServerStart` Prometheus singleton; `GET /metrics` from that singleton; **FND-07** and **OBS-01** both closed)
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 56min
-- Total execution time: 9.8 hours
+- Total plans completed: 9
+- Average duration: 58min
+- Total execution time: 11.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 8 | 8 | 56min |
+| 01 | 9 | 9 | 58min |
 
 **Recent Trend:**
-- Last 8 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min)
-- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-07 (95min) and 01-08 (78min) are next, and the same reason generalises: **Docker dominates them.** A plan whose correctness comes from *asserting a contract* is cheap; one that must observe a real server pays roughly two minutes of container startup per spec that starts its own harness. 01-08 got that cost down by starting **two Redis containers instead of three** — the MongoDB replica-set handshake is the expensive part and proved nothing about queue keys. The library-behaviour corrections (terminus indicator functions, `directConnection`, `executeCliCmd` argv, `connectTimeoutMS`, BullMQ's non-rejecting `waitUntilReady`) were each found by running the code, not by reading it. **Read the cost as "time spent observing reality", not as inefficiency.**
+- Last 9 plans: 01-01 (38min), 01-02 (52min), 01-03 (62min), 01-04 (159min), 01-06 (38min), 01-05 (49min), 01-07 (95min), 01-08 (78min), 01-09 (105min)
+- Trend: 01-04 remains the outlier (159min, spent reading `node_modules/pino/lib` rather than writing). 01-09 (105min) is the second, and for a different reason: **four of its defects were found by running the pinned library, not by reading its docs.** `Span`'s five prototype getters, `NodeSDK.start()`'s re-entrancy, the OTLP `url`-versus-`url + /v1/traces` asymmetry, and the `@nestjs/core` lazy adapter load were each invisible until a script was executed against `node_modules`. 01-07 (95min) reached the same conclusion through Docker. **Read the cost as "time spent observing reality", not as inefficiency** — and note that in both cases the isolated spec passed while the real behaviour did not.
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -65,6 +65,7 @@ Progress: [████████░░] 80%
 | Phase 01 P05 | 49min | 3 tasks | 10 files |
 | Phase 01 P07 | 95min | 3 tasks | 21 files |
 | Phase 01 P08 | 78min | 3 tasks | 11 files |
+| Phase 01 P09 | 105min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,20 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 1]: **Read-link claim shape frozen in Phase 1** (01-CONTEXT.md D-21). The discriminant is `action`, not `typ` — the JOSE header already owns that name. `query_version` is frozen in foundations even though the read path is Phase 3, because a saved query is versioned the way a form is and adding a claim later invalidates every outstanding link.
 - [Phase 1]: **JEV wire contract frozen in foundations** (D-23). PRD §11.1 plus exactly two additions: `choice.verified: boolean | null` (abstention is a different signal from low confidence, with a cross-field refinement forcing clarification) and `state.force_clarification: boolean` (the platform can force clarification, not only the provider). Frozen by a `.strict()` schema plus an exact-key-set test, not by a comment.
 - [Phase 1]: **Log allowlist and trace decoupling are enforced mechanically** (D-15, D-18). A typed `LoggerPort` plus a pino `formatters.log` rebuild hook that strips unknown keys *before* serialisation (D-15's original "destination stream" wording is not implementable — see the 01-04 amendment below); a frozen span-attribute allowlist plus a subset test proving `submission_id` is not recoverable from a trace ID. `submission_id` may appear in logs and the audit trail — both have defined purge windows; the trace backend does not, and that asymmetry is the erasure property.
+- [Phase 01]: [Phase 1 / 01-09]: **D-18 is enforced at the EXPORT boundary, and no other layer can enforce it.** `SpanProcessor.onStart(span: Span, …)` receives a `Span`, which exposes `setAttribute` / `setAttributes` and **no read, no delete** — so a processor structurally cannot subtract an attribute a caller already set, and `ReadableSpan.attributes` is `readonly` at `onEnd` too. `SpanExporter.export(spans, …)` is the only point where finished spans with readable attributes exist immediately before serialisation. `AllowlistSpanExporter` copies each span with a filtered attribute set and delegates. **Corollary for any future "filter telemetry" requirement: the answer is an exporter, not a processor, and the filtering must happen at the last hop before the wire.**
+- [Phase 01]: [Phase 1 / 01-09]: **`{ ...span }` silently corrupts every exported trace — copy the prototype, not the own properties.** `Span` implements `duration`, `ended`, `droppedAttributesCount`, `droppedEventsCount` and `droppedLinksCount` as **prototype getters** backed by `_`-prefixed own fields, and a spread copies only own enumerable properties. Measured against a real `TracerProvider`: after `{ ...span, attributes }`, all five are `undefined`, and the OTLP serialiser reads all five. `Object.create(Object.getPrototypeOf(span), Object.getOwnPropertyDescriptors(span))` with `attributes` shadowed by one own value property keeps them. RESEARCH P3 and the plan both prescribe the spread — **this is the third time in Phase 1 that a research note's shape was wrong against the installed version** (after 01-04's pino destination and 01-06's `toJSONSchema` `override`). Verify the note against `node_modules` before implementing it.
+- [Phase 01]: [Phase 1 / 01-09]: **A user-supplied OTLP `url` is used VERBATIM; only the env path appends the signal path.** `mergeOtlpHttpConfigurationWithDefaults` takes `userProvidedConfiguration.url` first and only falls back to the env-derived value, while `getNonSpecificUrlFromEnv` is what calls `appendResourcePathToUrl(url, 'v1/traces')`. Passing a base `OTEL_EXPORTER_OTLP_ENDPOINT` straight through as `url` posts every span to the collector root and gets a 404 that surfaces as a **diag warning and nothing else**. `otlpSignalUrl()` normalises it in code and is idempotent on an already signal-specific URL. Any future collector integration must go through it.
+- [Phase 01]: [Phase 1 / 01-09]: **`NodeSDK.start()` is NOT idempotent, and idempotency must memoise the call, not the handle.** A second `start()` builds a fresh `MeterProvider` and hands it every configured `MetricReader`; `MetricReader.setMetricProducer` throws `"MetricReader can not be bound to a MeterProvider again."` `startOtel()` therefore memoises both the handle and the start promise. **`NodeSDK.start()` returns `void` at 0.222.0** — awaiting it is still correct, so a future async `start()` cannot reintroduce the race D-20 rules out.
+- [Phase 01]: [Phase 1 / 01-09]: **D-20's ordering is a measured difference, not an assertion: 7 spans with the SDK first, 1 with it second.** Measured twice by hand before it was written down, then pinned by `otel.bootstrap.node-ordering.spec.ts` (spawned `node --input-type=module -e`, identical Nest app, identical instrumentation bundle). The surviving span in the late run is the **outbound client** span — so the mistake leaves a working telemetry pipeline with none of the spans an operator queries. **The counterfactual does NOT reproduce inside Vitest**: it resolves external CJS through its own module runner rather than the `Module._load` chain `require-in-the-middle` patches, so the route span appears in both orders and an in-process assertion would be testing the runner, not the code. Corollary: `NestFactory.create()` resolves the Express adapter **lazily**, so the probe must import `@nestjs/platform-express` explicitly in the late arm or both arms come out byte-identical. **Plan 10: a top-of-file `import './app.module.js'` in any entrypoint costs 6 of 7 spans. Keep the `otel.mjs` loader AND the in-file `startOtel()`.**
+- [Phase 01]: [Phase 1 / 01-09]: **Reading OTel spans in a test has three traps, each of which reads as "the instrumentation is broken".** (1) `InMemorySpanExporter.shutdown()` **clears** the recorded spans — reading `getFinishedSpans()` after `sdk.shutdown()` always returns `[]`. (2) A span's export awaits the SDK's **async resource detectors**, so `forceFlush()` is required before reading; without it both arms of a counterfactual read as zero. (3) `@opentelemetry/sdk-trace@2.11.0` changed **both** span processors to a config object — `new SimpleSpanProcessor(exporter)` leaves the exporter `undefined` and throws at shutdown; the shape is `new SimpleSpanProcessor({ exporter })`.
+- [Phase 01]: [Phase 1 / 01-09]: **The span allowlist pins a LITERAL sorted array, and names fourteen URL/address attributes so they stay OUT.** `submission_id is absent` alone would let `user.email` in through the next door; asserting the whole list makes widening the trace attribute surface a reviewable edit — D-16's friction, on the same one-way store. The exclusions are the load-bearing half: `@opentelemetry/instrumentation-http` emits `url.full`, `url.path`, `user_agent.original`, `client.address`, `server.*` and `network.*` on **every** span, and a URL path in this product carries the submission id — admitting them would undo D-18 through the instrumentation rather than through a careless call site. `http.route` is allowlisted because it is the matched route **template**, asserted against `url.path` in the same test. **Both the legacy and the stable HTTP semconv spellings are listed** (`http.method` AND `http.request.method`): the installed bundle emits the stable pair, and an unused entry is inert while a missing one is a blind spot.
+- [Phase 01]: [Phase 1 / 01-09]: **OBS-01's one metric path is a process singleton with a loud boot failure, not a lazily-built fallback.** `createPrometheusExporter()` is the only place a `PrometheusExporter` is constructed and it is always `preventServerStart: true`; `setPrometheusExporter` is **first-write-wins**, so a caller bypassing `startOtel()` cannot swap the exporter out from under an already-bound `MeterReader`. `getPrometheusExporter()` returns `undefined` before `startOtel()` — a fallback would hand the controller a reader no `MeterProvider` is bound to, which serves a page of `target_info` and no series, and an operator reads that as "the platform is idle". `MetricsModule` therefore refuses to compose with a named `OTEL_NOT_STARTED`. The controller delegates to the exporter's own `getMetricsRequestHandler` rather than re-serialising, so `/metrics` cannot drift from the exporter's naming rules.
+- [Phase 01]: [Phase 1 / 01-09]: **`packages/platform/package.json`'s `exports` hand-off has now recurred FIVE times** (01-04 `./logging`, 01-05 `./crypto`, 01-07 `./health` + `./mongo`, 01-08 `./queue` + `./metrics`, 01-09 `./otel` + `./metrics`). Both new barrels exist. **Resolve it once in plan 10**, the first plan that must resolve a deep specifier.
+- [Phase 01]: [Phase 1 / 01-09]: **`OTEL_EXPORTER_OTLP_ENDPOINT` is NOT in the Zod boot schema — plan 10 owns adding it.** `startOtel` takes a narrow `OtelBootstrapConfig` (`{ SERVICE_NAME, OTEL_EXPORTER_OTLP_ENDPOINT? }`) rather than reading `AppConfig`, so FND-09 validation of the new key and the `ConfigModule` wiring that supplies it are plan 10's entrypoint work. Adding them here would have edited `config.schema.ts`, which is not in the plan's `files_modified`.
+- [Phase 01]: [Phase 1 / 01-09]: **The auto-instrumentation bundle's `net` and `dns` instrumentations emit a span per socket** (`tcp.connect` appears in the ordering probe's output). Real trace volume. **Deliberately not narrowed here** — disabling instrumentations is an observability-policy decision with its own cost, and doing it silently inside a bootstrap would hide the choice from review. Recorded for whichever phase owns tracing cost.
+- [Phase 01]: [Phase 1 / 01-09]: Added nine `@opentelemetry/*` packages (`--save-exact`, at the STACK.md §14 versions, or for `sdk-metrics` / `sdk-trace` at exactly what `sdk-node@0.222.0` already resolves) as root **dev** dependencies. Two are **not** in STACK.md §14's table — `@opentelemetry/sdk-metrics` and `@opentelemetry/sdk-trace` — because our own source imports them directly and §6's rule for `@opentelemetry/core` (a package we import must be declared, not hoisted) applies unchanged. A test now walks the bare `@opentelemetry/*` specifiers out of the observability sources and fails on any the manifest does not declare; **it caught `@opentelemetry/sdk-trace` as an undeclared import before the pin was added.** `package.json` is not in the plan's `files_modified`.
+- [Phase 01]: [Phase 1 / 01-09]: **`vitest` `isolate: false` is now worth ~42 s (~10% of a 7.5 min suite) and must still be declined.** The ordering counterfactual **depends** on per-file module isolation, and sharing workers across files would make it order-dependent. The saving was already declined in 01-07 (16 s) and 01-08 (25 s); this plan adds a hard reason to keep declining it.
+- [Phase 01]: [Phase 1 / 01-09]: `packages/platform/src/otel/index.ts` and `packages/platform/src/metrics/index.ts` are deliberate separate barrels so plan 10 does not edit the root `packages/platform/src/index.ts`.
 - [Phase 01]: [Phase 1 / 01-04]: **D-15's layer-2 wording is AMENDED (RESEARCH B-1 implemented): the control is pino's `formatters.log`, not a destination stream.** A pino destination receives already-serialised bytes — `hooks.streamWrite` is documented as receiving "the stringified JSON" — so "immediately before `JSON.stringify`" is unachievable there. `_asJson` in `lib/tools.js` runs `obj = formatters.log(obj)` *before* the serialisation loop, so the hook's return value is the object that gets written. Both of D-15's stated properties hold; only the mechanism changed. **Read `_asJson` before trusting any other pino security claim — the same function shows three of four key sources never reach the hook.**
 - [Phase 01]: [Phase 1 / 01-04]: **pino emits four key sources and only one passes through `formatters.log`.** `level` comes from `formatters.level` (cached into a raw `{"level":30` prefix), `ts` from the `timestamp` function, child bindings from `asChindings` — all three are concatenated as raw prefixes *before* the formatter runs. `createPinoOptions` therefore routes `formatters.level` through the same gate, supplies a custom `TimeFn` that emits the allowlisted name `ts` (pino's default key `time` is NOT allowlisted), and sets `base: null` — because the default `{pid, hostname}` bindings chunk would emit `hostname`, which is not on D-16's list, on every single record.
 - [Phase 01]: [Phase 1 / 01-04]: **`logger.child(bindings)` leaks PII and `formatters.bindings` cannot fix it.** `child()` in `lib/proto.js` takes a deliberate fast path that rebuilds the instance's formatters with `resetChildingsFormatter` (the identity function), so a root `formatters.bindings` is honoured only for the root's `base` chunk — which is `null`. Found by a failing test: `"user_email":"anna.pino@example.com"` in the output. `createChildLogger(logger, bindings)` rebuilds the bindings *before* pino sees them and touches no pino option or internal, so it survives a version bump. **Plan 10 wires `nestjs-pino`, which creates child loggers for requests — it must route them through `createChildLogger` or wrap the instance in a `LoggerPort` adapter that exposes no `child()`.**

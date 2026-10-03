@@ -46,7 +46,15 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **FND-04**: A lint rule fails the build when a module imports across a declared component boundary
 - [ ] **FND-05**: `api`, `worker`, and `scheduler` each expose `/health/live` and `/health/ready`, where liveness checks no dependency and readiness checks MongoDB and both Redis deployments
 - [x] **FND-06**: Structured JSON logs exclude PII by a **field allowlist applied before serialisation**, not a denylist filter
-- [ ] **FND-07**: The OpenTelemetry trace ID is generated independently of `submission_id` and is not correlatable back to it
+- [x] **FND-07**: The OpenTelemetry trace ID is generated independently of `submission_id` and is not correlatable back to it
+  - **(01-09) Delivered and proven.** `SPAN_ATTRIBUTE_ALLOWLIST` is a frozen constant enforced by
+    `AllowlistSpanExporter` at the export boundary — the only point where it *can* be enforced, since
+    `SpanProcessor.onStart` receives a `Span` with no read and no delete. Five spans carrying one
+    `submission_id` through a real `TracerProvider` get five distinct trace ids, and no exported span's
+    attributes match `/submission/i`. Fourteen URL/address attributes the HTTP instrumentation emits on
+    every span are named and excluded, because a URL path carries the submission id. **Not yet deployed:**
+    the ordering that starts OTel before the app module is measured (7 spans vs 1, in a real `node`
+    process) but no `main.ts` calls `startOtel()` yet — that is plan 10's `apps/*/otel.mjs`.
 - [ ] **FND-08**: Long-running scheduled work runs on BullMQ Job Schedulers, so a task registered once runs on every replica
   - **(01-08) Mechanism delivered, NOT complete.** `registerJobScheduler` over
     `Queue.upsertJobScheduler` exists and is proven idempotent against live Redis (registering three
@@ -180,13 +188,19 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Observability & Operations
 
-- [ ] **OBS-01**: One metric path exists — the OpenTelemetry metrics API with a Prometheus exporter — not a second `prom-client` path
-  - **(01-08) Half delivered, NOT complete.** The *instruments* are on the OTel meter `akane` and a
-    second path is proven absent (no manifest declares `prom-client`, no source file imports it,
-    and `business-metrics.ts`'s bare-import list is exactly `['@opentelemetry/api']`). **The
-    Prometheus exporter does not exist** — `exporter-prometheus` and the OTel `NodeSDK` bootstrap
-    are plan 09's files, and there is no scrape endpoint to scrape. The requirement names the
-    exporter explicitly, so it stays unchecked until plan 09 lands.
+- [x] **OBS-01**: One metric path exists — the OpenTelemetry metrics API with a Prometheus exporter — not a second `prom-client` path
+  - **(01-08) Half delivered.** The *instruments* were on the OTel meter `akane` and a second path was
+    proven absent; the Prometheus exporter did not exist, so the requirement stayed unchecked.
+  - **(01-09) Complete — 01-08's blocker is discharged.** `startOtel()` builds one `NodeSDK` carrying
+    the allowlist trace exporter, an OTLP metrics reader and the one `PrometheusExporter`; the exporter
+    is created only by `createPrometheusExporter()`, always `preventServerStart: true`, and a test binds
+    port 9464 to prove nothing is listening. `MetricsController` serves `GET /metrics` from that
+    singleton over real HTTP, and the spec finds the plan-08 counters **with the values recorded** —
+    the end-to-end proof of plan 08's meter hand-off. A process that never started OTel refuses to
+    compose the module with a named `OTEL_NOT_STARTED` rather than serving a permanently empty page.
+    A second registry was negatively controlled: substituting a fresh exporter turns 3 of 5 tests red.
+    **Residual, plan 10's job:** `MetricsModule` is not yet mounted by `api`, `worker` or `scheduler`,
+    so no process exposes `/metrics` until plan 10's composition roots import it.
 - [ ] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
@@ -333,7 +347,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-04 | Phase 1 | Pending |
 | FND-05 | Phase 1 | Pending |
 | FND-06 | Phase 1 | Complete |
-| FND-07 | Phase 1 | Pending |
+| FND-07 | Phase 1 | Complete (01-09) |
 | FND-08 | Phase 1 | Pending |
 | FND-09 | Phase 1 | Complete |
 | FND-10 | Phase 1 | Pending |
@@ -341,7 +355,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RTE-10 | Phase 1 | Complete |
 | AUD-10 | Phase 1 | Pending |
 | DAT-13 | Phase 1 | Pending |
-| OBS-01 | Phase 1 | Pending |
+| OBS-01 | Phase 1 | Complete (01-09) |
 | IDN-01 | Phase 2 | Pending |
 | IDN-02 | Phase 2 | Pending |
 | IDN-03 | Phase 2 | Pending |
