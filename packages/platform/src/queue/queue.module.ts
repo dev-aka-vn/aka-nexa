@@ -2,17 +2,17 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 
+import { PLATFORM_HEARTBEAT_ID } from './platform-heartbeat.job.js';
 import { queueRootOptions } from './queue.provider.js';
 
 /**
- * The queue name of the platform heartbeat scheduler.
+ * The queue name the heartbeat is registered under.
  *
- * Replaced in the same plan by `PLATFORM_HEARTBEAT_ID` from
- * `platform-heartbeat.job.ts`, which owns the scheduler's identity along with
- * its processor; `queue.integration.spec.ts` asserts this registration and that
- * constant are the same string so the two cannot drift apart afterwards.
+ * Re-exported from `PLATFORM_HEARTBEAT_ID` rather than restated: the scheduler
+ * id *is* the queue name, and two literals for one string is how a queue ends
+ * up with jobs scheduled onto it that nothing consumes.
  */
-export const PLATFORM_HEARTBEAT_QUEUE = 'platform-heartbeat';
+export const PLATFORM_HEARTBEAT_QUEUE = PLATFORM_HEARTBEAT_ID;
 
 /**
  * The BullMQ wiring every entrypoint shares (FND-08, D-14).
