@@ -1,6 +1,5 @@
 import type { Attributes, SpanKind } from '@opentelemetry/api';
 import { ExportResultCode } from '@opentelemetry/core';
-import type { Resource } from '@opentelemetry/resources';
 import type { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -35,12 +34,13 @@ export function syntheticSpan(
     duration: [0, 12_000],
     ended: true,
     // A `Resource` is a class carrying `merge` / `getRawAttributes`. The filter
-    // never reads it, so a cast is enough — and it keeps
-    // `@opentelemetry/resources` out of this spec's import list.
+    // never reads it, so a cast through the interface it has to satisfy is
+    // enough — and it keeps `@opentelemetry/resources` (which is only a
+    // transitive dependency) out of this spec's import list.
     resource: {
       attributes: { 'service.name': 'api' },
       asyncAttributesPending: false,
-    } as unknown as Resource,
+    } as unknown as ReadableSpan['resource'],
     instrumentationScope: { name: '@opentelemetry/instrumentation-express' },
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
