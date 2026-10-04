@@ -106,7 +106,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     whether the blocking loop is alive. `platformHeartbeatWorkerOptions()` is now one assertable
     value pinned against `queueRootOptions`' prefix.
 - [x] **FND-09**: All configuration is validated at boot by Zod; an invalid or missing required value fails startup with a named error
-- [x] **FND-10**: Secrets are encrypted at rest with AES-256-GCM under a KMS-backed master key, and no secret appears in code, config files, or plaintext env vars
+- [ ] **FND-10**: Secrets are encrypted at rest with AES-256-GCM under a KMS-backed master key, and no secret appears in code, config files, or plaintext env vars
   - **STAYS PENDING. Nothing in plan 10 touches it and nothing could.** The AES-256-GCM envelope,
     the `KeyProvider` interface and the production guard (`NODE_ENV=production` without
     `CRYPTO_KEY_PROVIDER=kms` refuses to boot) all landed in 01-05 and are proven. The one part
@@ -209,7 +209,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
 - [ ] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
 - [ ] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
-- [x] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
+- [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
 - [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
 
 ### Connectors & Async Execution
@@ -236,7 +236,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **AUD-07**: A quarterly access review report is auto-generated showing who holds access to what
 - [ ] **AUD-08**: A purge is soft-delete first, then hard delete after a 30-day grace period, and every purge is logged with operator ID and timestamp
 - [ ] **AUD-09**: Archived app data stays queryable by a global admin for compliance
-- [x] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
+- [ ] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
 
 ### Observability & Operations
 
