@@ -309,6 +309,8 @@ NFR-O-2 (OpenTelemetry) are the requirements this section serves.
 | `@opentelemetry/sdk-node` | **0.222.0** | NodeSDK entry point. **Must be initialised before any instrumented module is imported** — use `--import`/a loader entry, not an in-app call. | HIGH |
 | `@opentelemetry/api` | **1.9.1** | Traces/metrics/logs API. Stable 1.x; instrumentation packages peer on `^1.4.1`. | HIGH |
 | `@opentelemetry/core` | **2.11.0 — install explicitly** | Shared OTel core | HIGH |
+| `@opentelemetry/sdk-metrics` | **2.11.0 — install explicitly** | `PeriodicExportingMetricReader` — the metrics SDK `NodeSDK` needs for the single Prometheus path | **Same reason as `@opentelemetry/core`: the SDKs are reached transitively and only *peer* on `^2.0.0`, so they are not guaranteed present. Imported directly by `otel/bootstrap.ts`.** HIGH |
+| `@opentelemetry/sdk-trace` | **2.11.0 — install explicitly** | `SpanExporter` / `ReadableSpan` types for the allowlist span exporter | **Same reason as `@opentelemetry/core`.** Imported directly by `otel/allowlist-span-exporter.ts`. HIGH |
 | `@opentelemetry/auto-instrumentations-node` | **0.80.0** | Auto-instrumentation bundle (49 instrumentations) | HIGH |
 | `@opentelemetry/exporter-trace-otlp-http` | 0.222.0 | Traces → OTel Collector | HIGH |
 | `@opentelemetry/exporter-metrics-otlp-http` | 0.222.0 | Metrics → collector | HIGH |
@@ -669,6 +671,8 @@ NFR requires **zero-downtime rolling deploys**. Two NestJS 12 features support i
 | **`vitest`** | **5.0.3** | Unit + integration tests (server) | NestJS 12's ESM projects default to **Vitest**; the framework team migrated all repos off Jest. Aligns with `nest new` output. (Corrected from 5.0.2.) | HIGH |
 | **`@playwright/test`** | **1.63.0** | E2E — UI **and** API | PRD §17.1 already commits to Playwright. Also **the only practical way to UAT FormIO's drag-and-drop builder** — you cannot assert "an admin can drag a field onto a form" with unit tests. | HIGH |
 | **`testcontainers`** | **12.2.0** | Real MongoDB + Redis in integration tests | 🔴 Mocks would not catch the `GETDEL` atomicity (NFR-SEC-1) or BullMQ retry/DLQ behaviour that FR-C-* depends on. Those are the two highest-risk behaviours in the system and both are Redis-semantics-dependent. Engines `>=22.22` — satisfied. | HIGH |
+| **`@testcontainers/mongodb`** | **12.2.0** | The MongoDB module — `MongoDBContainer` | Installed **separately and explicitly**: `testcontainers` is the umbrella package and does not pull the driver modules. Starts Mongo with `--replSet rs0`, which is why the harness URL needs `directConnection=true`. MIT. | HIGH |
+| **`@testcontainers/redis`** | **12.2.0** | The Redis module — `RedisContainer` | Installed separately and explicitly, same reason. Supplies `withCommand`, which is what carries `--maxmemory-policy` — the mechanism the two-deployment cache/queue split depends on. MIT. | HIGH |
 | `fast-check` | 4.10.2 | Property-based testing | Valuable for the JEV routing layer: "no input produces a routing decision that bypasses RBAC" is a property, not an example. | HIGH |
 | `msw` | 3.0.1 | HTTP mocking for connector tests | Where testcontainers is not warranted (third-party APIs) | HIGH |
 | `@faker-js/faker` | 10.6.0 | Fixture data | Standard | HIGH |
@@ -924,7 +928,7 @@ Every row resolved live against `registry.npmjs.org` on **2026-10-01**. Nothing 
 
 | Package | Version | Verified via | `time.modified` | Confidence |
 |---------|---------|--------------|-----------------|------------|
-| `@nestjs/core`, `/common`, `/platform-express`, `/testing` | **12.1.2** | npm `dist-tags` | 2026-09-28 | HIGH |
+| `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express`, `@nestjs/testing` | **12.1.2** | npm `dist-tags` | 2026-09-28 | HIGH |
 | `@nestjs/config` | 12.0.1 | npm registry | 2026-09-22 | HIGH |
 | `@nestjs/swagger` | 12.0.2 | npm registry + TS peer `^5.5 \|\| ^6.0` (**optional**) | 2026-09-23 | HIGH |
 | `@nestjs/jwt` | 12.0.2 | npm registry (+ dep on `jsonwebtoken@9.0.3`) | 2026-09-14 | HIGH |
@@ -994,9 +998,14 @@ Every row resolved live against `registry.npmjs.org` on **2026-10-01**. Nothing 
 | `eslint-plugin-boundaries` | 7.2.0 | npm registry — **ESLint-only**; required for boundary enforcement | — | HIGH |
 | `typescript-eslint` | **8.71.0** | npm registry — peer `typescript: ">=4.8.4 <6.1.0"`, **no optional marking** | — | HIGH |
 | `typescript` | 7.0.2 latest / **6.0.3 pinned** | npm registry `dist-tags` | 2026-09-30 | HIGH |
+| `@types/node` | **24.x** | npm registry — build-time only. Added by plan 01-01 as a recorded deviation: `tsc -b` cannot typecheck Node globals (`process`, `Buffer`, …) without it. The canonical DefinitelyTyped package, not a substitution; the `^24` range tracks the Node floor in `.nvmrc`. | — | HIGH |
 | `vitest` | **5.0.3** | npm registry | 2026-09-25 | HIGH |
 | `@playwright/test` | 1.63.0 | npm registry | 2026-09-30 | HIGH |
 | `testcontainers` | 12.2.0 | npm registry (engines `>=22.22`) | — | HIGH |
+| `@testcontainers/mongodb` | 12.2.0 | npm registry — module variant, Apache-2.0→**MIT**; `MongoDBContainer` starts with `--replSet rs0`, hence the `directConnection=true` requirement in `tooling/containers.ts` | 2026-09-28 | HIGH |
+| `@testcontainers/redis` | 12.2.0 | npm registry — module variant, **MIT**; supplies `RedisContainer`, which is what accepts the `--maxmemory-policy` command the cache/queue split depends on | 2026-09-28 | HIGH |
+| `@opentelemetry/sdk-metrics` | 2.11.0 | npm registry — **Apache-2.0**; peers `^2.0.0` only, so not guaranteed transitively | 2026-09-21 | HIGH |
+| `@opentelemetry/sdk-trace` | 2.11.0 | npm registry — **Apache-2.0**; peers `^2.0.0` only, so not guaranteed transitively | 2026-09-21 | HIGH |
 | `fast-check` | 4.10.2 | npm registry | — | HIGH |
 | `msw` | 3.0.1 | npm registry | — | HIGH |
 | `@faker-js/faker` | 10.6.0 | npm registry | — | HIGH |
