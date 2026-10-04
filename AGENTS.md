@@ -766,3 +766,42 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 > Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
 > This section is managed by `generate-claude-profile` -- do not edit manually.
 <!-- GSD:profile-end -->
+
+<!-- The section below is intentionally OUTSIDE every GSD:*-start/end block. GSD regenerates
+     those regions from PROJECT.md / STACK.md / CONVENTIONS.md and will silently overwrite
+     anything inside them. Do not move this section into a managed block. -->
+
+## UI Design — `prototypes/` is the source of truth
+
+**Before designing or building any UI, read the mockup in `prototypes/` first.** Do not invent
+a layout, a navigation model, or a visual language when one has already been decided.
+
+- **`prototypes/mockup.html`** — the App Builder admin console, as a self-contained static file
+  (~1,950 lines, no build step). **Open it in a browser.** Reading it as text gives you the
+  information architecture; rendering it gives you the design. Guessing from the markup is not a
+  substitute for looking at it.
+
+### What the mockup decides
+
+| Concern | Authority |
+|---|---|
+| Layout, navigation, page structure, information architecture | `prototypes/mockup.html` |
+| Copy, labels, empty states, error states | `prototypes/mockup.html` |
+| Colour, type, spacing, fonts | the `:root` custom properties in the mockup — **reuse them** |
+| Component behaviour, data contracts, API shape | **not** the mockup — the frozen contracts in `packages/contract/` win |
+
+### Rules
+
+1. **Reuse the token set; do not introduce a second palette.** The mockup defines `--accent`
+   (`#0f9d8f`), `--ink`, `--line`, `--canvas`, the `--green` / `--amber` / `--blue` semantic
+   scales, `Space Grotesk` for display and `IBM Plex Sans` / `IBM Plex Mono` for body and mono.
+   A new colour or typeface that is not derived from these is a defect, not a preference.
+2. **A mockup never overrides a frozen contract.** Where the mockup's implied data shape
+   disagrees with a Phase 1 frozen schema — the read-link claim set (D-21), the JEV wire contract
+   (D-23), the log field-allowlist — the contract wins and the mockup is the thing that is wrong.
+   Say so when you find one; never quietly reshape a contract to match a picture.
+3. **Absence is not permission.** The mockup is one admin-console document. When a task targets a
+   surface it does not depict, say that explicitly and get the design confirmed rather than
+   treating a gap as licence to improvise.
+4. **The mockup is not a spec.** It carries no acceptance criteria. Behaviour still comes from
+   `REQUIREMENTS.md` and the phase's `must_haves`; where they conflict, the requirement wins.
