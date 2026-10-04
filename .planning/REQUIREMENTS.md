@@ -407,11 +407,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-07 | Phase 1 | Complete (01-09) |
 | FND-08 | Phase 1 | Complete (01-10) |
 | FND-09 | Phase 1 | Complete |
-| FND-10 | Phase 1 | Complete |
+| FND-10 | Phase 1 | **Pending — do not close until a KMS vendor is named (B-3/D-27).** `phase.complete` set this to `Complete` on 2026-10-03; that was a blanket phase-status update overriding a deliberate deferral, and it contradicts this requirement's own body. Reverted. The envelope, `KeyProvider` and production guard exist and are proven; **no KMS-backed key exists.** Phase 5 must not store a connector credential before the vendor is chosen. |
 | LNK-07 | Phase 1 | Complete |
 | RTE-10 | Phase 1 | Complete |
-| AUD-10 | Phase 1 | Complete |
-| DAT-13 | Phase 1 | Complete |
+| AUD-10 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered the rate-limit-key scope type (`ip`/`address`/`cidr` unexpressible). The requirement's own behaviour — "blocks only on signature failure" — is Phase 3/4. |
+| DAT-13 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered `supports_idempotency_key` as a **required** boolean (absent cannot read as `false`). Surfacing it in the App Builder is Phase 6. |
 | OBS-01 | Phase 1 | Complete (01-09, mounted 01-10) |
 | IDN-01 | Phase 2 | Pending |
 | IDN-02 | Phase 2 | Pending |
