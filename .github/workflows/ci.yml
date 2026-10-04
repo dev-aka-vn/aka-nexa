@@ -28,7 +28,20 @@ jobs:
   # FND-01 / FND-02 / D-06: prove a deliberate lockfile-free install does not
   # silently resolve TypeScript 7.x and break the build. Peer-dependency-bypass
   # flags must never be added to the install below — they turn the guard into a
-  # no-op. The plan's node assertion fails if such a flag is present.
+  # no-op, because the `ERESOLVE` they suppress *is* the guard.
+  #
+  # That sentence only stays true while an assertion enforces it (WR-10). Two
+  # properties make the assertion real rather than decorative:
+  #
+  #   1. The install command is **declared once** (`Declare the guarded install
+  #      command`), asserted against, and then executed from that same declared
+  #      value. A second hand-written copy of the command would let the check
+  #      pass while the real install drifted.
+  #   2. The assertion runs **before** the install, so a bypass flag fails the
+  #      job instead of succeeding and then invalidating the phase's claim.
+  #
+  # The empty-`INSTALL_CMD` branch is the non-vacuity guard: if the output wiring
+  # ever breaks, `grep` would be handed an empty string and report "clean".
   install-guard:
     name: install-guard
     runs-on: ubuntu-latest
@@ -38,10 +51,30 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Declare the guarded install command (single source of truth)
+        id: guard
+        run: echo "install_cmd=npm install --no-audit --no-fund" >> "$GITHUB_OUTPUT"
+      - name: Assert the install carries no peer-dependency bypass (D-06, WR-10)
+        env:
+          INSTALL_CMD: ${{ steps.guard.outputs.install_cmd }}
+        run: |
+          if [ -z "$INSTALL_CMD" ]; then
+            echo "::error::the guarded install command did not resolve — this assertion would be vacuous (D-06)."
+            exit 1
+          fi
+          if printf '%s' "$INSTALL_CMD" | grep -Eq '(^|\s)(--legacy-peer-deps|--force)(\s|$)|--strict-peer-deps=(false|0)'; then
+            echo "::error::peer-dependency-bypass flag in the install-guard install ($INSTALL_CMD) turns the guard into a no-op (D-06, FND-01)."
+            exit 1
+          fi
+          echo "install-guard install carries no peer-dependency bypass: $INSTALL_CMD"
       - name: Install without a lockfile (the guard)
+        env:
+          INSTALL_CMD: ${{ steps.guard.outputs.install_cmd }}
         run: |
           rm -f package-lock.json
-          npm install --no-audit --no-fund
+          $INSTALL_CMD
+      - name: Assert the resolved TypeScript is the pinned 6.0.3 (FND-01)
+        run: node -e "const v = JSON.parse(require('node:fs').readFileSync('node_modules/typescript/package.json','utf8')).version; if (v !== '6.0.3') { console.error('::error::lockfile-free install resolved typescript ' + v + ' — the exact pin is load-bearing (FND-01, D-06).'); process.exit(1); } console.log('lockfile-free install resolved typescript', v);"
       - name: Build (lint, then tsc -b)
         run: npm run build
       - name: Test
