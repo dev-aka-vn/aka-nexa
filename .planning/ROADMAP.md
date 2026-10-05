@@ -77,7 +77,8 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A log line carrying a user email is dropped by the serialiser, and no `submission_id` is recoverable from the OpenTelemetry trace ID — both proven by test, because neither is fixable once production logs exist.
   5. The read-link JWT claim shape and the decision wire contract (including `choice.verified` and `state.force_clarification`) are published as versioned schemas with a frozen-field test, so adding a claim is a failing test rather than a deploy that breaks every outstanding link.
 
-**Plans:** 10/10 plans complete
+**Plans:** 10/10 shipped plans complete · 1 gap-closure plan pending (01-11)
+**Gap closure (2026-10-05):** UAT on the shipped phase found **G1** — no `.env.example`, no compose file, and no run documentation, while `01-10-SUMMARY.md:402` records D-11 as a "documented local full-stack run". Closed by `01-11-PLAN.md` (`gap_closure: true`). The phase stays closed; this is a re-entry on shipped work. Two UAT items remain human decisions, not verification tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor (B-3 / D-27, which holds FND-10 Pending and gates Phase 5).
 **Verification (2026-10-03):** `gaps_found` — SC#3 failed on the subpath import form (gap G-1) and one advisory on `CryptoModule` composition. **Both closed the same day** (`44b0619`, `f813f64`); the verifier re-runs before Phase 2. FND-10 remains **pending** — composing `CryptoModule` makes the guard reachable from a real boot, it does not produce a KMS-backed key.
 **Wave 1**
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
@@ -98,6 +99,9 @@ Four researchers converged on this shape; the deviation is stated rather than si
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [x] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
+
+**Wave 6** *(gap closure — blocked on Waves 1–5 completion; runs on the shipped tree)*
+- [ ] 01-11-PLAN.md — Document the boot contract: `.env.example`, `compose.dev.yml`, run section, and a spec that performs the documented start for real (G1)
 
 **Notes**: Two Redis deployments are split from day one — BullMQ requires `maxmemory-policy=noeviction` while the cache wants eviction, and the policy is instance-wide. Rate limiting is **per user and per link `jti`, never per IP**, and blocks only on signature failure (`NFR-SEC-10` loses). `FR-D-12` write-once is **amended** to a single-send guarantee plus a per-connector `supports_idempotency_key` flag. The §15.4 erasure promise is narrowed to PII-excluded-by-allowlist + tombstonable `actor_ref` + defined purge windows.
 **Discovery required in this phase**: (a) resolve the Form.io `File` component licensing question — it is premium while the renderer is MIT — and drop `FR-F-10` plus its dependent object-storage gap if it cannot be rendered unlicensed; (b) decide the draft-save token model, since a resumable draft needs a second, longer-lived token class incompatible with the stateless one-time-token SPA.
