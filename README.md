@@ -174,13 +174,29 @@ failure is reported in the least useful way possible:
 ```
 Nest application successfully started     ← the last line a reader sees
 ...
-Error: listen EADDRINUSE: address already in use 0.0.0.0:3000
+Error: listen EADDRINUSE: address already in use :::3000
 ```
 
 **Nest logs `successfully started` before it binds the port.** That message means the module graph
 initialised, not that the process is alive — the bind happens immediately afterwards and a bare
 `EADDRINUSE` kills it. So check the **exit code**, not the log: a process that printed the success
-line and then exited has just lost the port race.
+line and then exited has just lost the port race. (The address is `:::3000` rather than
+`0.0.0.0:3000` because `app.listen` is called with no host, so Node binds the IPv6 wildcard. The
+executable test above asserts the README's rendering against what Node actually printed, so the two
+cannot drift apart.)
+
+**Who is holding the port?** A container's published port is held by a root-owned `docker-proxy`, so
+`ss` and `lsof` will tell you nothing about it unless you are root:
+
+```sh
+docker ps --filter publish=3000 --format '{{.Names}}'   # empty ⇒ no container publishes 3000
+```
+
+When that prints nothing, the holder is **not identifiable from your own account** — either no
+container publishes it and it is a plain process you own (`ss -ltnp | grep 3000` will name that one),
+or the port is held by something this account cannot enumerate. The onboarding spec uses exactly this
+command, and it runs **after** a bind it wanted has already failed: it identifies the holder of a port
+it could not take, and it does **not** stop a collision from happening.
 
 **Fix:** give the process a free port.
 

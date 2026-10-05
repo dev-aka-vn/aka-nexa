@@ -40,8 +40,18 @@
  * - **`NODE_ENV` is set on every boot.** Vitest sets `NODE_ENV=test` and
  *   `setupFiles` seeds `process.env`; inheriting either would make the boot
  *   contract under test whatever the runner happened to export.
- * - **`PORT` is absent unless a boot overrides it**, so the documented default
- *   per `SERVICE_NAME` is what actually gets exercised.
+ * - **`PORT` is set explicitly on every boot**, to a port this file acquired from
+ *   the kernel and proved free by re-binding it immediately before the spawn.
+ *   `01-11` left it absent so the documented default per `SERVICE_NAME` would be
+ *   what ran — which coupled the whole file's result to whether the host's api
+ *   default port happened to be free, and on a machine where it is not, four of
+ *   twenty-seven tests failed with `EADDRINUSE` (G3). The derived default is still
+ *   pinned, in `config.schema.spec.ts:73-89` and in this file's README
+ *   service/port pairing assertion; what is given up here is a *live bind* of it,
+ *   and the trade is deliberate. A second, cheaper loss went with it: the
+ *   responder on a port could be a developer's already-running api, so the poll
+ *   now re-checks that the child is still alive after a healthy body, and a
+ *   stopped boot must leave its port bindable again.
  * - **`OTEL_EXPORTER_OTLP_ENDPOINT` is absent.** There is no collector in this
  *   file, and an inherited endpoint would put export failures into the signal.
  *
@@ -126,6 +136,13 @@ const API_OTEL_LOADER = path.join(REPO_ROOT, 'apps', 'api', 'otel.mjs');
 const ACTIVE_LINE = /^[A-Z0-9_]+=\S+$/;
 /** The same shape, applied to a comment body so a documented key counts as present. */
 const ASSIGNMENT = /^([A-Z0-9_]+)=(.*)$/;
+
+/**
+ * ANSI SGR escapes. Nest's logger colourises its output, and the sequences
+ * contain no whitespace — so any `\S+` match across a colourised log swallows
+ * them and yields a string no document could ever contain.
+ */
+const ANSI_COLOUR = /\u001B\[[0-9;]*m/g;
 
 /**
  * 32 bytes of key material in a temporary directory.
@@ -435,7 +452,15 @@ async function bootUntilLive(
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health/live`);
         const body = (await response.json()) as { status?: string };
-        return response.status === 200 && body.status === 'ok';
+        if (response.status !== 200 || body.status !== 'ok') return false;
+        // Re-checked *after* the response, not only before the fetch. The
+        // pre-fetch check catches a child that is already dead but not one that
+        // is mid-boot while something else answers the port — and that is exactly
+        // the window in which a developer's already-running api satisfied three
+        // assertions (WR-06). A healthy body whose child has since exited cannot
+        // have come from that child, so it came from somewhere else and must not
+        // be accepted.
+        return !api.hasExited();
       } catch {
         return false;
       }
@@ -548,7 +573,7 @@ describe('.env.example — the boot contract, asserted against the schema', () =
 
 describe('.env.example — booting a real api process', () => {
   let containers: ThreeContainers;
-  const booted: BootedApi[] = [];
+  const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   const boot = async (
     env: Record<string, string>,
@@ -556,7 +581,7 @@ describe('.env.example — booting a real api process', () => {
     options: { readonly cwd?: string } = {},
   ): Promise<BootedApi> => {
     const api = await bootUntilLive(env, port, options);
-    booted.push(api);
+    booted.push({ api, port });
     return api;
   };
 
@@ -565,8 +590,8 @@ describe('.env.example — booting a real api process', () => {
   }, HOOK_TIMEOUT);
 
   afterAll(async () => {
-    for (const api of booted) {
-      await api.stop();
+    for (const { api, port } of booted) {
+      await stopAndRequireRelease(api, port);
     }
     await containers?.stop();
   }, HOOK_TIMEOUT);
@@ -582,17 +607,17 @@ describe('.env.example — booting a real api process', () => {
   });
 
   it('boots an api process and reports every core dependency up', async () => {
-    // No PORT in the constructed environment, so the derived default for `api`
-    // is what runs — exactly as the README instructs. Read from the schema
-    // rather than written as a literal so the spec tracks the port table.
-    const api = await boot(containerEnv(containers), DEFAULT_PORT_BY_SERVICE.api);
+    // A port this spec acquired and proved free, passed explicitly. Nothing here
+    // depends on the host's api default port being available, so the file's
+    // result is the same on a machine where 3000 is held by an unrelated
+    // container and on one where it is not (G3).
+    const port = await acquireFreePort();
+    const api = await boot({ ...containerEnv(containers), PORT: String(port) }, port);
 
-    const live = await (
-      await fetch(`http://127.0.0.1:${DEFAULT_PORT_BY_SERVICE.api}/health/live`)
-    ).json();
+    const live = await (await fetch(`http://127.0.0.1:${port}/health/live`)).json();
     expect(live, '/health/live must answer a fixed ok literal').toEqual({ status: 'ok' });
 
-    const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+    const ready = await readReady(port);
     expect(ready, '/health/ready must answer').toBeDefined();
     expect(ready?.status).toBe(200);
     // All three, each named — the shape D-10 requires of a ready process.
@@ -602,7 +627,7 @@ describe('.env.example — booting a real api process', () => {
       Object.fromEntries([...CORE_HEALTH_INDICATOR_KEYS].map((key) => [key, 'up'])),
     );
 
-    await api.stop();
+    await stopAndRequireRelease(api, port);
   }, 300_000);
 
   it('refuses the same file unmodified with a named CONFIG_INVALID: SERVICE_NAME', async () => {
@@ -649,15 +674,18 @@ describe('.env.example — booting a real api process', () => {
       'MONGO_URL=mongodb://127.0.0.1:1/nowhere-listening\n',
     );
 
-    const api = await boot(containerEnv(containers), DEFAULT_PORT_BY_SERVICE.api, {
+    // Its own acquired port, like every other boot here. The decoy `.env` is the
+    // variable under test; the port is not, and must not become one.
+    const port = await acquireFreePort();
+    const api = await boot({ ...containerEnv(containers), PORT: String(port) }, port, {
       cwd: decoyDir,
     });
 
-    const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+    const ready = await readReady(port);
     expect(ready, '/health/ready must answer with a decoy .env in cwd').toBeDefined();
     expect(dependencyStatuses(ready ?? { body: {} }).mongo).toBe('up');
 
-    await api.stop();
+    await stopAndRequireRelease(api, port);
     rmSync(decoyDir, { recursive: true, force: true });
   }, 300_000);
 });
@@ -1145,8 +1173,8 @@ describe('.gitignore — the local key file is not committable (T-1-26)', () => 
   });
 });
 
-/** A port nothing is listening on right now. */
-async function freePort(): Promise<number> {
+/** A port the kernel assigns on a `:0` bind, read off it and released. */
+async function kernelAssignedPort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const probe = createServer();
     probe.on('error', reject);
@@ -1158,44 +1186,178 @@ async function freePort(): Promise<number> {
   });
 }
 
+/**
+ * Bind `port` on loopback and release it immediately. `false` if something
+ * already holds it — which is a fact about the host, not an error to throw from.
+ */
+async function bindAndRelease(port: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+  });
+}
+
+/**
+ * A human-readable description of whatever is holding `port`.
+ *
+ * `docker ps` filtered to the published port is tried first, because on a
+ * developer machine that is the common case: a container's published port is
+ * held by a root-owned `docker-proxy`, and both `ss -ltnp` and `lsof` decline to
+ * name it for a non-root caller — they return **nothing at all** rather than an
+ * error. A fallback to either would therefore report "nothing holds it" and send
+ * a reader looking in the wrong place, which is worse than admitting ignorance.
+ * So when nothing can be found, the answer is that this account cannot identify
+ * it (P11). Inventing a name is not among the options.
+ *
+ * Fixed argv, no shell string, explicit timeout, and nothing assembled from
+ * environment or file content. The result is interpolated only into a failure
+ * message: never logged on a passing run, never returned to a caller that stores
+ * it.
+ */
+function describeOccupant(port: number): string {
+  try {
+    const containers = execFileSync(
+      'docker',
+      ['ps', '--filter', `publish=${port}`, '--format', '{{.Names}}'],
+      { encoding: 'utf8', timeout: 5_000 },
+    )
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (containers.length > 0) {
+      return `held by container ${containers.join(', ')} (published port ${port})`;
+    }
+  } catch {
+    // Docker absent or its daemon unreachable. Fall through to the honest answer
+    // rather than reporting that the query found nothing, which it did not do.
+  }
+  return (
+    `not identifiable from this account — a container-published port is held by a root-owned ` +
+    `docker-proxy this user cannot enumerate, and ${port} may equally be held by a plain ` +
+    `process you own`
+  );
+}
+
+/**
+ * A port nothing is listening on, **proved free at the moment it is returned**.
+ *
+ * The proof is a re-bind, not an assumption. The kernel hands out a port from
+ * `:0`, and between releasing it and spawning the child something else can take
+ * it — on a developer machine, plausibly a container. A bare `EADDRINUSE` from a
+ * boot that has already started is a far worse diagnostic than a named port with
+ * its holder, so the precondition lives here, immediately before the spawn rather
+ * than buried inside it.
+ *
+ * Nothing in this file asks the kernel for a *specific* port. That is the whole
+ * of G3: the api default port is a derived default the host may or may not have
+ * free, and a test whose precondition is a property of the machine is a
+ * false-red generator. On this host that port is held by an unrelated container,
+ * and this file's result must be the same either way.
+ */
+async function acquireFreePort(): Promise<number> {
+  const port = await kernelAssignedPort();
+  if (await bindAndRelease(port)) return port;
+
+  throw new Error(
+    `acquired port ${port} was taken before the child was spawned — ${describeOccupant(port)}. ` +
+      `Documented remedy: PORT=3100 SERVICE_NAME=api npm run start:api`,
+  );
+}
+
+/**
+ * Stop a booted api and require its port to become bindable again.
+ *
+ * A port still held after the process under test has exited was held by something
+ * else — which means every health response this boot's assertions accepted came
+ * from a foreign process, and the correct outcome is a red test, not a green one.
+ * That is WR-06 stated as a check rather than a worry, and it is the same hazard
+ * `.env.example` warns its reader about, removed from the spec's own behaviour.
+ *
+ * The bounded window exists because the child's HTTP server closes asynchronously
+ * relative to its `close` event, so a single immediate re-bind would report a
+ * correctly-torn-down boot as an impostor.
+ *
+ * Residual, recorded rather than overstated: this proves the holder at the moment
+ * of teardown, so a foreign holder that released in the same instant is not
+ * excluded. No window-based check closes that, and this one does not claim to.
+ */
+async function stopAndRequireRelease(api: BootedApi, port: number): Promise<void> {
+  await api.stop();
+
+  const released = await waitFor(async () => bindAndRelease(port), 20, 500);
+  if (!released) {
+    throw new Error(
+      `the api process exited but port ${port} is still held — ${describeOccupant(port)}. ` +
+        `A healthy response asserted on this port came from a process this spec did not start.`,
+    );
+  }
+}
+
+/**
+ * Trap A's port squatter, bound once for the whole file.
+ *
+ * **Not** per-describe, and **not** tolerantly. `01-11`'s squatter resolved on its
+ * own `error` event, asserted nothing about `listening`, and its teardown accepted
+ * a squatter that never bound — so a developer with a leftover process on the api
+ * port got a green trap that proved nothing at all (WR-05). This one rejects on
+ * error, asserts `listening`, and has no branch that tolerates a failure.
+ *
+ * The port is **acquired, never the api default**. Binding 3000 here would make
+ * the whole file's outcome depend on whether the host's api default port is free,
+ * which is the defect this file's port handling exists to remove.
+ */
+let squatter: Server | undefined;
+let squatterPort: number | undefined;
+
+beforeAll(async () => {
+  const port = await acquireFreePort();
+  const listener = createServer();
+
+  await new Promise<void>((resolve, reject) => {
+    // `reject`, not `resolve`: a squatter that cannot bind must fail the file.
+    listener.once('error', reject);
+    listener.listen(port, '127.0.0.1', () => resolve());
+  });
+
+  expect(listener.listening, `the port squatter must be listening on ${port}`).toBe(true);
+  squatter = listener;
+  squatterPort = port;
+}, HOOK_TIMEOUT);
+
+afterAll(async () => {
+  const listener = squatter;
+  squatter = undefined;
+  squatterPort = undefined;
+  if (listener === undefined) return;
+  await new Promise<void>((resolve) => {
+    listener.close(() => resolve());
+  });
+});
+
 describe('Trap A — port collision, and the "successfully started" lie', () => {
   let containers: ThreeContainers;
-  let squatter: Server | undefined;
-  const booted: BootedApi[] = [];
+  const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
     containers = await startThreeContainers();
-    const listener = createServer();
-    squatter = listener;
-    // Bind the api default port and hold it. The port is read from
-    // `DEFAULT_PORT_BY_SERVICE` rather than written as a literal, so the test
-    // tracks the schema instead of drifting from it.
-    await new Promise<void>((resolve) => {
-      listener.once('error', () => resolve());
-      listener.listen(DEFAULT_PORT_BY_SERVICE.api, '127.0.0.1', () => resolve());
-    });
   }, HOOK_TIMEOUT);
 
   afterAll(async () => {
-    await new Promise<void>((resolve) => {
-      if (squatter === undefined || !squatter.listening) {
-        resolve();
-        return;
-      }
-      squatter.close(() => resolve());
-    });
-    for (const api of booted) {
-      await api.stop();
+    for (const { api, port } of booted) {
+      await stopAndRequireRelease(api, port);
     }
     await containers?.stop();
   }, HOOK_TIMEOUT);
 
   it('dies with a bare EADDRINUSE *after* logging that it started successfully', async () => {
-    // No PORT in the environment, so the process resolves its derived default —
-    // which the listener above now owns. Because the child environment is
-    // constructed, an exported `PORT` in the operator's shell cannot make this
-    // boot pass by accident.
-    const api = startApi(containerEnv(containers));
+    // The squatter's own port, passed explicitly. Both the collision and the
+    // remedy below use that one freshly acquired squatter, so this trap measures
+    // the bind race and nothing about the host's api default port.
+    const port = squatterPort;
+    expect(port, 'precondition: the file-level squatter must hold a port').toBeDefined();
+
+    const api = startApi({ ...containerEnv(containers), PORT: String(port) });
     const code = await api.exited;
 
     expect(code, 'a process that cannot bind must not exit zero').not.toBe(0);
@@ -1203,48 +1365,73 @@ describe('Trap A — port collision, and the "successfully started" lie', () => 
     // The reason this trap is documented at all: the last line a reader sees
     // before the bare error claims success.
     expect(api.output()).toContain('Nest application successfully started');
+
+    // The README's rendered address, derived from what Node actually printed.
+    // `app.listen(port)` is called with no host, so Node binds the IPv6 wildcard
+    // and prints `:::3000` — a README showing `0.0.0.0:3000` describes a string
+    // that appears in nobody's log, which is the same "a document states a
+    // property nothing verifies" defect G2 was opened for, sitting in one of the
+    // three files in scope. Deriving it means a change in Node's formatting turns
+    // this red instead of quietly leaving the README describing the wrong thing;
+    // a hand-written `:::3000` would have passed no matter what Node printed.
+    //
+    // Nest's logger colourises what it prints, and the escapes contain no
+    // whitespace, so a bare `\S+` would swallow them and derive an address no
+    // document can contain. Stripped before matching rather than after, so the
+    // match itself sees only the characters Nest wrote around.
+    const plain = api.output().replace(ANSI_COLOUR, '');
+    const captured = /listen EADDRINUSE: address already in use (\S+)/.exec(plain);
+    expect(captured, 'the collision must render the address Node actually bound against').not.toBeNull();
+    const rendered = (captured?.[1] ?? '').replace(/:\d+$/, `:${DEFAULT_PORT_BY_SERVICE.api}`);
+    expect(rendered, 'the captured address must carry a port').not.toBe('');
+    expect(
+      readFileSync(README_PATH, 'utf8'),
+      'the README must render the address Node prints, not one it chose',
+    ).toContain(rendered);
   }, 300_000);
 
   it('boots on an overridden PORT, which is the documented remedy', async () => {
-    const port = await freePort();
-    const api = await bootUntilLive(
-      { ...containerEnv(containers), PORT: String(port) },
-      port,
-    );
-    booted.push(api);
+    // A second acquired port, free — not the squatter's, which is held on purpose.
+    const port = await acquireFreePort();
+    const api = await bootUntilLive({ ...containerEnv(containers), PORT: String(port) }, port);
+    booted.push({ api, port });
 
     const live = await (await fetch(`http://127.0.0.1:${port}/health/live`)).json();
     expect(live, 'the PORT override must actually work').toEqual({ status: 'ok' });
+
+    await stopAndRequireRelease(api, port);
   }, 300_000);
 });
 
 describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
   let containers: ThreeContainers;
-  const booted: BootedApi[] = [];
+  const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 
   afterAll(async () => {
-    for (const api of booted) {
-      await api.stop();
+    for (const { api, port } of booted) {
+      await stopAndRequireRelease(api, port);
     }
     await containers?.stop();
   }, HOOK_TIMEOUT);
 
   it('reports mongo up with the URL the project\'s own helper builds', async () => {
     // `mongoUrl()` rather than the literal, so the fix is the project's helper
-    // and not a hand-assembled URL that could drift from it.
+    // and not a hand-assembled URL that could drift from it. Its own acquired
+    // port, like every other boot here.
+    const port = await acquireFreePort();
     const api = await bootUntilLive(
-      { ...containerEnv(containers), MONGO_URL: mongoUrl(containers.mongo) },
-      DEFAULT_PORT_BY_SERVICE.api,
+      { ...containerEnv(containers), MONGO_URL: mongoUrl(containers.mongo), PORT: String(port) },
+      port,
     );
-    booted.push(api);
+    booted.push({ api, port });
 
-    const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+    const ready = await readReady(port);
     expect(dependencyStatuses(ready ?? { body: {} }).mongo).toBe('up');
-    await api.stop();
+    await stopAndRequireRelease(api, port);
   }, 300_000);
 
   it('reports mongo down from that same URL with the directConnection parameter deleted', async () => {
@@ -1252,7 +1439,8 @@ describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
     // because of a fact about the shared harness: `startThreeContainers()` runs
     // MongoDB with `--replSet rs0`, so `urls.mongo` already carries the fix. No
     // second MongoDB container is needed — the one the harness starts *is* the
-    // `--replSet` server the trap is about.
+    // `--replSet` server the trap is about. Each arm takes its **own** acquired
+    // port, so the two are not distinguished by anything but the URL.
     const withoutFix = new URL(containers.urls.mongo);
     withoutFix.searchParams.delete('directConnection');
     const withFix = new URL(containers.urls.mongo);
@@ -1264,11 +1452,12 @@ describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
       withFix.toString(),
     );
 
+    const port = await acquireFreePort();
     const api = await bootUntilLive(
-      { ...containerEnv(containers), MONGO_URL: withoutFix.toString() },
-      DEFAULT_PORT_BY_SERVICE.api,
+      { ...containerEnv(containers), MONGO_URL: withoutFix.toString(), PORT: String(port) },
+      port,
     );
-    booted.push(api);
+    booted.push({ api, port });
 
     // Asserted on the observable outcome — mongo not reported up — rather than
     // on an HTTP status, because which failure surfaces first (a 503 from the
@@ -1277,13 +1466,13 @@ describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
     // resolves. Pinning a status would test a timeout constant, not the trap.
     const reportedDown = await waitFor(
       async () => {
-        const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+        const ready = await readReady(port);
         return ready !== undefined && dependencyStatuses(ready).mongo !== 'up';
       },
       60,
       1_000,
     );
     expect(reportedDown, 'readiness must report mongo as not up').toBe(true);
-    await api.stop();
+    await stopAndRequireRelease(api, port);
   }, 300_000);
 });
