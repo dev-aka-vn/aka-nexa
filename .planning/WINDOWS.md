@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 7
 waived_count: 1
-fixed_count: 9
+fixed_count: 10
 total_count: 18
-last_updated: 2026-10-05T05:52:40.336Z
+last_updated: 2026-10-05T16:02:22.934Z
 ---
 
 # Broken Windows Ledger
@@ -32,7 +32,7 @@ last_updated: 2026-10-05T05:52:40.336Z
 | 15 | 01 | deviation | vitest.config.mts |  | isolate:false now saves ~42s (~10% of a 7.5 min suite), up from ~16s in 01-07. Still declined, and plan 09 adds a hard reason: the ordering counterfactual depends on per-file isolation | open |  | 2026-10-03T10:05:00.000Z |  |
 | 16 | 01 | unmet-truth | eslint.config.mjs | 44 | The boundary gate does not reach `apps/{api,worker,scheduler}/otel.mjs` — the D-20 loader entry that must load before anything instrumented. Its imports are declared and never evaluated. Two independent reasons, both measured: the rule's `files` block is scoped to `**/*.{ts,mts,cts}`, AND every element pattern is `apps/<app>/src/**`, so the file matches no element descriptor and `Rules/Dependencies.js` gates the evaluation on `!dependency.from.file.isIgnored`. Measured: 0 diagnostics today; widening `files` to `**/*.mjs` still gives 0, including for a planted cross-boundary import; `checkUnknownLocals: true` also gives 0, because it governs an unknown *target*, not an unknown origin. Closing it is an element-graph decision (does a loader entry belong to the `app-<name>` element?), which is D-02's explicit scoping — not a one-liner. Found while closing gap G-1; G-1's own subpath blind spot is fixed and pinned by tests | open |  | 2026-10-03T19:50:00.000Z |  |
 | 17 | 01 | deviation | .planning/REQUIREMENTS.md |  | phase.complete flipped FND-10, AUD-10 and DAT-13 from Pending to Complete on 2026-10-03, overriding deliberate deferrals the verifier had just confirmed as honestly held. The requirement bodies still read STAYS PENDING, so the artifact contradicted itself. Reverted by hand. The CLI's phase-status update is keyed on phase completion rather than per-requirement evidence, so any deliberately-deferred requirement is at risk of the same overwrite until that is addressed. FND-10 in particular must stay Pending: Phase 5 must not store a connector credential before a KMS vendor is named (B-3/D-27). SCOPE CORRECTION 2026-10-04: phase.complete writes TWO machine-consumed fields per requirement — the `- [x]` checkbox and the coverage-table Status cell. The 2026-10-03 revert changed only the table, so the checkbox kept reading delivered for FND-10, AUD-10 and DAT-13 while the table and the requirement bodies said Pending; a Nyquist re-verification caught it. Any revert of this class must change BOTH fields. | open |  | 2026-10-04T01:28:19.120Z |  |
-| 18 | 01 | superseded | .planning/phases/01-foundations-platform/01-12-PLAN.md | 01-11 Task 2's documented-path verify command | **Both halves now settled. Retained because `.planning/WINDOWS.md` is not in 01-12's `files_modified`, so 01-12's SUMMARY carries this supersession and it is applied here.** (a) *Probe budget.* The 15s (`N=30`) budget is widened to 60s (`N=120`) by 01-12, justified in D-5 as matching the constant `bootUntilLive` already uses (`waitFor(..., 120, 500)`) for the same boot, not fitted to the observed 28.8s. (b) *Port collision — the larger half, which this entry never recorded.* G3 established that on a host where the api default port 3000 is occupied, `tooling/onboarding.spec.ts` fails 4 of 27 outright with `EADDRINUSE :::3000`; `01-11`'s executor reported 27/27 only because it stopped the `pms-2026` container first and restarted it afterwards. That conditional is what made a green run misleading, so 01-12 removes the dependency: every boot acquires a port and passes `PORT` explicitly, and the documented-path shell command gains a bind probe reporting `PORT_OCCUPIED` with the holder named. Verified on the machine's normal state with `pms-2026` left Up: 37/37, nothing stopped. **Honest limit:** the documented-path command itself could not be executed in the verifying harness, which refuses `source`/`.` at command position — so (a)'s widened budget and (b)'s shell-command half are unrun there. Both are recorded as unrun in 01-12-SUMMARY rather than claimed green. | resolved | 01-12 | 2026-10-05T16:45:00.000Z | superseded by 01-12 in both halves; documented-path command unrun in harness |
+| 18 | 01 | unrun-verify | .planning/phases/01-foundations-platform/01-11-PLAN.md |  | Task 2's documented-path verify command fails on this host: its probe allows 30x500ms (15s) for /health/ready, but external load (load avg 7-15, ~1GB free RAM) stretches Nest+instrumented-driver module load to ~29s. Run verbatim it exits 1 with NOT_READY. The identical boot reaches READY_OK mongo,redis_cache,redis_queue after 28.8s, so the documented path is correct and only the probe budget is host-dependent. Not fixed by editing the command (plan forbids it); re-run on an idle host or widen N deliberately. | fixed |  | 2026-10-05T05:52:40.336Z | 2026-10-05T16:02:22.934Z |
 
 ````json
 [
@@ -259,10 +259,10 @@ last_updated: 2026-10-05T05:52:40.336Z
     "file": ".planning/phases/01-foundations-platform/01-11-PLAN.md",
     "line": null,
     "description": "Task 2's documented-path verify command fails on this host: its probe allows 30x500ms (15s) for /health/ready, but external load (load avg 7-15, ~1GB free RAM) stretches Nest+instrumented-driver module load to ~29s. Run verbatim it exits 1 with NOT_READY. The identical boot reaches READY_OK mongo,redis_cache,redis_queue after 28.8s, so the documented path is correct and only the probe budget is host-dependent. Not fixed by editing the command (plan forbids it); re-run on an idle host or widen N deliberately.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-05T05:52:40.336Z",
-    "resolved_at": null,
+    "resolved_at": "2026-10-05T16:02:22.934Z",
     "milestone": null
   }
 ]
