@@ -55,7 +55,7 @@ the schema declares, with the local development values filled in.
 
 ⚠️ **The sourcing line below rewrites `NODE_ENV`, and that is the variable the crypto guard keys
 on.** `.env.example` carries an **active** `NODE_ENV=development`, and `set -a; . ./.env.example`
-assigns every active line — so it overwrites an `NODE_ENV=production` you had already exported, in
+assigns every active line — so it overwrites a `NODE_ENV=production` you had already exported, in
 the shell you keep using, without printing anything. A plaintext local key is permitted only while
 the environment reads `NODE_ENV=development or test`; anything else is refused with
 `CRYPTO_KEY_PROVIDER_REQUIRED:`. Source the file and then re-export `NODE_ENV` yourself, or set

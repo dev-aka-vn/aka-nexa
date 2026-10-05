@@ -1173,6 +1173,48 @@ describe('.gitignore — the local key file is not committable (T-1-26)', () => 
   });
 });
 
+/**
+ * Container-free. `describeOccupant` runs only when a port collision has already
+ * gone wrong, which is the worst possible moment to hand a reader a confident
+ * cause the query never established — so its failure rendering is pinned here,
+ * where it can be decided without arranging a real docker failure.
+ */
+describe('the port-collision diagnostic — names the failure, not a guessed cause', () => {
+  it('names the way the occupant query failed, rather than blaming the account', () => {
+    // The defect this pins: three different failures — CLI absent, query slow,
+    // query errored — once rendered as one sentence blaming the caller's
+    // permissions. Only the first is a permissions fact, and the second fires
+    // spuriously whenever the machine is loaded enough to beat the query budget.
+    // A developer whose port collision is already a bad morning must not be told
+    // a cause the query never established.
+    expect(describeOccupantQueryFailure(3000, 'ENOENT'), 'absent CLI must say so').toContain(
+      'not on PATH',
+    );
+    expect(describeOccupantQueryFailure(3000, 'ETIMEDOUT'), 'a timeout must not read as permissions')
+      .toContain('did not answer within');
+    expect(
+      describeOccupantQueryFailure(3000, 'ETIMEDOUT'),
+      'a timeout must not be reported as a permissions fault',
+    ).not.toContain('from this account');
+    expect(
+      describeOccupantQueryFailure(3000, 'ENOENT'),
+      'an absent CLI must not be reported as a visibility limit',
+    ).not.toContain('from this account');
+    expect(
+      describeOccupantQueryFailure(3000, undefined),
+      'an unrecognised failure must report itself, not guess',
+    ).toContain('no error code');
+
+    // And the budget must leave room for the slow case it now names: a query
+    // measured at ~2.3s warm must not sit under a budget that turns load into a
+    // false diagnosis.
+    expect(
+      DOCKER_QUERY_TIMEOUT_MS,
+      'the query budget must exceed the warm docker ps latency measured on this host',
+    ).toBeGreaterThan(5_000);
+  });
+});
+
 /** A port the kernel assigns on a `:0` bind, read off it and released. */
 async function kernelAssignedPort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
@@ -1214,13 +1256,49 @@ async function bindAndRelease(port: number): Promise<boolean> {
  * environment or file content. The result is interpolated only into a failure
  * message: never logged on a passing run, never returned to a caller that stores
  * it.
+ *
+ * When the query cannot answer, the message reports **which** way it failed rather
+ * than assuming a single cause. An earlier version sent every failure down one
+ * branch that blamed the account's permissions, which is a claim the query never
+ * established — measured on this host, `docker ps` answers in ~2.3 s warm, so a
+ * 5 s budget defeated by load produced a confident and false "you cannot see
+ * this" where the truth was "you did not wait long enough". A diagnostic that
+ * names a cause it did not check is the same defect G2 was opened for, in the
+ * one place a developer reaches for when something has already gone wrong.
  */
+
+/** Docker query budget. Bounded, but not so tight that a loaded host reads as a permission fault. */
+const DOCKER_QUERY_TIMEOUT_MS = 15_000;
+
+/**
+ * What the diagnostic says when the `docker ps` query could not answer.
+ *
+ * Pure, and takes the error *code* rather than the error, so each branch is
+ * assertable without arranging a real docker failure.
+ */
+function describeOccupantQueryFailure(port: number, code: string | undefined): string {
+  if (code === 'ENOENT') {
+    return `the docker CLI is not on PATH here, so ${port}'s holder was never queried`;
+  }
+  if (code === 'ETIMEDOUT') {
+    return (
+      `the docker query for ${port} did not answer within ${DOCKER_QUERY_TIMEOUT_MS}ms, so its ` +
+      `holder is unestablished — a slow daemon rather than a permissions fault. Name it yourself ` +
+      `with \`docker ps --filter publish=${port}\``
+    );
+  }
+  return (
+    `the docker query for ${port} failed (${code ?? 'no error code'}), so its holder is ` +
+    `unestablished`
+  );
+}
+
 function describeOccupant(port: number): string {
   try {
     const containers = execFileSync(
       'docker',
       ['ps', '--filter', `publish=${port}`, '--format', '{{.Names}}'],
-      { encoding: 'utf8', timeout: 5_000 },
+      { encoding: 'utf8', timeout: DOCKER_QUERY_TIMEOUT_MS },
     )
       .split('\n')
       .map((line) => line.trim())
@@ -1228,15 +1306,12 @@ function describeOccupant(port: number): string {
     if (containers.length > 0) {
       return `held by container ${containers.join(', ')} (published port ${port})`;
     }
-  } catch {
-    // Docker absent or its daemon unreachable. Fall through to the honest answer
-    // rather than reporting that the query found nothing, which it did not do.
+    // The query *ran*. That is a different fact from not having run, and it is
+    // the one case where a container is positively excluded.
+    return `the docker query answered and no container publishes ${port}`;
+  } catch (error) {
+    return describeOccupantQueryFailure(port, (error as NodeJS.ErrnoException).code);
   }
-  return (
-    `not identifiable from this account — a container-published port is held by a root-owned ` +
-    `docker-proxy this user cannot enumerate, and ${port} may equally be held by a plain ` +
-    `process you own`
-  );
 }
 
 /**
