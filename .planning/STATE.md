@@ -11,7 +11,7 @@ state_head: 4642e170a4fe5445d40c6938da00529265897961
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 11
+  total_plans: 12
   completed_plans: 11
   percent: 13
 ---
@@ -35,18 +35,20 @@ Last activity: 2026-10-03 — Phase 01 complete, transitioned to Phase 2
 
 Progress: [█░░░░░░░░░] 13%
 
-> **Re-entry on Phase 01 — closed 2026-10-05 (does not change the current phase).** UAT on
-> the shipped phase found one gap, G1: Phase 01 ships no `.env.example`, no compose file,
-> and no run documentation, while `01-10-SUMMARY.md:402` records D-11's decision as a
-> "documented local full-stack run". `01-11-PLAN.md` (`gap_closure: true`, wave 6) closed
-> it — delivered, plan-checked at 0 blockers, code-reviewed at 0 blockers, and reconciled as
-> `resolved` in `01-UAT.md`. `phase.complete` was deliberately **not** run: WINDOWS #17
-> records it keying requirement status on phase completion rather than per-requirement
-> evidence, and it previously flipped the FND-10 / AUD-10 / DAT-13 deferrals to Complete,
-> needing two manual reverts. Phase 01 stays closed and `current_phase` stays 2 — this was a
-> re-entry on shipped work, not a phase transition. Two UAT items remain human decisions, not
-> verification tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor (B-3 / D-27,
-> which holds FND-10 Pending and gates Phase 5).
+> **Re-entry on Phase 01 — cycle 2 planned, G1 closed, G2+G3 open (does not change the current
+> phase).** UAT on the shipped phase found G1; `01-11` closed it and was reconciled as
+> `resolved`. Post-execution review then opened **G2** (the onboarding documentation asserts
+> three false things about the system's own error tokens, plus `NODE_ENV=development`
+> disarming `CRYPTO_KEY_PROVIDER_REQUIRED:` undocumented) and **G3** (the onboarding spec
+> fails 4/27 in the machine's normal state — `EADDRINUSE :::3000`, because `pms-2026` holds
+> that port; `01-11`'s executor reported 27/27 only after stopping that container).
+> `01-12-PLAN.md` (`gap_closure: true`, wave 7) closes both, planned and verified at 0
+> blockers. **`01-VERIFICATION.md` is currently `stale`** — source changed after the verifier
+> ran — so `/gsd-ship` is blocked until `/gsd-execute-phase 01` regenerates it. `phase.complete`
+> was again deliberately **not** run (WINDOWS #17). `current_phase` stays 2 throughout: these
+> are re-entries on shipped work, not phase transitions. Two UAT items remain human decisions,
+> not verification tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor
+> (B-3 / D-27, which holds FND-10 Pending and gates Phase 5).
 
 ## Performance Metrics
 
