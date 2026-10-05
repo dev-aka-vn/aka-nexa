@@ -1,5 +1,5 @@
 ---
-status: resolved
+status: partial
 phase: 01-foundations-platform
 source: 01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md, 01-05-SUMMARY.md, 01-06-SUMMARY.md, 01-07-SUMMARY.md, 01-08-SUMMARY.md, 01-09-SUMMARY.md, 01-10-SUMMARY.md
 started: 2026-10-04T17:02:18Z
@@ -267,12 +267,116 @@ blocked: 0
     - "A guard against the misleading boot-order message, or at minimum documenting that a successful-start line can precede a bind failure"
   debug_session: ""
 
+- truth: "The onboarding documentation names the system's real error tokens and boot-failure modes."
+  id: G2
+  status: failed
+  severity: major
+  test: 1
+  reason: |
+    Found by code review of the five files `01-11` produced, and independently re-verified by
+    the orchestrator against source. The new documentation asserts three things that are FALSE
+    about the system's own behaviour — the same class of defect G1 existed to eliminate:
+    (1) `CONFIG_INVALID: REDIS_INSTANCES_NOT_DISTINCT` is missing its `<root>` segment;
+    `redis.schema.spec.ts:68` pins `/^CONFIG_INVALID: <root> REDIS_INSTANCES_NOT_DISTINCT$/`, so
+    the documented token is not greppable. This is the D-12 refusal, the guard this phase exists
+    to keep load-bearing. (2) `LOCAL_KEY_FILE_MISSING:` is documented for an absent key file,
+    but that token only fires when the *variable* is unset (`crypto.module.ts:126`); an absent
+    file throws a raw `ENOENT` from a bare `readFileSync` at `local-key-provider.ts:112`, which
+    has no try/catch. `tooling/onboarding.spec.ts`'s own docblock repeats the false premise as
+    its justification. (3) `README.md:13` claims `npm ci` fails on non-24 Node; there is no
+    `engine-strict` in `package.json` and no `.npmrc` anywhere, so npm warns rather than fails.
+    Additionally WR-04: `NODE_ENV=development` is the switch that disarms
+    `CRYPTO_KEY_PROVIDER_REQUIRED:` and nothing documents that — while the documented
+    `set -a; . ./.env.example` silently rewrites an operator's exported `NODE_ENV=production`
+    in their own shell.
+  root_cause: |
+    The documentation was written from the intent of each guard rather than from its emitted
+    string, and nothing asserted any of the four claims against the code. This is the third
+    instance of this phase's recurring failure mode — a control asserted in a document that
+    nothing verifies (after `01-VERIFICATION.md` gap G-1 and `01-SECURITY.md`'s T-1-02).
+  artifacts:
+    - path: ".env.example"
+      issue: "wrong REDIS_INSTANCES_NOT_DISTINCT token; wrong LOCAL_KEY_FILE_MISSING trigger; NODE_ENV disarms CRYPTO_KEY_PROVIDER_REQUIRED undocumented"
+    - path: "README.md"
+      issue: "line 13 claims npm ci fails on non-24 Node; it warns"
+    - path: "tooling/onboarding.spec.ts"
+      issue: "docblock repeats the false LOCAL_KEY_FILE_MISSING premise as justification"
+  missing:
+    - "Assert each documented error token against the code that emits it, so a drift in either direction reddens a test"
+    - "Correct the REDIS_INSTANCES_NOT_DISTINCT string to CONFIG_INVALID: <root> REDIS_INSTANCES_NOT_DISTINCT"
+    - "Describe the absent-key-file failure as the ENOENT it is, and reserve LOCAL_KEY_FILE_MISSING: for the unset-variable case"
+    - "State that npm warns rather than fails on a non-24 Node, or add engine-strict so the claim becomes true"
+    - "Document that NODE_ENV=development disarms CRYPTO_KEY_PROVIDER_REQUIRED:, and warn that sourcing .env.example rewrites an exported production NODE_ENV"
+  debug_session: ""
+
+- truth: "The onboarding spec fails or passes for a reason that has nothing to do with the property under test."
+  id: G3
+  status: failed
+  severity: blocker
+  test: 1
+  reason: |
+    Reproduced by the orchestrator, not inferred. An independent run of the plan's own
+    acceptance proof gave `4 failed | 23 passed (27)`, exit 1, in 882s. All four failures share
+    one root cause: `Error: listen EADDRINUSE: address already in use :::3000`.
+
+    The executor reported 27/27 because it had stopped the `pms-2026` (Redmine) container to
+    free port 3000 first, then restarted it. So the green result was real but conditional on an
+    artificial condition that does not hold in the machine's normal state. `pms-2026` is Up and
+    holds `0.0.0.0:3000`.
+
+    The spec boots api on `DEFAULT_PORT_BY_SERVICE.api` — hardcoded 3000, no override. It also
+    cannot distinguish "my process failed to bind" from "a foreign process already owns the
+    port", so both report the same error. WR-05 sharpens this: Trap A's port squatter swallows
+    its own EADDRINUSE with no `listening` assertion, so that test can pass without the squatter
+    ever having bound. WR-06: `bootUntilLive` accepts the first healthy responder on the port, so
+    a developer's already-running api makes three assertions pass against a foreign process.
+
+    This is a false-green-and-false-red pair in the same helper, and it is the exact hazard the
+    documentation it ships warns about.
+  root_cause: |
+    The spec assumed the documented default port is available on any machine, and used "did
+    something answer /health/live on 3000" as its success signal — which conflates the system's
+    behaviour with whatever else happens to hold the port. G1 identified port 3000 as a trap in
+    the documentation; the spec that documents the traps then inherited it.
+  artifacts:
+    - path: "tooling/onboarding.spec.ts"
+      issue: "boots api on hardcoded DEFAULT_PORT_BY_SERVICE.api; bootUntilLive accepts any healthy responder; Trap A squatter has no listening assertion"
+    - path: "WINDOWS.md"
+      issue: "entry 18 recorded only the 15s probe budget, not that 4 of 27 tests fail outright when port 3000 is occupied"
+  missing:
+    - "Obtain a free port for the spec's own api boots instead of assuming 3000 is available"
+    - "Assert the squatter actually reached `listening` before using it as a collision (closes WR-05)"
+    - "Bind-check the port before booting, and fail with a message naming the occupying process rather than a bare EADDRINUSE (closes WR-06)"
+    - "Widen WINDOWS entry 18 to record that this is a hard failure on a busy port, not only a slow-boot timing issue"
+  debug_session: ""
+
+## Deferred, recorded so they are not lost
+
+These three code-review warnings are **not** in scope for the next gap plan. Each is either
+debatable or has a route that needs a decision beyond "make it correct":
+
+- **WR-07** — the `critical: true` README↔`package.json` link is decided only by the red shell
+  command, not by the spec. Arguably fine: the shell command IS the thing that runs the
+  documented command. Worth a ruling on whether a `critical: true` link must be decided by the
+  spec specifically.
+- **WR-08** — T-1-26 re-implements git's ignore engine in ~35 lines where `git check-ignore` is
+  one call. A simplification, not a defect.
+- **WR-09** — `tooling/onboarding.spec.ts` imports `yaml` with no manifest entry. Availability
+  is sound (hoisted, integrity-hashed, loud ESM failure on removal) but T-1-SC's rule is STACK.md
+  §14 provenance and `yaml` is not there. Declaring it requires editing `package.json`, which
+  `01-11` does not authorise — so this needs an explicit decision to widen scope rather than a
+  fix. The reviewer's alternative (assert against `docker compose config --format json`, already
+  in the verify set) needs no new package and would resolve it inside the current constraints.
+
 ## Notes
 
+- **Post-execution gaps.** The Summary counts above track *test results*: test 1 was the only
+  test whose result is `issue`, and its gap G1 is now `resolved`. Two further gaps (G2, G3) were
+  opened after UAT, by code review of `01-11`'s output and by an independent re-run of its
+  acceptance spec. They are not counted in `issues:` because no UAT test produced them.
 - Test 9 carries a correction to the stated rationale of D-06 / T-1-02. The bypass
   assertion is correct and verified, but it is a tripwire rather than the mechanism that
   prevents a bad resolve — typescript-eslint's non-optional peer range does that. Recorded
   so the threat register's phrasing is not read as overstating the control.
 - Two items remain pending (tests 10 and 12). Both are human decisions, not verification
-  tasks, so this session cannot advance them. G1 is diagnosed and ready for
-  /gsd-plan-phase --gaps.
+  tasks, so this session cannot advance them.
