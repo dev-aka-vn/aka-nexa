@@ -51,6 +51,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
@@ -70,6 +71,7 @@ import {
   MONGO_IMAGE,
   QUEUE_MAXMEMORY_POLICY,
   REDIS_IMAGE,
+  mongoUrl,
   startThreeContainers,
   type ThreeContainers,
 } from './containers.js';
@@ -782,4 +784,147 @@ describe('.gitignore — the local key file is not committable (T-1-26)', () => 
       'the documented key file must be ignored or the recipe can commit a plaintext key',
     ).toBe(true);
   });
+});
+
+/** A port nothing is listening on right now. */
+async function freePort(): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const probe = createServer();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address !== null ? address.port : 0;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+describe('Trap A — port collision, and the "successfully started" lie', () => {
+  let containers: ThreeContainers;
+  let squatter: Server | undefined;
+  const booted: BootedApi[] = [];
+
+  beforeAll(async () => {
+    containers = await startThreeContainers();
+    const listener = createServer();
+    squatter = listener;
+    // Bind the api default port and hold it. The port is read from
+    // `DEFAULT_PORT_BY_SERVICE` rather than written as a literal, so the test
+    // tracks the schema instead of drifting from it.
+    await new Promise<void>((resolve) => {
+      listener.once('error', () => resolve());
+      listener.listen(DEFAULT_PORT_BY_SERVICE.api, '127.0.0.1', () => resolve());
+    });
+  }, HOOK_TIMEOUT);
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => {
+      if (squatter === undefined || !squatter.listening) {
+        resolve();
+        return;
+      }
+      squatter.close(() => resolve());
+    });
+    for (const api of booted) {
+      await api.stop();
+    }
+    await containers?.stop();
+  }, HOOK_TIMEOUT);
+
+  it('dies with a bare EADDRINUSE *after* logging that it started successfully', async () => {
+    // No PORT in the environment, so the process resolves its derived default —
+    // which the listener above now owns. Because the child environment is
+    // constructed, an exported `PORT` in the operator's shell cannot make this
+    // boot pass by accident.
+    const api = startApi(containerEnv(containers));
+    const code = await api.exited;
+
+    expect(code, 'a process that cannot bind must not exit zero').not.toBe(0);
+    expect(api.output()).toContain('EADDRINUSE');
+    // The reason this trap is documented at all: the last line a reader sees
+    // before the bare error claims success.
+    expect(api.output()).toContain('Nest application successfully started');
+  }, 300_000);
+
+  it('boots on an overridden PORT, which is the documented remedy', async () => {
+    const port = await freePort();
+    const api = await bootUntilLive(
+      { ...containerEnv(containers), PORT: String(port) },
+      port,
+    );
+    booted.push(api);
+
+    const live = await (await fetch(`http://127.0.0.1:${port}/health/live`)).json();
+    expect(live, 'the PORT override must actually work').toEqual({ status: 'ok' });
+  }, 300_000);
+});
+
+describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
+  let containers: ThreeContainers;
+  const booted: BootedApi[] = [];
+
+  beforeAll(async () => {
+    containers = await startThreeContainers();
+  }, HOOK_TIMEOUT);
+
+  afterAll(async () => {
+    for (const api of booted) {
+      await api.stop();
+    }
+    await containers?.stop();
+  }, HOOK_TIMEOUT);
+
+  it('reports mongo up with the URL the project\'s own helper builds', async () => {
+    // `mongoUrl()` rather than the literal, so the fix is the project's helper
+    // and not a hand-assembled URL that could drift from it.
+    const api = await bootUntilLive(
+      { ...containerEnv(containers), MONGO_URL: mongoUrl(containers.mongo) },
+      DEFAULT_PORT_BY_SERVICE.api,
+    );
+    booted.push(api);
+
+    const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+    expect(dependencyStatuses(ready ?? { body: {} }).mongo).toBe('up');
+    await api.stop();
+  }, 300_000);
+
+  it('reports mongo down from that same URL with the directConnection parameter deleted', async () => {
+    // The two arms differ in exactly one query parameter, and that is possible
+    // because of a fact about the shared harness: `startThreeContainers()` runs
+    // MongoDB with `--replSet rs0`, so `urls.mongo` already carries the fix. No
+    // second MongoDB container is needed — the one the harness starts *is* the
+    // `--replSet` server the trap is about.
+    const withoutFix = new URL(containers.urls.mongo);
+    withoutFix.searchParams.delete('directConnection');
+    const withFix = new URL(containers.urls.mongo);
+    expect(
+      withFix.searchParams.get('directConnection'),
+      'precondition: the harness URL must carry the parameter',
+    ).toBe('true');
+    expect(withoutFix.toString(), 'the two arms must differ only in that parameter').not.toBe(
+      withFix.toString(),
+    );
+
+    const api = await bootUntilLive(
+      { ...containerEnv(containers), MONGO_URL: withoutFix.toString() },
+      DEFAULT_PORT_BY_SERVICE.api,
+    );
+    booted.push(api);
+
+    // Asserted on the observable outcome — mongo not reported up — rather than
+    // on an HTTP status, because which failure surfaces first (a 503 from the
+    // readiness handler, or a process exit) depends on how
+    // `MongoService`'s `serverSelectionTimeoutMS`/`connectTimeoutMS` pairing
+    // resolves. Pinning a status would test a timeout constant, not the trap.
+    const reportedDown = await waitFor(
+      async () => {
+        const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+        return ready !== undefined && dependencyStatuses(ready).mongo !== 'up';
+      },
+      60,
+      1_000,
+    );
+    expect(reportedDown, 'readiness must report mongo as not up').toBe(true);
+    await api.stop();
+  }, 300_000);
 });
