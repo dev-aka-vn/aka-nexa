@@ -12,7 +12,7 @@ progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 13
 ---
 
@@ -35,14 +35,18 @@ Last activity: 2026-10-03 — Phase 01 complete, transitioned to Phase 2
 
 Progress: [█░░░░░░░░░] 13%
 
-> **Open re-entry on Phase 01 (does not change the current phase).** UAT on 2026-10-05
-> found one gap, G1: Phase 01 ships no `.env.example`, no compose file, and no run
-> documentation, while `01-10-SUMMARY.md:402` records D-11's decision as a
-> "documented local full-stack run". `01-11-PLAN.md` (`gap_closure: true`, wave 6) closes
-> it. Phase 01 stays closed and `current_phase` stays 2 — this is a re-entry on shipped
-> work, not a phase transition. Two UAT items remain human decisions, not verification
-> tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor (B-3 / D-27, which holds
-> FND-10 Pending and gates Phase 5).
+> **Re-entry on Phase 01 — closed 2026-10-05 (does not change the current phase).** UAT on
+> the shipped phase found one gap, G1: Phase 01 ships no `.env.example`, no compose file,
+> and no run documentation, while `01-10-SUMMARY.md:402` records D-11's decision as a
+> "documented local full-stack run". `01-11-PLAN.md` (`gap_closure: true`, wave 6) closed
+> it — delivered, plan-checked at 0 blockers, code-reviewed at 0 blockers, and reconciled as
+> `resolved` in `01-UAT.md`. `phase.complete` was deliberately **not** run: WINDOWS #17
+> records it keying requirement status on phase completion rather than per-requirement
+> evidence, and it previously flipped the FND-10 / AUD-10 / DAT-13 deferrals to Complete,
+> needing two manual reverts. Phase 01 stays closed and `current_phase` stays 2 — this was a
+> re-entry on shipped work, not a phase transition. Two UAT items remain human decisions, not
+> verification tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor (B-3 / D-27,
+> which holds FND-10 Pending and gates Phase 5).
 
 ## Performance Metrics
 

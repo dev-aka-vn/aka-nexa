@@ -1,5 +1,5 @@
 ---
-status: partial
+status: resolved
 phase: 01-foundations-platform
 source: 01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md, 01-05-SUMMARY.md, 01-06-SUMMARY.md, 01-07-SUMMARY.md, 01-08-SUMMARY.md, 01-09-SUMMARY.md, 01-10-SUMMARY.md
 started: 2026-10-04T17:02:18Z
@@ -207,7 +207,27 @@ blocked: 0
 ## Gaps
 
 - truth: "A developer can start the three processes from a clean checkout using only the project's own documented instructions."
-  status: failed
+  status: resolved
+  resolved_by: 01-11-PLAN.md
+  resolved_at: "2026-10-05"
+  resolution: |
+    All five `missing:` items were delivered by a named artifact with a named assertion:
+    `.env.example` (all nine boot keys, as a shell-sourceable reference), the
+    `?directConnection=true` note, `compose.dev.yml` with two distinct Redis instances per
+    D-12, a README run section with the three commands and their ports, and the
+    "successfully started precedes bind failure" note. `tooling/onboarding.spec.ts` performs
+    the documented start for real rather than grepping the prose.
+
+    Reconciled here rather than by `close_parent_artifacts`, which is decimal-phase-only
+    (`X.Y`) and therefore skipped for Phase 01.
+
+    Not folded in: a post-execution code review of those five files returned 0 blockers and
+    9 warnings, three of which are factual inaccuracies *in the new documentation* about the
+    system's own error tokens (`CONFIG_INVALID: REDIS_INSTANCES_NOT_DISTINCT` is missing its
+    `<root>` segment; `LOCAL_KEY_FILE_MISSING:` fires only on an unset variable, not an absent
+    file; `npm ci` warns rather than fails on non-24 Node). Those are new findings against
+    delivered work, not part of G1's original scope, and they are tracked as WR-01/WR-02/WR-03
+    in `01-11-REVIEW-DISPOSITION.md` rather than being used to keep G1 open.
   reason: |
     Found by the orchestrator while executing test 1. The phase has no .env.example, no
     compose file, and no run documentation of any kind. Booting the api required
