@@ -1,0 +1,93 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import {
+  startThreeContainers,
+  type ThreeContainers,
+} from '../../../../tooling/containers.js';
+import {
+  DEFAULT_CONNECT_TIMEOUT_MS,
+  DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
+  MongoService,
+} from './mongo.service.js';
+
+/**
+ * `MongoService` against a real MongoDB 8.0 (D-07, FND-05).
+ *
+ * A fake driver would prove nothing here: the behaviour under test is that the
+ * native driver actually issues `ping` and actually *rejects* when the server
+ * goes away — the second half being the property the readiness indicator
+ * depends on. A stub that always resolves would satisfy the first assertion and
+ * silently break the second.
+ *
+ * **Test order matters.** The three tests share one container set, and the last
+ * one tears MongoDB down. Vitest runs `it` blocks in declaration order within a
+ * file, so the "container stopped" case must stay last; moving it up would
+ * cascade the failure into the tests above it for the wrong reason.
+ */
+describe('MongoService over the native driver (FND-05)', () => {
+  let containers: ThreeContainers;
+  let mongo: MongoService;
+
+  beforeAll(async () => {
+    containers = await startThreeContainers();
+    mongo = new MongoService(containers.urls.mongo);
+  }, 300_000);
+
+  afterAll(async () => {
+    await mongo?.onModuleDestroy();
+    await containers?.stop();
+  }, 300_000);
+
+  it('starts MongoDB, a cache Redis and a queue Redis, each addressable', async () => {
+    expect(containers.mongo).toBeDefined();
+    expect(containers.cache).toBeDefined();
+    expect(containers.queue).toBeDefined();
+
+    expect(containers.urls.mongo).toMatch(/^mongodb:\/\//);
+    expect(containers.urls.cache).toMatch(/^redis:\/\//);
+    expect(containers.urls.queue).toMatch(/^redis:\/\//);
+  });
+
+  it('resolves ping() while the server is up', async () => {
+    await expect(mongo.ping()).resolves.toBeUndefined();
+  });
+
+  it('bounds both server selection and connection so a dead server cannot hang a probe', () => {
+    // `serverSelectionTimeoutMS` alone does NOT bound the operation: the driver
+    // retries with backoff and each attempt is bounded by `connectTimeoutMS`
+    // (30 s by default). Measured — the isolated spec passed every time, and
+    // the full suite failed intermittently with
+    // "Test timed out in 30000ms" on the next test whenever Docker contention
+    // stretched a connect attempt past the selection window.
+    expect(mongo.client.options.serverSelectionTimeoutMS).toBe(
+      DEFAULT_SERVER_SELECTION_TIMEOUT_MS,
+    );
+    expect(mongo.client.options.connectTimeoutMS).toBe(DEFAULT_CONNECT_TIMEOUT_MS);
+    expect(DEFAULT_CONNECT_TIMEOUT_MS).toBeLessThanOrEqual(5_000);
+  });
+
+  it('rejects ping() within the selection timeout once the server is gone', async () => {
+    // Budgeted as a *teardown*, not as a test — the same reasoning the Redis
+    // and BullMQ container specs apply to their `afterAll`. The suite runs ~35
+    // workers that each start three containers, and `docker stop` under that
+    // contention has been measured exceeding 60 s. The timeout lands on this
+    // line, so it reports the file as failed while every assertion passed —
+    // which trains a reader to ignore the failure line instead of looking at it
+    // (01-07 hit exactly that and fixed the hook; the stop inside an assertion
+    // was missed).
+    //
+    // This does not weaken the test. The property under test is the driver's
+    // rejection, and the driver is bounded by `serverSelectionTimeoutMS` (3 s),
+    // so a real regression still fails fast. The budget only has to cover
+    // Docker; sizing it to the driver's own 3 s bound instead would turn suite
+    // load into a red test.
+    await containers.mongo.stop();
+
+    // The *reason* is asserted, not merely that something threw: a `ping()`
+    // that failed for an unrelated reason (a bug, a closed client) would also
+    // reject, and the readiness indicator would report a healthy MongoDB as
+    // down for the wrong reason — or, worse, a real outage would look like a
+    // pass because the error was swallowed somewhere.
+    await expect(mongo.ping()).rejects.toThrow(/server selection|ECONNREFUSED/i);
+  }, 300_000);
+});

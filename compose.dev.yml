@@ -1,0 +1,70 @@
+# Local development infrastructure for aka-nexa (UAT gap G1).
+#
+# ## Development only — not a deployment topology
+#
+# This file exists so a developer can run the platform on a laptop. It publishes
+# everything on loopback with no authentication, no replicas and no TLS. It is
+# not a deployment description: Kubernetes manifests are out of scope for this
+# repository (D-11), and nothing here should be read as "this is how you deploy".
+#
+# ## The addresses here are the addresses in `.env.example`
+#
+# Every published host port below is the host:port embedded in `.env.example`'s
+# `MONGO_URL`, `REDIS_CACHE_URL` and `REDIS_QUEUE_URL`. Bring the stack up and
+# source the example file, and a process boots with nothing to edit:
+#
+#   docker compose -f compose.dev.yml up -d
+#   set -a; . ./.env.example; set +a
+#   head -c 32 /dev/urandom > .dev-local-key
+#   SERVICE_NAME=api npm run start:api
+#
+# `tooling/onboarding.spec.ts` asserts that agreement, so the two cannot drift.
+#
+# ## Why three services and not two
+#
+# `maxmemory-policy` is instance-wide. The cache tier wants to evict under memory
+# pressure (a lost cache entry is re-derivable); the queue tier must never evict,
+# because BullMQ needs a full memory limit to surface as a write error rather
+# than a silently discarded job (D-13/D-14). A logical-database suffix (`/0` vs
+# `/1`) on one Redis cannot express that split — both databases share one policy.
+# So the two deployments are two containers, on two host ports, with two
+# policies. `refineRedisInstancesDistinct` in the boot schema refuses to let the
+# two URLs collapse back onto one host:port.
+services:
+  mongo:
+    # STACK.md §11.2: MongoDB 8.0.x only. Never 8.2 — EOL 2026-07-31.
+    # Matches `MONGO_IMAGE` in tooling/containers.ts.
+    image: mongo:8.0
+    # NO `--replSet` here, deliberately.
+    #
+    # A single-node Mongo started with `--replSet rs0` advertises its container
+    # hostname as the replica-set member. The driver performs topology discovery,
+    # believes the advertisement, and then fails to resolve that name from the
+    # host — so a plain `mongodb://127.0.0.1:27017/akane` reports `mongo: down`
+    # in `/health/ready` against a perfectly healthy server. `mongoUrl()` in
+    # tooling/containers.ts exists to work around exactly that, and the test
+    # harness needs it because `MongoDBContainer` starts its own replica set.
+    # This stack does not, so the documented MONGO_URL needs no compensation and
+    # carries no `?directConnection=true`.
+    ports:
+      - "127.0.0.1:27017:27017"
+
+  redis-cache:
+    # STACK.md §4.4: floor is 8.2, and 8.10.x is the development train. Never a
+    # 8.0.x tag — EOL 2026-12-01. Matches `REDIS_IMAGE` in tooling/containers.ts.
+    image: redis:8.10-alpine
+    # Evicting, because a lost cache entry is re-derivable (D-13).
+    command: ["redis-server", "--maxmemory-policy", "allkeys-lru"]
+    # No password: loopback-only, and a password here would be a credential in a
+    # committed file (P1) for a service only the developer's own machine reaches.
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  redis-queue:
+    image: redis:8.10-alpine
+    # Never evict, because a lost job is lost work (D-13/D-14).
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    # The HOST port differs from the cache service while the container port does
+    # not — that difference is what the boot schema's host:port comparison sees.
+    ports:
+      - "127.0.0.1:6380:6379"
