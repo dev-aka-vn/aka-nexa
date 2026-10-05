@@ -60,10 +60,35 @@ import {
   APP_CONFIG_KEYS,
   CORE_HEALTH_INDICATOR_KEYS,
   DEFAULT_PORT_BY_SERVICE,
+  SERVICE_NAMES,
 } from '@akane/platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
-import { startThreeContainers, type ThreeContainers } from './containers.js';
+import {
+  CACHE_MAXMEMORY_POLICY,
+  MONGO_IMAGE,
+  QUEUE_MAXMEMORY_POLICY,
+  REDIS_IMAGE,
+  startThreeContainers,
+  type ThreeContainers,
+} from './containers.js';
+
+/**
+ * ## Why `yaml` is imported without being declared in `package.json`
+ *
+ * T-1-SC forbids a new package and a manifest change here, so the compose file
+ * is read with a parser already present in the committed lockfile:
+ * `yaml@2.9.1` arrives as a **production** transitive of
+ * `@opentelemetry/configuration`, itself a direct root dependency via
+ * `@opentelemetry/sdk-node`. `npm ci --omit=dev` installs it, and the lockfile
+ * pins it with an integrity hash — which is the "already pinned" the threat row
+ * allows.
+ *
+ * If that chain ever changes, the import fails loudly at test time rather than
+ * silently parsing nothing, and `docker compose -f compose.dev.yml config
+ * --quiet` stays an independent authority on whether the file is valid.
+ */
 
 /**
  * The repository's own container specs set `300_000` on both hooks because the
@@ -76,6 +101,9 @@ const HOOK_TIMEOUT = 300_000;
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const ENV_EXAMPLE_PATH = path.join(REPO_ROOT, '.env.example');
+const COMPOSE_PATH = path.join(REPO_ROOT, 'compose.dev.yml');
+const README_PATH = path.join(REPO_ROOT, 'README.md');
+const GITIGNORE_PATH = path.join(REPO_ROOT, '.gitignore');
 /** Absolute because a later boot moves `cwd`; the npm scripts pass the same two files relatively. */
 const API_MAIN = path.join(REPO_ROOT, 'apps', 'api', 'dist', 'main.js');
 const API_OTEL_LOADER = path.join(REPO_ROOT, 'apps', 'api', 'otel.mjs');
@@ -159,6 +187,120 @@ function childEnv(overrides: Record<string, string>): Record<string, string> {
 /** `.env.example`'s active lines as a plain object — the documented boot environment. */
 function exampleActiveEnv(): Record<string, string> {
   return Object.fromEntries(ENV_EXAMPLE.active);
+}
+
+/**
+ * The documented boot environment with the three URLs pointed at the harness.
+ *
+ * The container URLs are taken **verbatim**, in particular `urls.mongo`, which
+ * already carries `?directConnection=true` because `containers.ts` starts
+ * MongoDB with `--replSet`. Stripping it, or copying the documented URL and
+ * "fixing" it, breaks every boot below.
+ */
+function containerEnv(containers: ThreeContainers): Record<string, string> {
+  return childEnv({
+    ...exampleActiveEnv(),
+    MONGO_URL: containers.urls.mongo,
+    REDIS_CACHE_URL: containers.urls.cache,
+    REDIS_QUEUE_URL: containers.urls.queue,
+    CRYPTO_LOCAL_KEY_FILE: KEY_FILE,
+    SERVICE_NAME: 'api',
+  });
+}
+
+interface ComposeService {
+  readonly image?: string;
+  readonly command?: readonly string[];
+  readonly ports?: readonly string[];
+}
+
+interface ComposeFile {
+  readonly services: Readonly<Record<string, ComposeService>>;
+}
+
+/**
+ * Parse `compose.dev.yml`. Throws on invalid YAML, which is itself the "is it
+ * valid YAML" assertion.
+ */
+function readComposeFile(): ComposeFile {
+  return parseYaml(readFileSync(COMPOSE_PATH, 'utf8')) as ComposeFile;
+}
+
+/**
+ * A published port, split out of the `HOST_IP:PUBLISHED:TARGET` short form.
+ *
+ * Only the three-part string form is accepted. Compose also accepts a bare
+ * `PUBLISHED` and a long object form, both of which can leave the host IP
+ * unpinned — so a port entry that drops the loopback host fails this parse
+ * rather than quietly publishing on every interface (P4).
+ */
+function publishedPort(entry: string): {
+  readonly hostIp: string;
+  readonly published: string;
+  readonly target: string;
+} {
+  const parts = entry.split(':');
+  if (parts.length !== 3) {
+    throw new Error(
+      `compose port "${entry}" is not HOST_IP:PUBLISHED:TARGET — an unpinned host IP publishes on every interface`,
+    );
+  }
+  return { hostIp: parts[0] ?? '', published: parts[1] ?? '', target: parts[2] ?? '' };
+}
+
+/** The `--maxmemory-policy <value>` a service's command actually passes. */
+function maxMemoryPolicy(service: ComposeService): string | undefined {
+  const command = service.command ?? [];
+  const index = command.indexOf('--maxmemory-policy');
+  return index === -1 ? undefined : command[index + 1];
+}
+
+/** The `host:port` a service publishes, from its first published port. */
+function publishedAddress(service: ComposeService): string {
+  const first = (service.ports ?? [])[0];
+  if (first === undefined) {
+    throw new Error('compose service publishes no port');
+  }
+  const { hostIp, published } = publishedPort(first);
+  return `${hostIp}:${published}`;
+}
+
+/** `*` and `?` globs, nothing more. Only used against this repository's patterns. */
+function globToRegExp(glob: string): RegExp {
+  let source = '';
+  for (const character of glob) {
+    if (character === '*') source += '.*';
+    else if (character === '?') source += '.';
+    else source += character.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`);
+}
+
+/**
+ * Whether a path is ignored by `.gitignore`, applying git's last-match-wins rule.
+ *
+ * A deliberately small subset of git's glob grammar. Being a general
+ * implementation is not the point; deriving the "is the local key file
+ * committable" answer from the file rather than asserting it about the file is.
+ */
+function isIgnored(candidate: string): boolean {
+  const patterns = readFileSync(GITIGNORE_PATH, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+
+  let ignored = false;
+  for (const pattern of patterns) {
+    const negated = pattern.startsWith('!');
+    const body = (negated ? pattern.slice(1) : pattern).replace(/\/$/, '');
+    // A pattern containing an interior `/` is anchored to the .gitignore's
+    // directory; otherwise it matches at any depth, i.e. against the basename.
+    const anchored = body.slice(0, -1).includes('/');
+    const glob = anchored ? body.replace(/^\//, '') : (body.split('/').pop() ?? body);
+    const subject = anchored ? candidate : (candidate.split('/').pop() ?? candidate);
+    if (globToRegExp(glob).test(subject)) ignored = !negated;
+  }
+  return ignored;
 }
 
 interface BootedApi {
@@ -401,22 +543,21 @@ describe('.env.example — booting a real api process', () => {
     await containers?.stop();
   }, HOOK_TIMEOUT);
 
-  it('boots an api process and reports every core dependency up', async () => {
-    const env = childEnv({
-      ...exampleActiveEnv(),
-      // The three URLs become the harness's, taken verbatim — `urls.mongo`
-      // already carries `directConnection=true` and must not be stripped.
-      MONGO_URL: containers.urls.mongo,
-      REDIS_CACHE_URL: containers.urls.cache,
-      REDIS_QUEUE_URL: containers.urls.queue,
-      CRYPTO_LOCAL_KEY_FILE: KEY_FILE,
-      SERVICE_NAME: 'api',
-    });
+  it('boots against the harness Mongo URL, which carries the parameter the documented one must not (P6)', () => {
+    // The other half of the P6 asymmetry, against the value the boots below
+    // actually use rather than a literal restated here. `containers.ts` starts
+    // MongoDB with `--replSet`, so `mongoUrl()` compensates. The static compose
+    // block asserts the documented URL carries no such parameter; together the
+    // two stop the workaround from being "harmonised" into either side.
+    const harnessUrl = new URL(containers.urls.mongo);
+    expect(harnessUrl.searchParams.get('directConnection')).toBe('true');
+  });
 
+  it('boots an api process and reports every core dependency up', async () => {
     // No PORT in the constructed environment, so the derived default for `api`
     // is what runs — exactly as the README instructs. Read from the schema
     // rather than written as a literal so the spec tracks the port table.
-    const api = await boot(env, DEFAULT_PORT_BY_SERVICE.api);
+    const api = await boot(containerEnv(containers), DEFAULT_PORT_BY_SERVICE.api);
 
     const live = await (
       await fetch(`http://127.0.0.1:${DEFAULT_PORT_BY_SERVICE.api}/health/live`)
@@ -466,4 +607,179 @@ describe('.env.example — booting a real api process', () => {
     expect(api.output()).toContain('CRYPTO_KEY_PROVIDER_REQUIRED:');
     expect(api.output()).not.toContain('LOCAL_KEY_FILE_MISSING');
   }, 300_000);
+
+  it('ignores a .env file in the working directory — config comes from the environment', async () => {
+    // The README states that no `.env` file is read. Asserting the sentence
+    // would only assert the prose; this boots a real process with a decoy
+    // `.env` in its `cwd` pointing at a port nothing is listening on, and
+    // requires readiness to still report `mongo: up`. If anyone ever adds a
+    // `.env` loader to `ConfigModule`, this goes red and the README has to
+    // change with it.
+    const decoyDir = mkdtempSync(path.join(os.tmpdir(), 'akane-decoy-'));
+    writeFileSync(
+      path.join(decoyDir, '.env'),
+      'MONGO_URL=mongodb://127.0.0.1:1/nowhere-listening\n',
+    );
+
+    const api = await boot(containerEnv(containers), DEFAULT_PORT_BY_SERVICE.api, {
+      cwd: decoyDir,
+    });
+
+    const ready = await readReady(DEFAULT_PORT_BY_SERVICE.api);
+    expect(ready, '/health/ready must answer with a decoy .env in cwd').toBeDefined();
+    expect(dependencyStatuses(ready ?? { body: {} }).mongo).toBe('up');
+
+    await api.stop();
+    rmSync(decoyDir, { recursive: true, force: true });
+  }, 300_000);
+});
+
+describe('compose.dev.yml — the local Mongo + two-Redis topology', () => {
+  it('parses as YAML and defines exactly the three services the platform needs', () => {
+    const compose = readComposeFile();
+    expect(Object.keys(compose.services).sort()).toEqual(
+      ['mongo', 'redis-cache', 'redis-queue'].sort(),
+    );
+  });
+
+  it('pins the same images the test harness runs against', () => {
+    // Asserted against the exported constants rather than string literals: that
+    // is what stops the documented topology drifting from the topology the rest
+    // of the suite runs against, the same two-source agreement idiom
+    // `toolchain-pin.spec.ts` uses for `.nvmrc` and `engines.node`.
+    const { services } = readComposeFile();
+    expect(services['mongo']?.image).toBe(MONGO_IMAGE);
+    expect(services['redis-cache']?.image).toBe(REDIS_IMAGE);
+    expect(services['redis-queue']?.image).toBe(REDIS_IMAGE);
+  });
+
+  it('gives the cache tier an evicting policy and the queue tier noeviction (T-1-29)', () => {
+    // `maxmemory-policy` is instance-wide, so a single Redis — or two roles on one
+    // instance — would silently evict in-flight job state, which is the D-12
+    // defect this phase exists to prevent reappearing in the documented
+    // topology.
+    const { services } = readComposeFile();
+    const cache = maxMemoryPolicy(services['redis-cache'] ?? {});
+    const queue = maxMemoryPolicy(services['redis-queue'] ?? {});
+
+    expect(cache).toBe(CACHE_MAXMEMORY_POLICY);
+    expect(queue).toBe(QUEUE_MAXMEMORY_POLICY);
+    expect(cache).not.toBe(queue);
+  });
+
+  it('publishes the two Redis deployments to different host ports', () => {
+    // The host port differs while the container port does not, and that
+    // difference is exactly what `refineRedisInstancesDistinct` compares.
+    const { services } = readComposeFile();
+    const cache = publishedPort((services['redis-cache']?.ports ?? [])[0] ?? '');
+    const queue = publishedPort((services['redis-queue']?.ports ?? [])[0] ?? '');
+
+    expect(cache.published).not.toBe(queue.published);
+    expect(cache.target).toBe(queue.target);
+    // And the two URLs the boot schema would build from these ports must pass
+    // its own distinctness rule, rather than the plan asserting a topology the
+    // validator would reject.
+    const cacheUrl = new URL(ENV_EXAMPLE.active.get('REDIS_CACHE_URL') ?? '');
+    const queueUrl = new URL(ENV_EXAMPLE.active.get('REDIS_QUEUE_URL') ?? '');
+    expect(cacheUrl.host).not.toBe(queueUrl.host);
+  });
+
+  it('binds every published port to 127.0.0.1 and nothing else (P4, T-1-28)', () => {
+    const { services } = readComposeFile();
+    const bindings = Object.entries(services).flatMap(([name, service]) =>
+      (service.ports ?? []).map((entry) => ({
+        name,
+        ...publishedPort(entry),
+      })),
+    );
+    expect(bindings.length, 'compose file publishes no ports at all').toBeGreaterThan(0);
+    for (const binding of bindings) {
+      expect(binding.hostIp, `${binding.name} must publish on loopback only`).toBe('127.0.0.1');
+    }
+    // The literal form, because "no 0.0.0.0 anywhere" is the property and the
+    // structured check above only sees the entries it managed to parse.
+    expect(readFileSync(COMPOSE_PATH, 'utf8')).not.toContain('0.0.0.0');
+  });
+
+  it('publishes exactly the addresses .env.example points at, so nothing needs editing', () => {
+    const { services } = readComposeFile();
+    const pairs = [
+      ['MONGO_URL', services['mongo']],
+      ['REDIS_CACHE_URL', services['redis-cache']],
+      ['REDIS_QUEUE_URL', services['redis-queue']],
+    ] as const;
+
+    for (const [key, service] of pairs) {
+      const url = new URL(ENV_EXAMPLE.active.get(key) ?? '');
+      expect(url.host, `${key} must match the compose published host:port`).toBe(
+        publishedAddress(service ?? {}),
+      );
+    }
+  });
+
+  it('runs MongoDB without --replSet, so the documented MONGO_URL needs no workaround (P6)', () => {
+    // The asymmetry is deliberate and asserted in both directions: the
+    // documented URL must NOT carry `directConnection`, because compose's Mongo
+    // is not a replica set — and the harness URL this very spec boots against
+    // must, because `containers.ts` starts one. "Harmonising" either side
+    // couples the file to a testcontainers quirk or breaks every boot here.
+    const { services } = readComposeFile();
+    const mongoCommand = (services['mongo']?.command ?? []).join(' ');
+    expect(mongoCommand, 'compose mongo must not start a replica set').not.toContain('--replSet');
+
+    const documented = new URL(ENV_EXAMPLE.active.get('MONGO_URL') ?? '');
+    expect(
+      documented.searchParams.has('directConnection'),
+      'the documented MONGO_URL must not carry the harness workaround',
+    ).toBe(false);
+    expect(documented.search).toBe('');
+  });
+});
+
+describe('README.md — token agreement with code-derived values', () => {
+  const readme = readFileSync(README_PATH, 'utf8');
+
+  it('names the run script for every service the schema admits', () => {
+    for (const name of SERVICE_NAMES) {
+      expect(readme, `the README must name the run script for ${name}`).toContain(
+        `start:${name}`,
+      );
+    }
+  });
+
+  it('pairs every service name with its default port', () => {
+    // Same line, not just both strings somewhere in the file: a README that
+    // printed 3000 in one table and `api` in another would satisfy a substring
+    // check while telling a reader the wrong port. A port change in
+    // `config.schema.ts` therefore turns this red.
+    const lines = readme.split(/\r?\n/);
+    for (const [name, port] of Object.entries(DEFAULT_PORT_BY_SERVICE)) {
+      const match = lines.filter(
+        (line) => line.includes(name) && line.includes(String(port)),
+      );
+      expect(match.length, `no README line pairs ${name} with its default port ${port}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('names both trap remedies by the token they have in the world', () => {
+    // Real tokens, not phrases invented to match this test. `EADDRINUSE` is what
+    // Node prints; `directConnection=true` is the MongoDB connection-string
+    // parameter that fixes the trap.
+    expect(readme, 'the port-collision remedy needs its error token').toContain('EADDRINUSE');
+    expect(readme, 'the Mongo remedy needs its parameter name').toContain('directConnection=true');
+  });
+});
+
+describe('.gitignore — the local key file is not committable (T-1-26)', () => {
+  it('matches .dev-local-key, and does not match everything', () => {
+    // Non-vacuity first: a matcher that ignored every path would satisfy the
+    // first assertion while proving nothing.
+    expect(isIgnored('README.md'), 'README.md is tracked; the matcher must say so').toBe(false);
+    expect(isIgnored('.env.example'), '.env.example is committed; the matcher must say so').toBe(false);
+
+    expect(
+      isIgnored('.dev-local-key'),
+      'the documented key file must be ignored or the recipe can commit a plaintext key',
+    ).toBe(true);
+  });
 });

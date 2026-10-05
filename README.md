@@ -107,6 +107,94 @@ the recipe above cannot commit a plaintext key.
 `CRYPTO_KEY_PROVIDER_REQUIRED:` before any key file is opened, and `CRYPTO_KEY_PROVIDER=kms` is
 refused with `KMS_PROVIDER_BLOCKED:` until a deployment cloud is named. Both are the guards working.
 
+## Local infrastructure
+
+`compose.dev.yml` starts the three data services the platform needs. It is a development convenience,
+not a deployment topology — see [Deployment](#deployment).
+
+```sh
+docker compose -f compose.dev.yml up -d          # start
+docker compose -f compose.dev.yml down -v        # stop, discarding the volumes
+```
+
+| Service | Image | Host address | `maxmemory-policy` |
+|---|---|---|---|
+| `mongo` | `mongo:8.0` | `127.0.0.1:27017` | — |
+| `redis-cache` | `redis:8.10-alpine` | `127.0.0.1:6379` | `allkeys-lru` |
+| `redis-queue` | `redis:8.10-alpine` | `127.0.0.1:6380` | `noeviction` |
+
+Every published port binds to `127.0.0.1`, not `0.0.0.0`, so nothing here is reachable from the local
+network. The two Redis containers are two separate deployments because `maxmemory-policy` is
+instance-wide: the cache tier is allowed to evict, the queue tier is not.
+
+**These addresses are already the ones in `.env.example`.** Bring the stack up, source the file, and
+the boot needs no editing at all:
+
+```sh
+docker compose -f compose.dev.yml up -d
+set -a; . ./.env.example; set +a
+head -c 32 /dev/urandom > .dev-local-key
+SERVICE_NAME=api npm run start:api
+```
+
+MongoDB is deliberately started **without** `--replSet`; see trap B for why that matters.
+
+## Two traps
+
+Both of these cost real time during UAT, and both fail in a way that points somewhere other than the
+cause. They are also covered by executable tests in `tooling/onboarding.spec.ts`, so the remedies
+below are proven rather than merely written down.
+
+### Trap A — port collision, and the "successfully started" lie
+
+The default api port is 3000, and on a developer machine that port is often already taken. The
+failure is reported in the least useful way possible:
+
+```
+Nest application successfully started     ← the last line a reader sees
+...
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3000
+```
+
+**Nest logs `successfully started` before it binds the port.** That message means the module graph
+initialised, not that the process is alive — the bind happens immediately afterwards and a bare
+`EADDRINUSE` kills it. So check the **exit code**, not the log: a process that printed the success
+line and then exited has just lost the port race.
+
+**Fix:** give the process a free port.
+
+```sh
+PORT=3100 SERVICE_NAME=api npm run start:api
+```
+
+### Trap B — a healthy MongoDB reported as `mongo: down`
+
+Point `MONGO_URL` at a MongoDB that was started with `--replSet` — including a MongoDB started by
+testcontainers, which always is — and a plain URL fails:
+
+```
+MONGO_URL=mongodb://127.0.0.1:27017/akane
+curl http://127.0.0.1:3000/health/ready
+{"status":"error","error":{"mongo":{"status":"down"}}}
+```
+
+MongoDB is running. Nothing is wrong with it. The server advertises itself as a replica-set member
+using its **container hostname**, the driver performs topology discovery, believes the advertisement,
+and then tries to resolve a name that only exists inside the container's network — so every `ping()`
+fails while the server is perfectly healthy. The symptom is a readiness probe, and the cause is a
+URL.
+
+**Fix:** add `directConnection=true`, which tells the driver to use the seed address and ignore the
+advertised member list. That is the correct mode for a single node reached through a published port:
+
+```sh
+MONGO_URL='mongodb://127.0.0.1:27017/akane?directConnection=true'
+```
+
+`compose.dev.yml` deliberately runs MongoDB **without** `--replSet`, so this trap does not fire in the
+default local setup and `.env.example`'s `MONGO_URL` correctly carries no such parameter. You need it
+when you point `MONGO_URL` at an external or testcontainers MongoDB.
+
 ## Deployment
 
 Out of scope for this repository: there are no Kubernetes manifests, no Helm chart, and no image

@@ -70,6 +70,12 @@ web_modules/
 .env.*
 !.env.example
 
+# Local development key file — 32 raw bytes, written by the README recipe.
+# CRYPTO_LOCAL_KEY_FILE names a path and this is that path, so following the
+# documented recipe must not be one `git add -A` away from committing a
+# plaintext key (T-1-26).
+.dev-local-key
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
