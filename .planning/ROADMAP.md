@@ -66,7 +66,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 
 ### Phase 1: Foundations & Platform
 
-**Goal**: A clean checkout builds three independently runnable processes on the pinned stack, and every irreversible design commitment plus all three requirement-conflict rulings exist in code before a single feature is written.
+**Goal**: As a platform engineer, I want to run the api, worker, and scheduler processes from a clean checkout on pinned versions, so that every irreversible design commitment and requirement-conflict ruling is proven in code before any user-facing feature is written.
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08, FND-09, FND-10, LNK-07, RTE-10, AUD-10, DAT-13, OBS-01
