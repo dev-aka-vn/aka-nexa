@@ -26,11 +26,17 @@
  * consequences are load-bearing and each one has a trap behind it:
  *
  * - **The key file is provisioned here.** `CryptoModule`'s factory constructs the
- *   provider *eagerly* and throws `LOCAL_KEY_FILE_MISSING:` when
- *   `CRYPTO_LOCAL_KEY_FILE` names an absent file. The documented value is
- *   `./.dev-local-key`, which is gitignored and therefore legitimately absent on
- *   a fresh checkout — so a spec that used the documented path verbatim would
- *   fail on setup instead of on the property under test.
+ *   provider *eagerly*, so the key file has to exist before a boot reaches
+ *   anything this file asserts. Two distinct failures live behind that sentence,
+ *   and the difference is not cosmetic: the **variable** being unset or empty
+ *   raises the named `LOCAL_KEY_FILE_MISSING:`, while the **file** being absent
+ *   raises a raw `ENOENT` out of an uncaught `readFileSync` — see the `KEY_DIR`
+ *   comment below and the `documented error tokens … derived from the code that
+ *   emits them` block, which asserts the split against the caught errors rather
+ *   than against this prose. The documented value is `./.dev-local-key`, which
+ *   is gitignored and therefore legitimately absent on a fresh checkout — so a
+ *   spec that used the documented path verbatim would fail on setup instead of on
+ *   the property under test.
  * - **`NODE_ENV` is set on every boot.** Vitest sets `NODE_ENV=test` and
  *   `setupFiles` seeds `process.env`; inheriting either would make the boot
  *   contract under test whatever the runner happened to export.
@@ -48,9 +54,9 @@
  * the harness URL means taking it as it is; stripping the parameter, or copying
  * the documented URL and "fixing" it, breaks every boot in this file.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,7 +67,13 @@ import {
   APP_CONFIG_KEYS,
   CORE_HEALTH_INDICATOR_KEYS,
   DEFAULT_PORT_BY_SERVICE,
+  LocalKeyProvider,
+  REDIS_INSTANCES_NOT_DISTINCT,
   SERVICE_NAMES,
+  assertKeyProviderAllowed,
+  createKeyProvider,
+  formatConfigError,
+  validateConfig,
 } from '@akane/platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -120,7 +132,21 @@ const ASSIGNMENT = /^([A-Z0-9_]+)=(.*)$/;
  *
  * `LocalKeyProvider` requires a file of exactly that length, and the file must
  * not be the documented `./.dev-local-key` — that path is gitignored, so it is
- * absent on a fresh checkout and a spec that relied on it would fail on setup.
+ * absent on a fresh checkout and a spec that relied on it would fail on setup
+ * instead of on the property under test.
+ *
+ * What that setup failure would be, precisely: with the path *set* and the file
+ * missing, the constructor raises a raw `ENOENT` from its uncaught
+ * `readFileSync`. `LOCAL_KEY_FILE_MISSING:` is the other case — the variable
+ * being unset — and is not what an absent file produces. The original comment
+ * here claimed the second about the first, which is the premise
+ * `01-11-REVIEW.md` recorded as WR-02.
+ *
+ * This comment is prose and gets no assertion, deliberately. A docblock cannot
+ * be asserted without matching its phrasing, and a test that matches phrasing
+ * fails on a good edit while passing on a bad one. The split it describes is
+ * asserted properly in the `documented error tokens … derived from the code that
+ * emits them` block below, against the errors the emitters actually throw.
  */
 const KEY_DIR = mkdtempSync(path.join(os.tmpdir(), 'akane-onboarding-'));
 const KEY_FILE = path.join(KEY_DIR, 'dev-local-key');
@@ -771,6 +797,339 @@ describe('README.md — token agreement with code-derived values', () => {
     expect(readme, 'the Mongo remedy needs its parameter name').toContain('directConnection=true');
   });
 });
+
+/**
+ * Every token `.env.example` and `README.md` state is derived here by calling
+ * the code that emits it (UAT gap G2, `01-11-REVIEW.md` WR-01/WR-02/WR-03/WR-04).
+ *
+ * ## The defect this block exists to prevent
+ *
+ * `01-11` wrote the token table from the *intent* of each guard rather than from
+ * the string it produces, and three of its rows were about strings the system
+ * never prints:
+ *
+ * - `CONFIG_INVALID: REDIS_INSTANCES_NOT_DISTINCT` is missing the `<root>`
+ *   segment `formatConfigError` renders for an object-level issue, so the
+ *   documented D-12 refusal — the guard this phase exists to keep load-bearing —
+ *   was not greppable. A reader grepping for it found nothing.
+ * - `LOCAL_KEY_FILE_MISSING:` was documented for an absent key *file*, which is
+ *   a raw `ENOENT` from a `readFileSync` with no `try`/`catch`. The token fires
+ *   only when the *variable* is unset or empty.
+ * - `README.md` claimed `npm ci` fails on a non-24 Node. There is no
+ *   `engine-strict` here and no `.npmrc` anywhere in the repository, so npm
+ *   warns.
+ *
+ * ## Why nothing here is a hand-written token
+ *
+ * Each case calls the emitter and requires the **caught** string — or a property
+ * read off the **caught error** — to appear in the document. A token typed into
+ * an `expect(…).toContain(…)` as a literal is a second copy of the emitter, free
+ * to drift from it, and a drifting second copy is precisely what this block
+ * exists to remove. So the expected rendering is produced by calling
+ * `formatConfigError` itself rather than by typing `<root>` out, and the wrong
+ * D-12 form is derived from the right one by deletion rather than restated.
+ *
+ * The single named exception is `EBADENGINE`: npm prints it, nothing in this
+ * repository does, so there is no in-repo emitter to derive it from and naming
+ * it literally is required rather than forbidden. Its derivation obligation
+ * transfers to the repository-side condition that makes it the *correct* token
+ * to expect — the same case walks this repository for `.npmrc` files and fails
+ * if one sets `engine-strict`. That is also why the README sentence is scoped to
+ * this repository: npm also reads `$HOME/.npmrc` and the global-prefix `npmrc`,
+ * neither of which this scan can see, and the README says so.
+ *
+ * ## Container-free and api-free on purpose
+ *
+ * No `startThreeContainers`, no api spawn, and nothing that binds a port another
+ * test cares about. That is what keeps the `-t 'derived from the code that emits
+ * them'` filter in the seconds range, and it is what lets these cases decide the
+ * documentation on a machine where the api default port is occupied.
+ */
+describe('documented error tokens and guard triggers — derived from the code that emits them', () => {
+  const readme = readFileSync(README_PATH, 'utf8');
+  const envExample = readFileSync(ENV_EXAMPLE_PATH, 'utf8');
+
+  /**
+   * A complete, otherwise-valid boot configuration, built from the example file
+   * rather than restated — so "otherwise valid" cannot rot into a second copy of
+   * the schema's required keys.
+   *
+   * `.strict()` means `CRYPTO_LOCAL_KEY_FILE` must **not** appear: it is a path,
+   * deliberately not a schema field, and passing it would make the schema refuse
+   * with `unrecognized_keys` before any rule under test ran.
+   */
+  function bootConfig(): Record<string, unknown> {
+    const config: Record<string, unknown> = {};
+    for (const key of APP_CONFIG_KEYS) {
+      const value = ENV_EXAMPLE.active.get(key);
+      if (value !== undefined) config[key] = value;
+    }
+    // `SERVICE_NAME` is documented but deliberately inactive in the example file
+    // (T-1-31), so the one required key the file does not supply is added here.
+    return { ...config, SERVICE_NAME: 'api' };
+  }
+
+  it('documents the D-12 refusal in exactly the form validateConfig throws', () => {
+    // Non-vacuity first: the collapsed Redis pair is the *only* thing wrong with
+    // this config, so the token caught below belongs to the D-12 rule and to
+    // nothing else. Without this the assertion could pass on a refusal about a
+    // missing key and still appear to have pinned D-12.
+    const valid = bootConfig();
+    expect(() => validateConfig(valid), 'the baseline config must be accepted').not.toThrow();
+
+    let refusal = '';
+    try {
+      validateConfig({ ...valid, REDIS_QUEUE_URL: valid['REDIS_CACHE_URL'] });
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
+    }
+    expect(refusal, 'one Redis URL for both tiers must be refused').not.toBe('');
+
+    // The expected rendering, produced by the formatter the boot itself uses —
+    // an object-level issue has an empty path, so `formatConfigError` substitutes
+    // `<root>` and substitutes the issue `message` for the Zod `code`. Calling it
+    // pins the *relationship*; typing the string out would restate it, and this
+    // assertion is what reports a changed rendering as a rendering change rather
+    // than as a confusing "document is missing a token" several steps later.
+    const expected = formatConfigError({
+      path: [],
+      code: 'custom',
+      message: REDIS_INSTANCES_NOT_DISTINCT,
+    });
+    expect(refusal).toBe(expected);
+
+    // The greppable form is the emitted string, so both documents must contain
+    // it verbatim — a drift in either the emitter or the prose goes red here.
+    expect(envExample, '.env.example must carry the greppable D-12 refusal').toContain(refusal);
+    expect(readme, 'README.md must carry the greppable D-12 refusal').toContain(refusal);
+
+    // And the form `01-11` documented must appear in neither file. Derived by
+    // deleting the path segment rather than typed, and gated on its not being a
+    // substring of the correct form — without that precondition this negative
+    // assertion would be trivially true and would prove nothing.
+    const ungreppable = expected.replace('<root> ', '');
+    expect(
+      expected.includes(ungreppable),
+      'precondition: the wrong form must not be a substring of the right one, or this check is vacuous',
+    ).toBe(false);
+    expect(envExample, '.env.example still carries the un-greppable D-12 form').not.toContain(ungreppable);
+    expect(readme, 'README.md still carries the un-greppable D-12 form').not.toContain(ungreppable);
+  });
+
+  it('documents LOCAL_KEY_FILE_MISSING for the unset variable, not for an absent file', () => {
+    // `resolveLocalKeyFilePath` falls back to `process.env` when the config field
+    // is absent, so a developer who exports the variable would silently satisfy
+    // this call. Deleting it for the duration keeps the assertion independent of
+    // whatever the operator's shell happens to carry, and `finally` puts it back.
+    const saved = process.env['CRYPTO_LOCAL_KEY_FILE'];
+    delete process.env['CRYPTO_LOCAL_KEY_FILE'];
+    let refusal = '';
+    try {
+      // `NODE_ENV: 'test'` passes the crypto guard, so the *variable* is the
+      // only thing that can refuse — which is what makes this the variable's
+      // token rather than the guard's.
+      createKeyProvider({ NODE_ENV: 'test', CRYPTO_KEY_PROVIDER: 'local' });
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (saved !== undefined) process.env['CRYPTO_LOCAL_KEY_FILE'] = saved;
+    }
+    expect(refusal, 'an unset key-file variable must be refused').not.toBe('');
+
+    // Read off the thrown message rather than typed: the token is the part up to
+    // and including the first colon, and everything after it is prose about the
+    // requirement, which is allowed to change without a documentation fix.
+    const token = `${refusal.split(':')[0] ?? ''}:`;
+    expect(token, 'the refusal must name a token').not.toBe(':');
+    expect(envExample, '.env.example must document the unset-variable token').toContain(token);
+    expect(readme, 'README.md must document the unset-variable token').toContain(token);
+  });
+
+  it('documents an absent key file as the raw ENOENT it is, read off the error object', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'akane-absent-key-'));
+    try {
+      let thrown: unknown;
+      try {
+        // `nodeEnv: 'test'` again so the guard passes and the *file* is the only
+        // thing that can fail.
+        new LocalKeyProvider({ keyFilePath: path.join(dir, 'not-provisioned'), nodeEnv: 'test' });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown, 'constructing on an absent path must fail').toBeInstanceOf(Error);
+      // Precondition pin, in the idiom `redis.schema.spec.ts:68` already uses.
+      // `ENOENT` is a filesystem error code rather than a token this repository
+      // emits, so it is read off the error below rather than derived.
+      const code = (thrown as NodeJS.ErrnoException).code;
+      expect(code, 'the absent-file failure must be a filesystem ENOENT').toBe('ENOENT');
+
+      // The code, not the message: the message embeds the path, which is not
+      // stable, and the code is the part a reader greps for.
+      expect(envExample, '.env.example must document the absent-file failure').toContain(code ?? '');
+      expect(readme, 'README.md must document the absent-file failure').toContain(code ?? '');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs the documented key-file remedy and requires LocalKeyProvider to accept the result', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'akane-remedy-key-'));
+    try {
+      const keyFile = path.join(dir, 'dev-local-key');
+      // The documented recipe, verbatim, executed rather than quoted. Fixed argv
+      // with the path passed as a positional parameter, so the path never reaches
+      // the shell as text and nothing is assembled from it.
+      execFileSync('/bin/sh', ['-c', 'head -c 32 /dev/urandom > "$1"', 'akane-remedy', keyFile], {
+        timeout: 10_000,
+      });
+
+      // The requirement the documents state, read off the file the recipe made.
+      expect(readFileSync(keyFile).length).toBe(32);
+
+      const provider = new LocalKeyProvider({ keyFilePath: keyFile, nodeEnv: 'test' });
+      return expect(provider.keyId()).resolves.toMatch(/^local-[0-9a-f]{16}$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('the README names engines.node exactly as the manifest declares it', () => {
+    const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      engines?: { node?: string };
+    };
+    const declared = manifest.engines?.node;
+
+    expect(declared, 'the manifest must declare engines.node').toBeDefined();
+    // Not a duplicate of `toolchain-pin.spec.ts`: that spec asserts the manifest
+    // agrees with `.nvmrc` and never reads the README. This asserts the
+    // *documentation* agrees with the manifest, which is the only link that can
+    // break when someone edits the prose.
+    expect(readme, 'the README must quote engines.node so the two cannot drift in prose').toContain(
+      declared ?? '',
+    );
+  });
+
+  it('the README carries npm’s own warning token, and no repository .npmrc makes it a refusal', () => {
+    // `EBADENGINE` is printed by npm, not by anything in this repository, so
+    // there is no in-repo emitter to derive it from — naming it literally is what
+    // gives the README sentence a handle at all. Without the token the sentence
+    // has nothing to stand on: the scan below cannot distinguish "npm warns"
+    // from "npm refuses", so restoring `01-11`'s "fails" claim would go green.
+    expect(readme, 'the install claim needs npm’s own warning code').toContain('EBADENGINE');
+
+    // The derivation obligation for that exception, on the repository side:
+    // nothing in this repository may configure the enforcement the README
+    // declines to claim. Adding an `engine-strict=true` `.npmrc` turns this red,
+    // which is the direction that matters.
+    const enforcing = npmrcFiles(REPO_ROOT).filter((file) =>
+      /^engine-strict\s*=\s*true\s*$/im.test(readFileSync(file, 'utf8')),
+    );
+    expect(
+      enforcing,
+      `a repository .npmrc sets engine-strict, so npm would refuse rather than warn: ${enforcing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('documents the guard switch, quoted out of assertKeyProviderAllowed’s own message', () => {
+    let refusal = '';
+    try {
+      // `staging` is none of development, test or production, and that allow-list
+      // is a closed set — so this is the message that names the environments a
+      // local key is permitted in, and the one an operator actually hits.
+      assertKeyProviderAllowed({ NODE_ENV: 'staging', CRYPTO_KEY_PROVIDER: 'local' });
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
+    }
+    expect(refusal, 'an unnamed environment must be refused').not.toBe('');
+
+    // `NODE_ENV=development or test` is `assertKeyProviderAllowed`'s own wording,
+    // lifted out of the thrown message rather than typed — WR-04 found that
+    // nothing documented this switch at all, and a hand-written copy in the test
+    // would have been a fourth place to drift. `\w` rather than `\S` because the
+    // message continues with `, or …`: a greedy `\S+` would swallow that comma
+    // and the derived token would then be a string no document can be expected to
+    // contain.
+    const guardSwitch = /NODE_ENV=\w+ or \w+/.exec(refusal)?.[0] ?? '';
+    expect(guardSwitch, 'the refusal must name the environments a local key needs').not.toBe('');
+    expect(envExample, '.env.example must name the guard switch').toContain(guardSwitch);
+    expect(readme, 'README.md must name the guard switch').toContain(guardSwitch);
+  });
+
+  it('pins the two CRYPTO_KEY_PROVIDER_REQUIRED messages as distinct', () => {
+    const refusalFor = (config: { NODE_ENV: string; CRYPTO_KEY_PROVIDER: string }): string => {
+      try {
+        assertKeyProviderAllowed(config);
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      return '';
+    };
+
+    const production = refusalFor({ NODE_ENV: 'production', CRYPTO_KEY_PROVIDER: 'local' });
+    const elsewhere = refusalFor({ NODE_ENV: 'staging', CRYPTO_KEY_PROVIDER: 'local' });
+
+    expect(production, 'a production boot on a local key must be refused').not.toBe('');
+    expect(elsewhere, 'an unnamed environment on a local key must be refused').not.toBe('');
+    // WR-04's confusion, exactly: one token, two sentences, and the documentation
+    // that collapsed them into a single row had to pick one and call it the
+    // meaning. They must not be allowed back together.
+    expect(production, 'the production refusal and the switch refusal must differ').not.toBe(elsewhere);
+
+    const token = `${production.split(':')[0] ?? ''}:`;
+    expect(token, 'the refusal must name a token').not.toBe(':');
+    expect(envExample, '.env.example must name the crypto refusal token').toContain(token);
+    expect(readme, 'README.md must name the crypto refusal token').toContain(token);
+  });
+
+  it('reproduces the sourcing hazard: sourcing .env.example rewrites an exported NODE_ENV', () => {
+    // The warning both documents carry, observed rather than asserted. This is
+    // conditional, and the condition is stated here on purpose: the assertion
+    // holds **because `NODE_ENV` is an active line** in the example file, so the
+    // documented recipe assigns it. If a later change makes the file stop
+    // carrying one, the legitimate responses are to remove this case with that
+    // decision recorded, or to invert it into an assertion that sourcing no
+    // longer rewrites the variable. Weakening it until it passes is not one of
+    // them — that is how the warning outlives the behaviour it describes.
+    //
+    // There is deliberately no negative grep for `development` anywhere: this
+    // assertion is the whole check.
+    const printed = execFileSync(
+      '/bin/sh',
+      ['-c', 'export NODE_ENV=production\nset -a; . ./.env.example; set +a\nprintf %s "$NODE_ENV"\n'],
+      { cwd: REPO_ROOT, env: childEnv({}), encoding: 'utf8', timeout: 10_000 },
+    );
+
+    expect(
+      printed.trim(),
+      'the documented sourcing recipe must be observed to disarm the crypto guard',
+    ).toBe('development');
+  });
+});
+
+/**
+ * Every `.npmrc` in the repository outside `node_modules`.
+ *
+ * A bounded walk rather than `readdirSync(dir, { recursive: true })`, which would
+ * descend all of `node_modules` on every run of a case that has to stay in the
+ * seconds range. The skipped directory names cannot hold a repository `.npmrc`:
+ * a dependency that vendored one into its own tree is not this repository's
+ * configuration, and npm does not read it either.
+ */
+function npmrcFiles(root: string): string[] {
+  const SKIP = new Set(['node_modules', '.git', 'dist', 'coverage']);
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === '.npmrc') found.push(full);
+    }
+  };
+  walk(root);
+  return found;
+}
 
 describe('.gitignore — the local key file is not committable (T-1-26)', () => {
   it('matches .dev-local-key, and does not match everything', () => {

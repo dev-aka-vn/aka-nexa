@@ -10,7 +10,7 @@ signed link to a form whose submission is routed into the internal systems behin
 
 | Tool | Version | Why |
 |---|---|---|
-| Node.js | **24.x LTS** | The pinned runtime. `npm ci` fails on anything else — `typescript-eslint` carries a hard peer range that caps TypeScript below 6.1, and the build is TypeScript 6.0.3. |
+| Node.js | **24.x LTS** | The pinned runtime, and `engines.node` in the manifest is `>=24 <25`. npm **warns** on anything else rather than refusing it: you get an `EBADENGINE` warning, not a failed install, because nothing in this repository sets `engine-strict`. Your own `~/.npmrc` or global npm config can widen that into a hard failure — this claim is about what *this repository* configures. Separately, and for a different reason, TypeScript is pinned to exactly 6.0.3 because `typescript-eslint` declares a hard peer range below 6.1; that pin is about the compiler, not the Node version. |
 | npm | ships with Node 24 | npm workspaces; no other package manager. |
 | Docker | any recent version | MongoDB and Redis for the local stack (`compose.dev.yml`), and for the test suite. |
 | Git | any | — |
@@ -53,6 +53,14 @@ curl -s http://127.0.0.1:3000/health/ready   # every dependency up, each named
 with a named error rather than a default.** `.env.example` is that contract written down: every key
 the schema declares, with the local development values filled in.
 
+⚠️ **The sourcing line below rewrites `NODE_ENV`, and that is the variable the crypto guard keys
+on.** `.env.example` carries an **active** `NODE_ENV=development`, and `set -a; . ./.env.example`
+assigns every active line — so it overwrites an `NODE_ENV=production` you had already exported, in
+the shell you keep using, without printing anything. A plaintext local key is permitted only while
+the environment reads `NODE_ENV=development or test`; anything else is refused with
+`CRYPTO_KEY_PROVIDER_REQUIRED:`. Source the file and then re-export `NODE_ENV` yourself, or set
+only the two variables you actually need inline instead of sourcing the whole file.
+
 ```sh
 # Adopt the documented development values in this shell:
 set -a; . ./.env.example; set +a
@@ -82,11 +90,12 @@ Every failure is greppable and names the offending key:
 
 | Token | Meaning |
 |---|---|
-| `CONFIG_INVALID: <KEY> <code>` | Missing or malformed value. The process aborts before it serves anything. |
-| `CONFIG_INVALID: REDIS_INSTANCES_NOT_DISTINCT` | The two Redis URLs name one instance. They must be two — see below. |
-| `CRYPTO_KEY_PROVIDER_REQUIRED:` | A production boot on a local key. Refused before the key file is read. |
+| `CONFIG_INVALID: <KEY> <code>` | Missing or malformed value. The process aborts before it serves anything. `<KEY>` is the dotted path to the offending value, or the literal `<root>` when the rule is about the configuration as a whole rather than about one key. |
+| `CONFIG_INVALID: <root> REDIS_INSTANCES_NOT_DISTINCT` | The two Redis URLs name one instance. They must be two — see below. |
+| `CRYPTO_KEY_PROVIDER_REQUIRED:` | A local key outside `NODE_ENV=development or test`, with no explicit operator opt-in. Refused before the key file is read. Two distinct messages share this token — a production boot gets its own wording — and they are not interchangeable. |
 | `KMS_PROVIDER_BLOCKED:` | The KMS provider is selected and has no adapter yet. Named failure, on purpose. |
-| `LOCAL_KEY_FILE_MISSING:` | `CRYPTO_LOCAL_KEY_FILE` names a file that is not there, or is not set. |
+| `LOCAL_KEY_FILE_MISSING:` | The **variable** `CRYPTO_LOCAL_KEY_FILE` is unset or empty. This is about the variable, never about the file. |
+| `ENOENT: no such file or directory, open '<path>'` | The variable is set and the **file** it names is not there — the normal state of a fresh checkout. A raw filesystem error from the key read, with nothing caught in front of it. Run the `head -c 32 /dev/urandom > .dev-local-key` recipe above; grepping for `LOCAL_KEY_FILE_MISSING:` after an `ENOENT` finds nothing, because the system never printed it. |
 
 ### Two Redis deployments, not one
 
@@ -103,9 +112,19 @@ never a key value — a key in an environment variable is a key in the process t
 dump, and in every CI log that echoes its environment. `.dev-local-key` is gitignored, so following
 the recipe above cannot commit a plaintext key.
 
-`CRYPTO_KEY_PROVIDER=local` is development-only. `NODE_ENV=production` selecting it is refused with
-`CRYPTO_KEY_PROVIDER_REQUIRED:` before any key file is opened, and `CRYPTO_KEY_PROVIDER=kms` is
-refused with `KMS_PROVIDER_BLOCKED:` until a deployment cloud is named. Both are the guards working.
+Two failures, and their tokens are not interchangeable. If the **variable** is unset or empty you get
+the named `LOCAL_KEY_FILE_MISSING:`. If the **file** it names is not there — the normal state of a
+fresh checkout, because `.dev-local-key` is gitignored — you get a raw
+`ENOENT: no such file or directory, open './.dev-local-key'` and nothing in front of it, so run the
+recipe above.
+
+`CRYPTO_KEY_PROVIDER=local` is development-only, and the gate is `NODE_ENV` rather than the provider
+line: a plaintext local key is permitted only while the environment reads
+`NODE_ENV=development or test`, and anything else is refused with
+`CRYPTO_KEY_PROVIDER_REQUIRED:` before the key file is opened. That is what makes the sourcing recipe
+above a warning rather than a convenience — it is the line that sets the switch.
+`CRYPTO_KEY_PROVIDER=kms` is refused with `KMS_PROVIDER_BLOCKED:` until a deployment cloud is named.
+Both are the guards working.
 
 ## Local infrastructure
 
@@ -128,7 +147,9 @@ network. The two Redis containers are two separate deployments because `maxmemor
 instance-wide: the cache tier is allowed to evict, the queue tier is not.
 
 **These addresses are already the ones in `.env.example`.** Bring the stack up, source the file, and
-the boot needs no editing at all:
+the boot needs no editing at all — but re-export `NODE_ENV` after sourcing, for the reason given
+under [Configuration](#configuration): the recipe assigns `.env.example`'s active
+`NODE_ENV=development` over whatever your shell had set.
 
 ```sh
 docker compose -f compose.dev.yml up -d
