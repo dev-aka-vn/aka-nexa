@@ -29,15 +29,7 @@ created: "2026-10-06"
 
 ## Component Inventory
 
-Could not enumerate: No design system package detected (shadcn not initialized; no component library workspace present). This is the Form Renderer surface built on `@formio/js` 5.6.1.
-
-| Component | Import path | Notes |
-|-----------|-------------|-------|
-| Form renderer (Webform) | `@formio/js` (dist formio.form.js / formio.min.js) | Renders seeded FormIO JSON schema; owns form state and validation. No RHF integration (FormIO owns its state). |
-| Form builder runtime (not used in Phase 2) | `@formio/js` FormBuilder | Excluded from Phase 2 (FRM-05/FRM-09 are Phase 6). |
-| FormIO components | `@formio/js` components registry | Default set (text, textarea, select, radio, checkbox, number, date/time, panel, fieldset, columns, table, etc.). File component not used (FRM-11 deferred). Bootstrap 5 templates/styles used as base, overridden by minimal renderer CSS. |
-
-Omit this section entirely when the project has no design system (`Tool: none`).
+No design system components enumerated (`Tool: none`, no component library workspace present). The renderer surface is `@formio/js` 5.6.1 (Webform) rendering seeded FormIO JSON schemas. No custom components are introduced in Phase 2; File component is not used (FRM-11 deferred).
 
 ---
 
@@ -65,12 +57,10 @@ Font stack complies with `FRM-07` (no external fonts). Prioritizes system fonts;
 
 | Role | Size | Weight | Line Height | Notes |
 |------|------|--------|-------------|-------|
-| Body | 14–16px (16px default) | 400–500 (500 for emphasis) | 1.55 | Base matches mockup `body { font-size:16px; line-height:1.55 }`. Labels use 13.5px, helper/error 12.5px. |
-| Label | 13.5px | 600 | 1.4 | Form field labels, strong emphasis. |
-| Heading (h2/h3/card) | 15.5px | 600 | 1.2 | Card headings per mockup. |
-| Heading (page) | 25px | 600 | 1.2 | `.page-head h1 { font-size:25px; line-height:1.2 }`, display-style weight 600, letter-spacing -0.01em. |
-| Display | 29px | 600 | 1.05 | Stats value `.stat .v` (29px, -0.02em). Reserved for key numbers/hero text only. |
-| Monospace | 12–12.5px | 400–500 | 1.4 | Code/IDs, `.pill-mono` uses IBM Plex Mono intent via system monospace fallback. |
+| Body | 16px | 400 | 1.55 | Base body size. Helper/error text 12.5px where needed. |
+| Label | 14px | 600 | 1.4 | Form labels and microcopy. |
+| Heading | 20px | 600 | 1.2 | Consolidates all headings under 2 weights (400/600). |
+| Monospace | 12.5px | 400 | 1.4 | Code/IDs via system monospace. |
 
 Font family (system-first, CSP-safe):
 ```css
