@@ -55,6 +55,10 @@ export const LOG_FIELD_ALLOWLIST = Object.freeze([
   'attempt', // BullMQ attempt number
   'count', // aggregate size (e.g. a page or a batch)
   'reason', // short enum-ish token, not prose and never a user-supplied string
+  // ── actor/context fields (D-43, LNK-09) ──────────────────────────────
+  'real_user_id',
+  'ip',
+  'user_agent',
 ] as const);
 
 /** The union of field names a log record is allowed to carry. */

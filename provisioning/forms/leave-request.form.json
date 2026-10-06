@@ -1,5 +1,23 @@
 {
   "form_id": "leave-request",
   "version": 1,
-  "schema": {}
+  "schema": {
+    "prefill": {
+      "fields": [
+        {
+          "field": "employee_code",
+          "mode": "prefill"
+        },
+        {
+          "field": "department",
+          "mode": "prefill"
+        },
+        {
+          "field": "email",
+          "mode": "prefill-editable"
+        }
+      ]
+    },
+    "components": []
+  }
 }
