@@ -173,11 +173,11 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **FRM-01**: Every form is a FormIO.js JSON schema; no other form engine is used anywhere in the product
 - [ ] **FRM-02**: Form schemas are versioned with an incrementing integer, and a submission records the `form_version` in effect when its link was issued
 - [ ] **FRM-03**: Editing a published form does not affect an in-flight submission
-- [ ] **FRM-04**: The renderer pre-fills fields server-side from the resolved real-user profile
+- [x] **FRM-04**: The renderer pre-fills fields server-side from the resolved real-user profile
 - [ ] **FRM-05**: A form author can define conditional show/hide logic and validation rules (required, pattern, min/max, custom)
 - [ ] **FRM-06**: The renderer is a separate stateless web app that authenticates by JWT in the URL and sets no cookies
-- [ ] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
-- [ ] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
+- [x] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
+- [x] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
 - [ ] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
 
 ### Links & Token Security
@@ -192,7 +192,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
 - [ ] **LNK-09**: Every link access is logged with `jti`, `real_user_id`, action, IP, and User-Agent
 - [ ] **LNK-10**: Link URLs are unguessable and contain no sequential identifier
-- [ ] **LNK-11**: An expired link returns a clear "link expired" message offering to request a new one via IM
+- [x] **LNK-11**: An expired link returns a clear "link expired" message offering to request a new one via IM
 - [ ] **LNK-12**: Signing keys rotate every 90 days with a zero-downtime dual-key window, and a new key can be added without invalidating live links
 
 ### Submissions & Data Routing
@@ -227,8 +227,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Audit, Compliance & Data Protection
 
-- [ ] **AUD-01**: Every state-changing action writes an append-only audit entry; no update or delete operation on the audit log is permitted
-- [ ] **AUD-02**: An audit entry records timestamp, actor, action, target, previous state, new state, IP, and request ID
+- [x] **AUD-01**: Every state-changing action writes an append-only audit entry; no update or delete operation on the audit log is permitted
+- [x] **AUD-02**: An audit entry records timestamp, actor, action, target, previous state, new state, IP, and request ID
 - [ ] **AUD-03**: Audit logs are retained for a minimum of 3 years, configurable
 - [ ] **AUD-04**: `actor_ref` is tombstoneable, so an erasure request can null the actor reference without deleting the audit row
 - [ ] **AUD-05**: A global admin can search the audit trail by user, app, action, and date range
@@ -275,9 +275,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **IM-03**: The webhook receiver acknowledges in under 200 ms and enqueues; all logic runs in the consumer
 - [ ] **IM-04**: Enqueue is idempotent — a duplicate delivery produces one processing job, guaranteed by a MongoDB unique index on the platform event ID, not by a BullMQ `jobId` flag
 - [ ] **IM-05**: An unreachable IM platform causes messages to queue and retry, and never produces a silent failure the user cannot see
-- [ ] **IM-06**: Rate limiting is per user (10 req/min) and per app (100 req/min), implemented as a hand-written `ThrottlerStorage` over ioredis
+- [x] **IM-06**: Rate limiting is per user (10 req/min) and per app (100 req/min), implemented as a hand-written `ThrottlerStorage` over ioredis
 - [ ] **IM-07**: A slash command acks empty and delivers its response asynchronously, because Slack's `response_url` permits only 5 responses per 30 minutes
-- [ ] **IM-08**: The user sees a distinct, actionable message on both submission success and submission failure
+- [x] **IM-08**: The user sees a distinct, actionable message on both submission success and submission failure
 - [ ] **IM-09**: The Slack adapter supports inbound events, outbound messages, slash commands, and Slack's URL-verification challenge
 - [ ] **IM-10**: The Microsoft Teams adapter delivers the identical experience via `@microsoft/agents-hosting` + `-msteams`
 - [ ] **IM-11**: An adapter's responses appear in the same thread as the user's message where the platform supports it
@@ -433,9 +433,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IM-03 | Phase 2 | Pending |
 | IM-04 | Phase 2 | Pending |
 | IM-05 | Phase 2 | Pending |
-| IM-06 | Phase 2 | Pending |
+| IM-06 | Phase 2 | Complete |
 | IM-07 | Phase 2 | Pending |
-| IM-08 | Phase 2 | Pending |
+| IM-08 | Phase 2 | Complete |
 | IM-09 | Phase 2 | Pending |
 | IM-11 | Phase 2 | Pending |
 | APP-01 | Phase 2 | Pending |
@@ -444,22 +444,22 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FRM-01 | Phase 2 | Pending |
 | FRM-02 | Phase 2 | Pending |
 | FRM-03 | Phase 2 | Pending |
-| FRM-04 | Phase 2 | Pending |
+| FRM-04 | Phase 2 | Complete |
 | FRM-06 | Phase 2 | Pending |
-| FRM-07 | Phase 2 | Pending |
-| FRM-08 | Phase 2 | Pending |
+| FRM-07 | Phase 2 | Complete |
+| FRM-08 | Phase 2 | Complete |
 | LNK-01 | Phase 2 | Pending |
 | LNK-03 | Phase 2 | Pending |
 | LNK-04 | Phase 2 | Pending |
 | LNK-09 | Phase 2 | Pending |
 | LNK-10 | Phase 2 | Pending |
-| LNK-11 | Phase 2 | Pending |
+| LNK-11 | Phase 2 | Complete |
 | LNK-12 | Phase 2 | Pending |
 | DAT-02 | Phase 2 | Pending |
 | DAT-08 | Phase 2 | Pending |
 | DAT-09 | Phase 2 | Pending |
-| AUD-01 | Phase 2 | Pending |
-| AUD-02 | Phase 2 | Pending |
+| AUD-01 | Phase 2 | Complete |
+| AUD-02 | Phase 2 | Complete |
 | RTE-01 | Phase 3 | Pending |
 | RTE-02 | Phase 3 | Pending |
 | RTE-03 | Phase 3 | Pending |
