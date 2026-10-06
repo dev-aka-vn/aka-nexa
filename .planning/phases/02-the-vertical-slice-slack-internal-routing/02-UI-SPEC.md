@@ -1,7 +1,7 @@
 ---
 phase: "2"
 slug: "the-vertical-slice-slack-internal-routing"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-06"
@@ -173,4 +173,4 @@ No third-party registries declared. Form renderer uses only `@formio/js` (MIT, b
 - [ ] Dimension 6 Registry Safety: PASS
 - [ ] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved
