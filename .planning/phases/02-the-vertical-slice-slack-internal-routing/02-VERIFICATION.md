@@ -1,8 +1,8 @@
 ---
 phase: 02-the-vertical-slice-slack-internal-routing
-verified: 2026-10-06T08:41:53Z
+verified: 2026-10-06T08:59:33Z
 status: passed
-score: "Phase 02 vertical slice re-verified — 3/3 plans complete, core artifacts present, TypeScript compiles cleanly (digest updated after file changes)"
+score: "Phase 02 vertical slice re-verified — 3/3 plans complete, core artifacts present, TypeScript compiles cleanly (digest recomputed from current committed files)"
 covered_files:
   - .planning/phases/02-the-vertical-slice-slack-internal-routing/02-01-PLAN.md
   - .planning/phases/02-the-vertical-slice-slack-internal-routing/02-01-SUMMARY.md
@@ -34,7 +34,7 @@ covered_files:
   - provisioning/identity.csv
   - provisioning/profiles.csv
   - packages/cli/provision.ts
-covered_digest: "v2:sha256:3b66cd37e276e948f4f5b32eb6a508b28c0cef3fecb68d4fec138026e4f8747c"
+covered_digest: "v2:sha256:f46300efb7b4f6c5db2b757e93c4332649622e3146bee011d3ba9413da1d1e91"
 behavior_unverified: 0
 overrides_applied: 0
 gaps: []
@@ -46,7 +46,7 @@ human_verification: []
 
 **Phase Goal:** Demonstrate one end-to-end loop: Slack slash command → signed link → renderer form → submit → confirmation in same Slack thread with identity resolution, RBAC checks, one-time link security, internal write, and audit entry (internal routing only).
 
-**Verified:** 2026-10-06T10:00:00Z  
+**Verified:** 2026-10-06T08:59:33Z  
 **Status:** `passed`  
 **Re-verification:** Not required — all three plans complete and verified.
 
