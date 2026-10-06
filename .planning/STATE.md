@@ -4,10 +4,10 @@ current_phase: 2
 current_phase_name: The Vertical Slice — Slack + Internal Routing
 status: executing
 stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-10-06T04:11:38.427Z"
+last_updated: "2026-10-06T04:16:21.043Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: 6d161d527e6ae0fea84d7e0fb799e7b27bd5f764
+state_head: c1eab181e8b7d58a4733941728d0b2e34913f616
 progress:
   total_phases: 8
   completed_phases: 1
@@ -29,8 +29,8 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 2 — The Vertical Slice — Slack + Internal Routing
-Plan: 2 of 3
-Status: In Progress
+Plan: 3 of 3
+Status: Ready to execute
 Last activity: 2026-10-03 — Phase 01 complete, transitioned to Phase 2
 
 Progress: [█░░░░░░░░░] 13%
@@ -83,6 +83,7 @@ Progress: [█░░░░░░░░░] 13%
 | Phase 01 P09 | 105min | 3 tasks | 16 files |
 | Phase 01 P10 | 155min | 3 tasks | 31 files |
 | Phase 02-the-vertical-slice-slack-internal-routing P02-01 | 60 | 1 tasks | 18 files |
+| Phase 02-the-vertical-slice-slack-internal-routing P02-02 | 30 | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -189,6 +190,7 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: **The boundary lint gate's resolver maps BOTH workspace import forms to source.** `@akane/<pkg>` → `src/index.ts` and `@akane/<pkg>/<subpath>` → `src/<subpath>/index.ts`, never `dist/`. Mapping only the bare form was not a narrower version of the rule — it was the same blindness, because `package.json#exports` sends subpaths into `node_modules` too and `external` is permitted unconditionally by policy 0. Any future resolver change must keep both; `tooling/boundaries.fixture.spec.ts` asserts each one fires and each compliant one still passes (gap G-1 closure, `44b0619`).
 - [Phase 01]: **`CryptoModule` is composed into all three composition roots with no consumer of it, on purpose.** The FND-10 guard runs inside that module's provider factory, so an uncomposed module is a guard no process can trip. The consequence is that boot now declares a crypto posture: a process selecting `local` must also set `CRYPTO_LOCAL_KEY_FILE` (a path, never the key), and `NODE_ENV=production` refuses first, before any key file is opened. If a future process genuinely holds no secret, the fix is a lazy provider — not dropping the guard from the composition root (`f813f64`).
 - [Phase 02-the-vertical-slice-slack-internal-routing]: Scaffolded tracer infrastructure for Slack leave flow
+- [Phase 02-the-vertical-slice-slack-internal-routing]: Implemented identity resolution and RBAC scaffolding with perm_version cache
 
 ### Pending Todos
 
