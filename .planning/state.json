@@ -1,0 +1,53 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Foundations & Platform",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "The Vertical Slice",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "Natural-Language Routing",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "Read Path & Query DSL",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Integration & Async Execution",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Self-Service App Builder",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Multi-IM Expansion & Two-Way Sync",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "Production Readiness",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 01 of 8 · 13% · executing"
+  },
+  "updated_at": "2026-10-05T09:33:03.631Z"
+}
