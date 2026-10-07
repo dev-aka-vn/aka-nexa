@@ -2,7 +2,7 @@
 phase: "3"
 slug: "natural-language-routing"
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: "2026-10-07"
 ---
@@ -77,11 +77,16 @@ created: "2026-10-07"
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** strategy signed off 2026-10-07. NOTE: this is a *plan-level* gate — it certifies
+that every task has an automated verify command and Wave 0 test scaffolds are scheduled.
+It does NOT claim any test has executed. `status: draft` and `wave_0_complete: false`
+remain until Wave 0 scaffolds exist and the suite first runs green; executing
+`/gsd-validate-phase` will flip those. Test-result status lives in the per-task table
+above (all rows remain `⬜ pending`).
