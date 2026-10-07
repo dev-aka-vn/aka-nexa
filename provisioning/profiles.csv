@@ -1,0 +1,4 @@
+real_user_id,employee_code,department,email
+u_001,EMP001,Engineering,alice@example.com
+u_002,EMP002,HR,bob@example.com
+u_003,EMP003,Finance,charlie@example.com

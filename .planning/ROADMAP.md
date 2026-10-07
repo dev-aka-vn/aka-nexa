@@ -121,6 +121,10 @@ Four researchers converged on this shape; the deviation is stated rather than si
   5. Every state change writes an append-only audit entry recording actor, action, target, previous state, and new state; success and failure produce two **distinct**, actionable Slack messages; a duplicate platform delivery produces one processing job.
 
 **Plans**: TBD
+- [x] 02-01-PLAN.md
+- [x] 02-02-PLAN.md
+- [x] 02-03-PLAN.md
+
 **UI hint**: yes
 **Notes**: The largest phase by requirement count and the one that makes every architectural assumption load-bearing while the codebase is small. Internal routing only — the connector/BullMQ/outbox surface is deliberately excluded. Identity is **CSV pre-provisioning only**; OTP onboarding adds a Redis state machine, brute-force policy, and lockout flow that the demonstrable capability does not need, so it moves to Phase 6. `perm_version` is embedded in the RBAC cache key so the epoch primitive serves both the cache and (later) the read path; Pub/Sub becomes a latency optimisation, never the correctness mechanism. Enqueue idempotency is a **MongoDB unique index on the platform event ID**, not a BullMQ `jobId` flag, because `jobId` dedup lapses on `removeOnComplete`. Slash commands ack **empty** and deliver via `response_url` — Slack permits only 5 responses per 30 minutes.
 **Research**: not required — every component is a single well-documented pattern. Large but unambiguous.
@@ -283,7 +287,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations & Platform | 10/10 | Complete    | 2026-10-03 |
-| 2. The Vertical Slice | 0/TBD | Not started | - |
+| 2. The Vertical Slice | 3/3 | In Progress|  |
 | 3. Natural-Language Routing | 0/TBD | Not started | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |
 | 5. Integration & Async Execution | 0/TBD | Not started | - |

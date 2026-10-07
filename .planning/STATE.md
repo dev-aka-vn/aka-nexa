@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: The Vertical Slice — Slack + Internal Routing
-status: planning
-stopped_at: Phase 01 complete, ready to plan Phase 2
-last_updated: "2026-10-03T21:36:24.242Z"
+status: verifying
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-10-06T07:48:06.017Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: 4642e170a4fe5445d40c6938da00529265897961
+state_head: 50304c4d346c7421233a92e1d0512bf1e95d6606
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 12
-  completed_plans: 11
+  total_plans: 15
+  completed_plans: 15
   percent: 13
 ---
 
@@ -29,8 +29,8 @@ rendered form, without ever logging into — or learning — the downstream syst
 ## Current Position
 
 Phase: 2 — The Vertical Slice — Slack + Internal Routing
-Plan: Not started
-Status: Ready to plan
+Plan: 3 of 3 (final)
+Status: Phase complete — ready for verification
 Last activity: 2026-10-03 — Phase 01 complete, transitioned to Phase 2
 
 Progress: [█░░░░░░░░░] 13%
@@ -82,6 +82,8 @@ Progress: [█░░░░░░░░░] 13%
 | Phase 01 P08 | 78min | 3 tasks | 11 files |
 | Phase 01 P09 | 105min | 3 tasks | 16 files |
 | Phase 01 P10 | 155min | 3 tasks | 31 files |
+| Phase 02-the-vertical-slice-slack-internal-routing P02-01 | 60 | 1 tasks | 18 files |
+| Phase 02-the-vertical-slice-slack-internal-routing P02-02 | 30 | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -187,6 +189,9 @@ Full log in PROJECT.md Key Decisions. Decisions that shape the roadmap order:
 - [Phase 01]: Deployment shape decided once at the root: a package the built runtime can reach is a dependency, everything else a devDependency, with the lockfile regenerated in the same commit because npm ci --omit=dev honours the lockfile's dev markers (01-10).
 - [Phase 01]: **The boundary lint gate's resolver maps BOTH workspace import forms to source.** `@akane/<pkg>` → `src/index.ts` and `@akane/<pkg>/<subpath>` → `src/<subpath>/index.ts`, never `dist/`. Mapping only the bare form was not a narrower version of the rule — it was the same blindness, because `package.json#exports` sends subpaths into `node_modules` too and `external` is permitted unconditionally by policy 0. Any future resolver change must keep both; `tooling/boundaries.fixture.spec.ts` asserts each one fires and each compliant one still passes (gap G-1 closure, `44b0619`).
 - [Phase 01]: **`CryptoModule` is composed into all three composition roots with no consumer of it, on purpose.** The FND-10 guard runs inside that module's provider factory, so an uncomposed module is a guard no process can trip. The consequence is that boot now declares a crypto posture: a process selecting `local` must also set `CRYPTO_LOCAL_KEY_FILE` (a path, never the key), and `NODE_ENV=production` refuses first, before any key file is opened. If a future process genuinely holds no secret, the fix is a lazy provider — not dropping the guard from the composition root (`f813f64`).
+- [Phase 02-the-vertical-slice-slack-internal-routing]: Scaffolded tracer infrastructure for Slack leave flow
+- [Phase 02-the-vertical-slice-slack-internal-routing]: Implemented identity resolution and RBAC scaffolding with perm_version cache
+- [Phase 02]: Implemented audit trail, throttling, link errors, and server-side prefill from closed profile
 
 ### Pending Todos
 
@@ -244,6 +249,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T19:55:00.000Z
-Stopped at: Phase 01 complete, ready to plan Phase 2
+Last session: 2026-10-06T07:47:47.440Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
