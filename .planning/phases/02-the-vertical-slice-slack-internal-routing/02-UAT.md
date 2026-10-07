@@ -11,10 +11,10 @@ updated: 2026-10-07T00:00:00Z
 
 ## Current Test
 
-number: 1
-name: "Cold Start Smoke Test"
+number: 2
+name: "Slack Slash Command End-to-End Flow"
 expected: |
-  Kill any running server/service. Clear ephemeral state (temp DBs, caches, lock files). Start the application from scratch. Server boots without errors, any seed/migration completes, and a primary query (health check, homepage load, or basic API call) returns live data.
+  In Slack, issue a slash command (e.g., /leave or configured command) that triggers the leave request. The system should process the command and respond appropriately - either providing a form link or an actionable response in the same Slack thread.
 awaiting: user response
 
 ## Tests
@@ -22,7 +22,7 @@ awaiting: user response
 ### 1. Cold Start Smoke Test
 expected: |
   Kill any running server/service. Clear ephemeral state (temp DBs, caches, lock files). Start the application from scratch. Server boots without errors, any seed/migration completes, and a primary query (health check, homepage load, or basic API call) returns live data.
-result: [pending]
+result: pass
 
 ### 2. Slack Slash Command End-to-End Flow
 expected: |
@@ -64,7 +64,8 @@ result: [pending]
 total: 8
 passed: 0
 issues: 0
-pending: 8
+passed: 1
+pending: 7
 skipped: 0
 blocked: 0
 
