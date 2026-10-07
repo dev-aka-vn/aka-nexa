@@ -140,6 +140,7 @@ export class ClarificationSessionService {
     channelId: string,
     threadTs: string,
     reply: ClarificationReply,
+    displayedChoiceIds?: string[],
   ): Promise<ClarificationSession | null> {
     const session = await this.getSession(realUserId, channelId, threadTs);
     if (!session) {
@@ -153,6 +154,11 @@ export class ClarificationSessionService {
     // (D-50: detail-adding reply re-evaluates original request plus reply as one context)
     if (reply.reevaluates_original) {
       session.original_question = `${session.original_question} ${reply.reply_text}`;
+    }
+
+    // Update displayed choices if provided (D-50: re-filter on every reply)
+    if (displayedChoiceIds !== undefined) {
+      session.displayed_choice_ids = displayedChoiceIds.slice(0, this.MAX_DISPLAYED_CHOICES);
     }
 
     // If it's a choice selection, filter displayed choices to authorized ones

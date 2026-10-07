@@ -38,3 +38,4 @@ export type {
   ClarificationReply,
   ClarificationResponse,
 } from './decision/clarification-session.service.js';
+export { redact, isUncertain, type RedactionResult } from './decision/redaction.js';

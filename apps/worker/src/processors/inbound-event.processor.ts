@@ -141,10 +141,9 @@ export class InboundEventProcessor extends WorkerHost {
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
-    // Only start a clarification session when there are displayed choices
-    // for the user to select from (D-48). An empty alternative list falls
-    // through to the worker-owned authorized-examples reply below.
-    if (outcome.toolIds.length > 0) {
+    // Only start a clarification session for fresh messages, not for thread
+    // replies that fell through after escalation (D-51: never start a third round).
+    if (outcome.toolIds.length > 0 && event.action !== 'interaction') {
       const redacted = redact(event.text);
       await this.clarificationSession.createSession(
         chat.real_user_id,
@@ -262,15 +261,17 @@ export class InboundEventProcessor extends WorkerHost {
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
-    // Update the session with the new displayed choices for the next round.
-    const redactedCombined = redact(combinedText);
-    await this.clarificationSession.createSession(
+    // Persist the updated displayed choices for the next round (D-50).
+    await this.clarificationSession.addReply(
       realUserId,
       event.channel_id,
       event.channel_id,
-      redactedCombined.text,
-      [...outcome.toolIds],
-      locale,
+      {
+        reply_text: replyText,
+        reply_ts: Date.now(),
+        reevaluates_original: true,
+      },
+      outcome.toolIds,
     );
 
     return { kind: 'clarify', toolIds: outcome.toolIds.slice(0, 3) };

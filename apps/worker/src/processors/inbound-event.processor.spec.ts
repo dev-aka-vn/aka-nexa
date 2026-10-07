@@ -183,7 +183,9 @@ describe('InboundEventProcessor — clarification session wiring', () => {
       data: event({ text: 'request leave' }),
     } as never);
     expect(out.kind).toBe('clarify');
-    expect(out.toolIds).toHaveLength(2);
+    if (out.kind === 'clarify') {
+      expect(out.toolIds).toHaveLength(2);
+    }
 
     const session = await clarification.getSession('usr_1', 'C1', 'C1');
     expect(session).not.toBeNull();
