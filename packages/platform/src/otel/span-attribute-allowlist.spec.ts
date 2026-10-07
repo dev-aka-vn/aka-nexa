@@ -74,6 +74,9 @@ describe('SPAN_ATTRIBUTE_ALLOWLIST (FND-07, D-18)', () => {
         'action',
         'jti',
         'trace_id',
+        // OBS-02 routing stage outcomes
+        'decision',
+        'link',
       ].sort(),
     );
   });

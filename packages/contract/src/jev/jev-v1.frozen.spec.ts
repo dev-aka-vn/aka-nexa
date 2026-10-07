@@ -121,6 +121,20 @@ describe('JEV v1 frozen key set (RTE-10, D-23, D-24)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('parses verified:false — the gate, not the schema, refuses to route it (D-23)', () => {
+    // AI-SPEC §2's superseded "false = confident choice" prose is reconciled
+    // here: the frozen wire shape keeps `false` legal so providers can report
+    // an unverified choice, but the routing gate in
+    // packages/domain/src/decision/routing-orchestrator.ts admits only
+    // `verified === true`, proven by the negative test there.
+    const result = JevResponseSchema.safeParse({
+      ...RESPONSE,
+      choice: { tool_id: 'hr-leave-request:create_leave', confidence: 0.99, verified: false },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it('rejects a response carrying an unlisted top-level key', () => {
     const result = JevResponseSchema.safeParse({
       ...RESPONSE,
