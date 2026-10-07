@@ -135,7 +135,7 @@ export const ALLOWED_EDGES = Object.freeze({
   registry: Object.freeze(['platform', 'kernel', 'authz', 'forms']),
   forms: Object.freeze(['platform', 'kernel']),
   links: Object.freeze(['platform', 'kernel', 'registry', 'authz']),
-  decision: Object.freeze(['platform', 'kernel']),
+  decision: Object.freeze(['platform', 'kernel', 'contract']),
   connectors: Object.freeze(['platform', 'kernel']),
   submissions: Object.freeze([
     'platform',
