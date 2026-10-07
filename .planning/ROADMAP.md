@@ -142,10 +142,11 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A request whose best match falls below the app's confidence threshold produces a clarifying question rather than the wrong app's form, and an ambiguous or malformed request degrades gracefully.
   5. Every provider — including the rule-based one — passes a conformance suite of 50 labelled intents and degrades gracefully on an empty tool list, unknown input, and a malformed request; accuracy is reported **per app with a confidence interval**, never as a single number.
 
-**Plans**: 3 plans
-- [ ] 03-01-PLAN.md — Tracer: RBAC-filtered local routing slice through the worker, rule-based provider, verified===true gate
+**Plans**: 1/3 plans executed
+- [x] 03-01-PLAN.md — Tracer: RBAC-filtered local routing slice through the worker, rule-based provider, verified===true gate
 - [ ] 03-02-PLAN.md — Config-ordered provider chain, absolute deadline, 60s health probes, RTE-09 cache
 - [ ] 03-03-PLAN.md — Clarification sessions, redaction fail-safe, RTE-11 conformance suite, OBS-02 stage spans
+
 **Needs**: **`AI-SPEC.md` via `/gsd-ai-integration-phase 3`** — this phase introduces an AI system. The provider choice, host, and cost profile were explicitly out of scope for stack research and were never covered.
 **Research (highest need in the roadmap)**: `/gsd-plan-phase 3 --research-phase`. Tool-selection accuracy at 100–800 candidates was **not retrievable**; the PRD's ">90% accuracy" and "p95 <500 ms" targets are not jointly achievable as specified. A 50-item conformance set cannot cover a 600-tool catalogue. Report measured behaviour against the contract in Phase 1 (`RTE-10`), not against the PRD's headline numbers.
 **Notes**: `RuleBasedProvider` ships **first** and is the terminal link in the chain — the system has no routing path at all without it. No third-party call, confidence threshold, or model latency goes on the critical path of the Phase 2 slice; the slice's deterministic routing is upgraded, not retrofitted. Swap any provider by config only. The trace's stage list becomes final here, so `OBS-02` is verified now rather than after Phase 5's work lands.
@@ -291,7 +292,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 |-------|----------------|--------|-----------|
 | 1. Foundations & Platform | 10/10 | Complete    | 2026-10-03 |
 | 2. The Vertical Slice | 3/3 | In Progress|  |
-| 3. Natural-Language Routing | 0/TBD | Not started | - |
+| 3. Natural-Language Routing | 1/3 | In Progress | - |
 | 4. Read Path & Query DSL | 0/TBD | Not started | - |
 | 5. Integration & Async Execution | 0/TBD | Not started | - |
 | 6. Self-Service App Builder | 0/TBD | Not started | - |
