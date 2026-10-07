@@ -88,6 +88,9 @@ export const SPAN_ATTRIBUTE_ALLOWLIST = Object.freeze([
   'action', // D-22's closed enum — "draft" is reserved and never exported
   'jti', // the read-link token id (PRD AD-11)
   'trace_id', // the SDK-generated W3C trace id, for cross-referencing logs
+  // ── OBS-02 routing stage outcomes (closed enums, no free text) ──────────
+  'decision', // routing outcome: "link" | "clarify" | "skipped"
+  'link', // link stage outcome: "issued" | "skipped"
 ] as const);
 
 /** The union of attribute names an exported span may carry. */

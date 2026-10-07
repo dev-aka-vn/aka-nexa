@@ -12,6 +12,7 @@ import {
   PublishedAppLoader,
   RoutingOrchestrator,
   ClarificationSessionService,
+  redact,
 } from '@akane/domain';
 
 /** Absolute chat-to-link budget; `occurred_at` seeds it, never per-provider (T-03-04). */
@@ -144,11 +145,12 @@ export class InboundEventProcessor extends WorkerHost {
     // for the user to select from (D-48). An empty alternative list falls
     // through to the worker-owned authorized-examples reply below.
     if (outcome.toolIds.length > 0) {
+      const redacted = redact(event.text);
       await this.clarificationSession.createSession(
         chat.real_user_id,
         event.channel_id,
         event.channel_id,
-        event.text,
+        redacted.text,
         [...outcome.toolIds],
         locale,
       );
@@ -261,11 +263,12 @@ export class InboundEventProcessor extends WorkerHost {
     }
 
     // Update the session with the new displayed choices for the next round.
+    const redactedCombined = redact(combinedText);
     await this.clarificationSession.createSession(
       realUserId,
       event.channel_id,
       event.channel_id,
-      combinedText,
+      redactedCombined.text,
       [...outcome.toolIds],
       locale,
     );
