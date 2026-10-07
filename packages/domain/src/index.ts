@@ -32,3 +32,9 @@ export {
   DecisionCacheService,
 } from './decision/decision-cache.service.js';
 export type { DecisionCacheKeyInput } from './decision/decision-cache.service.js';
+export { ClarificationSessionService } from './decision/clarification-session.service.js';
+export type {
+  ClarificationSession,
+  ClarificationReply,
+  ClarificationResponse,
+} from './decision/clarification-session.service.js';

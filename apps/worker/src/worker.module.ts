@@ -8,7 +8,9 @@ import {
   ProviderRegistry,
   RuleBasedProvider,
   RoutingOrchestrator,
+  ClarificationSessionService,
 } from '@akane/domain';
+import { REDIS_CACHE } from '@akane/platform';
 import { InboundEventProcessor } from './processors/inbound-event.processor.js';
 
 /**
@@ -65,6 +67,12 @@ import { InboundEventProcessor } from './processors/inbound-event.processor.js';
       inject: [ProviderRegistry, ProviderHealthService],
       useFactory: (registry: ProviderRegistry, health: ProviderHealthService) =>
         new RoutingOrchestrator(registry.chain(), { health, attemptCaps: registry.attemptCaps() }),
+    },
+    {
+      provide: ClarificationSessionService,
+      inject: [REDIS_CACHE],
+      useFactory: (redis: import('ioredis').Redis) =>
+        new ClarificationSessionService(redis),
     },
     InboundEventProcessor,
   ],
