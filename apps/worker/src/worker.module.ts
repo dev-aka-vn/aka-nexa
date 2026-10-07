@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import {
   IdentityMappingRepository,
   IdentityService,
   LinkIssuerService,
   PublishedAppLoader,
+  ProviderHealthService,
+  ProviderRegistry,
   RuleBasedProvider,
   RoutingOrchestrator,
 } from '@akane/domain';
@@ -48,11 +50,33 @@ import { InboundEventProcessor } from './processors/inbound-event.processor.js';
         ),
     },
     {
-      provide: RoutingOrchestrator,
+      provide: ProviderRegistry,
       inject: [RuleBasedProvider],
-      useFactory: (rules: RuleBasedProvider) => new RoutingOrchestrator([rules]),
+      useFactory: (rules: RuleBasedProvider) =>
+        new ProviderRegistry({ providers: [{ provider: rules }] }),
+    },
+    {
+      provide: ProviderHealthService,
+      inject: [ProviderRegistry],
+      useFactory: (registry: ProviderRegistry) => new ProviderHealthService(registry.chain()),
+    },
+    {
+      provide: RoutingOrchestrator,
+      inject: [ProviderRegistry, ProviderHealthService],
+      useFactory: (registry: ProviderRegistry, health: ProviderHealthService) =>
+        new RoutingOrchestrator(registry.chain(), { health, attemptCaps: registry.attemptCaps() }),
     },
     InboundEventProcessor,
   ],
 })
-export class WorkerModule {}
+export class WorkerModule implements OnApplicationBootstrap, OnApplicationShutdown {
+  constructor(private readonly providerHealth: ProviderHealthService) {}
+
+  onApplicationBootstrap(): void {
+    this.providerHealth.start();
+  }
+
+  onApplicationShutdown(): void {
+    this.providerHealth.stop();
+  }
+}

@@ -19,3 +19,16 @@ export type {
 export { RuleBasedProvider } from './decision/rule-based.provider.js';
 export { RoutingOrchestrator } from './decision/routing-orchestrator.js';
 export type { RoutingInput, RoutingOutcome } from './decision/routing-orchestrator.js';
+export { ProviderRegistry } from './decision/provider-registry.js';
+export type {
+  ProviderAttestation,
+  ProviderChainConfig,
+  ProviderChainEntry,
+} from './decision/provider-registry.js';
+export { ProviderHealthService } from './decision/provider-health.service.js';
+export type { ProviderHealthRecord } from './decision/provider-health.service.js';
+export {
+  canonicalSameThreadText,
+  DecisionCacheService,
+} from './decision/decision-cache.service.js';
+export type { DecisionCacheKeyInput } from './decision/decision-cache.service.js';
