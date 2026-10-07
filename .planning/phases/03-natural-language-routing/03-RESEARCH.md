@@ -353,11 +353,13 @@ const cacheKey = `jev:decision:${real_user_id}:${conversation_id}:${perm_epoch}:
 | A4 | Cache/session stored on the cache Redis deployment, not the BullMQ queue deployment | Standard Stack | Wrong Redis = lost sessions or eviction of queue state |
 | A5 | Conformance fixtures are synthetic, non-employee text | Evaluation Strategy | Privacy breach if raw chat is used |
 
-## Open Questions
+## Open Questions — RESOLVED
 
-1. **Exact Phase 2 worker surfaces** — what does the delivered `InboundEventProcessor`/link issuer expose once Phase 2 verification completes? What we know: current tree is placeholder/stubs. What's unclear: the final method signatures for the authorized-candidate list and the Phase 2 reply path. Recommendation: Phase 3 planning gates on a Phase 2 verification handoff; stub them behind the same seam until then.
-2. **Redaction fail-safe** — when current + prior-turn redaction is uncertain, skip the hosted provider entirely (use local). Confirm the heuristic (e.g., any unmatched `@`, phone pattern, or employee-ID pattern blocks hosted routing) in the plan's deny-by-default gate. Recommendation: treat uncertainty as "not approved for outbound".
-3. **Clarification-session expiry** — two replies inside the same Slack thread; TTL left to planning. Recommendation: bound by the longer of (2× the 2s routing budget) and the platform's natural thread-interaction window (e.g., 15 minutes), stored in Redis with a per-message cap.
+All three questions carried by plans in this phase; section closed 2026-10-07.
+
+1. **Exact Phase 2 worker surfaces** — **RESOLVED (absorbed by 03-01 tracer task + 03-02 Task 2 seam).** Current tree is placeholder/stubs; the plan stubs them behind the same seam and gates on a Phase 2 verification handoff (see 03-01 `<precondition>`/A1 in Assumptions Log).
+2. **Redaction fail-safe** — **RESOLVED (absorbed by 03-03 deny-by-default gate).** Uncertainty ⇒ treat as "not approved for outbound"; hosted routing is skipped and the local provider serves. Any unmatched `@`, phone pattern, or employee-ID pattern blocks hosted routing.
+3. **Clarification-session expiry** — **RESOLVED (absorbed by 03-03 clarification task).** TTL in Redis = max(2× the 2s routing budget, platform thread-interaction window, e.g. 15 minutes), per-message cap on clarification replies.
 
 ## Environment Availability
 
