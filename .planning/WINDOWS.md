@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 1
 fixed_count: 10
-total_count: 18
-last_updated: 2026-10-05T16:02:22.934Z
+total_count: 19
+last_updated: 2026-10-07T05:39:10.973Z
 ---
 
 # Broken Windows Ledger
@@ -33,6 +33,7 @@ last_updated: 2026-10-05T16:02:22.934Z
 | 16 | 01 | unmet-truth | eslint.config.mjs | 44 | The boundary gate does not reach `apps/{api,worker,scheduler}/otel.mjs` — the D-20 loader entry that must load before anything instrumented. Its imports are declared and never evaluated. Two independent reasons, both measured: the rule's `files` block is scoped to `**/*.{ts,mts,cts}`, AND every element pattern is `apps/<app>/src/**`, so the file matches no element descriptor and `Rules/Dependencies.js` gates the evaluation on `!dependency.from.file.isIgnored`. Measured: 0 diagnostics today; widening `files` to `**/*.mjs` still gives 0, including for a planted cross-boundary import; `checkUnknownLocals: true` also gives 0, because it governs an unknown *target*, not an unknown origin. Closing it is an element-graph decision (does a loader entry belong to the `app-<name>` element?), which is D-02's explicit scoping — not a one-liner. Found while closing gap G-1; G-1's own subpath blind spot is fixed and pinned by tests | open |  | 2026-10-03T19:50:00.000Z |  |
 | 17 | 01 | deviation | .planning/REQUIREMENTS.md |  | phase.complete flipped FND-10, AUD-10 and DAT-13 from Pending to Complete on 2026-10-03, overriding deliberate deferrals the verifier had just confirmed as honestly held. The requirement bodies still read STAYS PENDING, so the artifact contradicted itself. Reverted by hand. The CLI's phase-status update is keyed on phase completion rather than per-requirement evidence, so any deliberately-deferred requirement is at risk of the same overwrite until that is addressed. FND-10 in particular must stay Pending: Phase 5 must not store a connector credential before a KMS vendor is named (B-3/D-27). SCOPE CORRECTION 2026-10-04: phase.complete writes TWO machine-consumed fields per requirement — the `- [x]` checkbox and the coverage-table Status cell. The 2026-10-03 revert changed only the table, so the checkbox kept reading delivered for FND-10, AUD-10 and DAT-13 while the table and the requirement bodies said Pending; a Nyquist re-verification caught it. Any revert of this class must change BOTH fields. | open |  | 2026-10-04T01:28:19.120Z |  |
 | 18 | 01 | unrun-verify | .planning/phases/01-foundations-platform/01-11-PLAN.md |  | Task 2's documented-path verify command fails on this host: its probe allows 30x500ms (15s) for /health/ready, but external load (load avg 7-15, ~1GB free RAM) stretches Nest+instrumented-driver module load to ~29s. Run verbatim it exits 1 with NOT_READY. The identical boot reaches READY_OK mongo,redis_cache,redis_queue after 28.8s, so the documented path is correct and only the probe budget is host-dependent. Not fixed by editing the command (plan forbids it); re-run on an idle host or widen N deliberately. | fixed |  | 2026-10-05T05:52:40.336Z | 2026-10-05T16:02:22.934Z |
+| 19 | 03 | deviation | tooling/boundaries.config.mjs |  | decision element allow-edge extended to contract; api/domain tsconfig references added to unblock tsc -b | open |  | 2026-10-07T05:39:10.973Z |  |
 
 ````json
 [
@@ -263,6 +264,19 @@ last_updated: 2026-10-05T16:02:22.934Z
     "reason": "",
     "recorded_at": "2026-10-05T05:52:40.336Z",
     "resolved_at": "2026-10-05T16:02:22.934Z",
+    "milestone": null
+  },
+  {
+    "id": 19,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "tooling/boundaries.config.mjs",
+    "line": null,
+    "description": "decision element allow-edge extended to contract; api/domain tsconfig references added to unblock tsc -b",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-07T05:39:10.973Z",
+    "resolved_at": null,
     "milestone": null
   }
 ]
