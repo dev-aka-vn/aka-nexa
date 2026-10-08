@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DslService } from '../dsl/dsl.service.js';
-import seed from './saved-queries.seed.json';
+import seed from './saved-queries.seed.json' with { type: 'json' };
 
 const dsl = new DslService();
 

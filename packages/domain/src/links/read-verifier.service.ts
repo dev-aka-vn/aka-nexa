@@ -35,6 +35,37 @@ export interface SubmissionLookup {
 }
 
 /**
+ * A seeded saved-query record (D-73): `{query_id, query_version, dsl, intents,
+ * app_id}`.
+ *
+ * `dsl` is `unknown` on purpose — the execution path validates it through
+ * `DslService.parse` (DAT-10) before anything compiles, so a stored DSL that
+ * drifted out of contract fails at load rather than being trusted here. This
+ * type is the *stored contract* shape, not an assertion that the payload is
+ * valid.
+ */
+export interface SavedQueryRecord {
+  readonly query_id: string;
+  readonly query_version: number;
+  readonly dsl: unknown;
+  readonly intents: readonly string[];
+  readonly app_id: string;
+}
+
+/**
+ * The D-73 seam: load a saved query scoped by `query_id` **and** `app_id`.
+ *
+ * Defined here rather than imported from `submissions` because the `links`
+ * boundary element may not import `submissions`
+ * (tooling/boundaries.config.mjs ALLOWED_EDGES) — the same reason
+ * {@link SubmissionLookup} exists. The API module provides the concrete
+ * store.
+ */
+export interface SavedQueryLookup {
+  findSavedQuery(queryId: string, appId: string): Promise<SavedQueryRecord | null>;
+}
+
+/**
  * A stateless JWT verification function.
  *
  * Injected rather than called directly so the `links` element never imports
@@ -50,6 +81,8 @@ export interface ReadVerifySuccess {
   readonly claims: ReadLinkClaims;
   /** Present for `view` action; absent for `query`. */
   readonly submission?: SubmissionRecord;
+  /** Present for `query` action; absent for `view`. */
+  readonly savedQuery?: SavedQueryRecord;
 }
 
 export interface ReadVerifyFailure {
@@ -72,8 +105,9 @@ export type ReadVerifyResult = ReadVerifySuccess | ReadVerifyFailure;
  *    captured in the claim. A permission change invalidates the outstanding
  *    link without any server-side token state.
  * 3. **Action branching** (D-40): the `action` claim discriminates the path.
- *    `view` resolves to a single owned submission (D-79); `query` is reserved
- *    for the DSL phase and only checks permissions.
+ *    `view` resolves to a single owned submission (D-79); `query` resolves the
+ *    saved query and enforces `query_version` (D-73/D-75) before checking
+ *    `query:run`.
  * 4. **Never consumes** (D-42): `TOKEN_CLASSES.view.consume = false` and
  *    `TOKEN_CLASSES.query.consume = false`. This verifier performs no Redis
  *    write, so a link opened twice is verified twice — both succeed or both
@@ -84,6 +118,12 @@ export class ReadVerifierService {
     private readonly jwt: ReadLinkJwtVerifier,
     private readonly permissionCheck: PermissionCheckService,
     private readonly submissions: SubmissionLookup,
+    /**
+     * D-73 seam. Optional only so the `view` path can be constructed without a
+     * saved-query store; a `query` link with no seam **fails closed** with
+     * `wrong_version` rather than skipping the D-75 check.
+     */
+    private readonly savedQueries?: SavedQueryLookup,
   ) {}
 
   /**
@@ -158,11 +198,30 @@ export class ReadVerifierService {
   }
 
   /**
-   * The `query` path: re-check permissions only. The actual DSL compilation
-   * and execution live in the query phase (DAT-10/11); this phase proves that
-   * a query link verifies, branches, and enforces perm_version.
+   * The `query` path (D-73, D-75, LNK-06):
+   *
+   * 1. Load the saved query by `query_id` (= `target_id`) + `app_id`.
+   * 2. Missing record **or** stale `query_version` → `wrong_version` (D-75):
+   *    a DSL edit invalidates outstanding query links, and the denial is
+   *    recorded and displayed like any other.
+   * 3. Fresh `query:run` permission check against the live `perm_version`
+   *    (LNK-06).
+   *
+   * The version check runs *before* the permission check so a stale link
+   * reports the reason it actually exists for; neither check can be reached
+   * without a structurally valid, signature-verified claim set.
    */
   private async verifyQuery(claims: ReadLinkClaims): Promise<ReadVerifyResult> {
+    const queryId = claims.target_id;
+    const saved =
+      queryId === undefined || this.savedQueries === undefined
+        ? null
+        : await this.savedQueries.findSavedQuery(queryId, claims.app_id);
+
+    if (saved === null || saved.query_version !== claims.query_version) {
+      return { ok: false, reason: ReadDenyReason.wrong_version };
+    }
+
     const hasPermission = await this.permissionCheck.check(
       claims.app_id,
       claims.sub,
@@ -173,7 +232,7 @@ export class ReadVerifierService {
       return { ok: false, reason: ReadDenyReason.denied };
     }
 
-    return { ok: true, claims };
+    return { ok: true, claims, savedQuery: saved };
   }
 
   /**

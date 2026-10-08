@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import {
+  DslService,
   PermissionCheckService,
   ReadVerifierService,
   RbacService,
@@ -110,6 +111,9 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     PermissionCheckService,
     RbacService,
     RbacCacheService,
+    // queryWithDsl compiles through the one DSL entry point (DAT-10/11);
+    // without this provider SubmissionRepository cannot be constructed.
+    DslService,
     SubmissionRepository,
     {
       provide: ReadVerifierService,

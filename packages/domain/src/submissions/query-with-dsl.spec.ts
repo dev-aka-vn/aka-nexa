@@ -24,8 +24,6 @@ import { describe, expect, it } from 'vitest';
 import { DslService } from '../dsl/dsl.service.js';
 import { SubmissionRepository, type Submission } from './submission.repository.js';
 
-const dsl = new DslService();
-
 function doc(overrides: Partial<Submission> = {}): Submission {
   return {
     _id: 'sub_1',
