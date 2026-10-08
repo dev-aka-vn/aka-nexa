@@ -36,3 +36,9 @@ export type { KeyProviderGuardConfig } from './production-guard.js';
 
 export { CryptoModule, createKeyProvider } from './crypto.module.js';
 export type { KeyProviderConfig, KeyProviderName } from './crypto.module.js';
+
+export {
+  verifyReadLinkJwt,
+  type ReadLinkJwtVerifyOptions,
+  type ReadLinkPublicKey,
+} from './jwt-verifier.js';
