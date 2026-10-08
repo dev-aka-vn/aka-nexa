@@ -4,6 +4,7 @@ import {
   DslService,
   PermissionCheckService,
   ReadVerifierService,
+  ReadDenyService,
   RbacService,
   RbacCacheService,
   SubmissionRepository,
@@ -12,6 +13,7 @@ import {
 import { verifyReadLinkJwt } from '@akane/platform/crypto';
 
 import { ReadController } from './read.controller.js';
+import { registerReadDenyMetrics } from '../common/metrics/read-deny.metrics.js';
 
 /**
  * Reads the JWT read-link configuration from the live process environment.
@@ -116,16 +118,25 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     DslService,
     SubmissionRepository,
     {
+      provide: ReadDenyService,
+      useFactory: (): ReadDenyService => {
+        const recorder = registerReadDenyMetrics();
+        return new ReadDenyService(recorder);
+      },
+    },
+    {
       provide: ReadVerifierService,
       useFactory: (
         jwt: ReadLinkJwtVerifier,
         permissionCheck: PermissionCheckService,
         submissions: SubmissionRepository,
-      ): ReadVerifierService => new ReadVerifierService(jwt, permissionCheck, submissions),
+        denyService: ReadDenyService,
+      ): ReadVerifierService => new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService),
       inject: [
         { token: 'READ_LINK_JWT_VERIFIER', optional: false },
         PermissionCheckService,
         SubmissionRepository,
+        ReadDenyService,
       ],
     },
   ],

@@ -6,6 +6,7 @@ import {
   type ReadLinkClaims,
 } from '@akane/contract';
 import { PermissionCheckService } from '../authz/permission-check.service.js';
+import type { ReadDenyService } from './read-deny.service.js';
 
 export type { ReadDenyReason };
 
@@ -124,6 +125,7 @@ export class ReadVerifierService {
      * `wrong_version` rather than skipping the D-75 check.
      */
     private readonly savedQueries?: SavedQueryLookup,
+    private readonly denyService?: ReadDenyService,
   ) {}
 
   /**
@@ -140,6 +142,7 @@ export class ReadVerifierService {
     //     meaningful `exp` claim to distinguish "expired" from "tampered".
     const payload = await this.tryVerify(token);
     if (payload === null) {
+      this.recordDenial(ReadDenyReason.bad_signature);
       return { ok: false, reason: ReadDenyReason.bad_signature };
     }
 
@@ -148,6 +151,7 @@ export class ReadVerifierService {
     //     branching logic.
     const claimsResult = ReadLinkClaimsSchema.safeParse(payload);
     if (!claimsResult.success) {
+      this.recordDenial(ReadDenyReason.bad_signature);
       return { ok: false, reason: ReadDenyReason.bad_signature };
     }
     const claims = claimsResult.data;
@@ -159,6 +163,7 @@ export class ReadVerifierService {
       case 'query':
         return this.verifyQuery(claims);
       default:
+        this.recordDenial(ReadDenyReason.invalid_action, { action: claims.action as 'view' | 'query' });
         return { ok: false, reason: ReadDenyReason.invalid_action };
     }
   }
@@ -174,12 +179,22 @@ export class ReadVerifierService {
       // schema permits `target_id` as optional, but `view` requires it
       // (READ_LINK_TARGET_RULES). This is a bad_signature because the token
       // does not represent a valid view link.
+      this.recordDenial(ReadDenyReason.bad_signature, {
+        action: 'view',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
       return { ok: false, reason: ReadDenyReason.bad_signature };
     }
 
     // D-79: the submission must belong to the real_user_id in the claim.
     const submission = await this.submissions.findByIdOwned(targetId, claims.sub);
     if (submission === null) {
+      this.recordDenial(ReadDenyReason.not_found, {
+        action: 'view',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
       return { ok: false, reason: ReadDenyReason.not_found };
     }
 
@@ -191,6 +206,11 @@ export class ReadVerifierService {
       claims.perm_version,
     );
     if (!hasPermission) {
+      this.recordDenial(ReadDenyReason.denied, {
+        action: 'view',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
       return { ok: false, reason: ReadDenyReason.denied };
     }
 
@@ -219,6 +239,11 @@ export class ReadVerifierService {
         : await this.savedQueries.findSavedQuery(queryId, claims.app_id);
 
     if (saved === null || saved.query_version !== claims.query_version) {
+      this.recordDenial(ReadDenyReason.wrong_version, {
+        action: 'query',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
       return { ok: false, reason: ReadDenyReason.wrong_version };
     }
 
@@ -229,6 +254,11 @@ export class ReadVerifierService {
       claims.perm_version,
     );
     if (!hasPermission) {
+      this.recordDenial(ReadDenyReason.denied, {
+        action: 'query',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
       return { ok: false, reason: ReadDenyReason.denied };
     }
 
@@ -245,6 +275,22 @@ export class ReadVerifierService {
    * but the verifier collapses all failures to `bad_signature` for the
    * deny-reason enum.
    */
+  private recordDenial(
+    reason: ReadDenyReason,
+    ctx?: { action?: 'view' | 'query'; jti?: string; app_id?: string },
+  ): void {
+    if (this.denyService === undefined) {
+      return;
+    }
+
+    const action = ctx?.action ?? 'view';
+    this.denyService.record(reason, {
+      action,
+      ...(ctx?.jti === undefined ? {} : { jti: ctx.jti }),
+      ...(ctx?.app_id === undefined ? {} : { app_id: ctx.app_id }),
+    });
+  }
+
   private async tryVerify(token: string): Promise<Record<string, unknown> | null> {
     try {
       return await this.jwt.verify(token);
