@@ -29,6 +29,7 @@ import { MAX_QUERY_LIMIT, type FilterExpr, type QueryDsl } from '@akane/contract
 
 import type { QueryCtx } from '../ast.js';
 import { compileQuery } from '../compiler.js';
+import { DslService } from '../dsl.service.js';
 import { parseQueryDsl, QueryDslSchema } from '../dsl.schema.js';
 import { buildAuthFilter } from '../filter-builder.js';
 
@@ -239,5 +240,148 @@ describe('DAT-11: auth filter injection (D-74, D-78)', () => {
   it('with no user filter the emitted filter IS auth verbatim', () => {
     expect(compileQuery({}, ctx).filter).toEqual(OWNED_AUTH);
     expect(compileQuery({}, viewAllCtx).filter).toEqual(VIEW_ALL_AUTH);
+  });
+});
+
+// ─── DAT-12 ─────────────────────────────────────────────────────────────────
+
+describe('DAT-12: per-construct auth survival through the service (D-72, D-74)', () => {
+  const service = new DslService();
+  const ctx: QueryCtx = { viewerId: 'u_1', hasViewAll: false, appId: 'app_1' };
+  const viewAllCtx: QueryCtx = { viewerId: 'u_1', hasViewAll: true, appId: 'app_1' };
+  const OWNED_AUTH = { $and: [{ deleted_at: null }, { real_user_id: 'u_1' }] };
+
+  /**
+   * One row per D-72 construct: the user's tree in, the exact Mongo fragment
+   * it must compile to. Every assertion then proves the *same* thing about
+   * auth: it sits at index 0 of the root `$and`, structurally outside this
+   * fragment, no matter which construct the fragment used.
+   */
+  const CONSTRUCTS: Array<{
+    name: string;
+    filters: FilterExpr;
+    user: Record<string, unknown>;
+  }> = [
+    {
+      name: 'eq',
+      filters: { op: 'eq', field: 'status', value: 'open' },
+      user: { status: 'open' },
+    },
+    {
+      name: 'ne',
+      filters: { op: 'ne', field: 'assignee', value: 'u_2' },
+      user: { assignee: { $ne: 'u_2' } },
+    },
+    {
+      name: 'in',
+      filters: { op: 'in', field: 'priority', values: ['p1', 'p2', null] },
+      user: { priority: { $in: ['p1', 'p2', null] } },
+    },
+    {
+      name: 'gte',
+      filters: { op: 'gte', field: 'created_at', value: 1_700_000_000 },
+      user: { created_at: { $gte: 1_700_000_000 } },
+    },
+    {
+      name: 'lte',
+      filters: { op: 'lte', field: 'updated_at', value: 1_800_000_000 },
+      user: { updated_at: { $lte: 1_800_000_000 } },
+    },
+    {
+      name: 'contains',
+      filters: { op: 'contains', field: 'title', value: 'deploy' },
+      user: { title: { $regex: 'deploy', $options: 'i' } },
+    },
+    {
+      name: 'AND group',
+      filters: {
+        op: 'and',
+        filters: [
+          { op: 'eq', field: 'team', value: 'platform' },
+          { op: 'eq', field: 'status', value: 'open' },
+        ],
+      },
+      user: { $and: [{ team: 'platform' }, { status: 'open' }] },
+    },
+    {
+      name: 'OR group',
+      filters: {
+        op: 'or',
+        filters: [
+          { op: 'eq', field: 'team', value: 'platform' },
+          { op: 'eq', field: 'team', value: 'runtime' },
+        ],
+      },
+      user: { $or: [{ team: 'platform' }, { team: 'runtime' }] },
+    },
+  ];
+
+  for (const { name, filters, user } of CONSTRUCTS) {
+    it(`${name}: auth survives at the root, outside the user's ${name} fragment`, () => {
+      const result = service.compile({ filters }, ctx);
+      expect(result.ok, result.ok ? '' : result.issues.join('; ')).toBe(true);
+      if (!result.ok) return;
+
+      const root = result.query.filter as { $and?: unknown[] };
+      expect(root.$and?.[0]).toEqual(OWNED_AUTH);
+      expect(root.$and?.[1]).toEqual(user);
+      // Auth appears exactly once — the user's fragment carries none of it,
+      // so no construct inside that fragment can have rewritten it.
+      expect(JSON.stringify(root.$and?.[1])).not.toContain('deleted_at');
+      expect(JSON.stringify(root.$and?.[1])).not.toContain('real_user_id');
+    });
+  }
+
+  it('sort, limit and offset survive compilation alongside auth', () => {
+    const result = service.compile(
+      { sort: [{ field: 'created_at', dir: 'desc' }], limit: 25, offset: 50 },
+      ctx,
+    );
+    expect(result.ok, result.ok ? '' : result.issues.join('; ')).toBe(true);
+    if (!result.ok) return;
+    expect(result.query.sort).toEqual({ created_at: -1 });
+    expect(result.query.limit).toBe(25);
+    expect(result.query.offset).toBe(50);
+    expect((result.query.filter as { $and: unknown[] }).$and[0]).toEqual(OWNED_AUTH);
+  });
+
+  it('projection survives compilation; the emitted filter is still auth-wrapped', () => {
+    const result = service.compile({ projection: { status: 1, title: 1 } }, ctx);
+    expect(result.ok, result.ok ? '' : result.issues.join('; ')).toBe(true);
+    if (!result.ok) return;
+    expect(result.query.projection).toEqual({ status: 1, title: 1 });
+    expect(result.query.filter).toEqual(OWNED_AUTH);
+  });
+
+  it('view_all: deleted_at survives at the root, real_user_id absent (D-78)', () => {
+    const result = service.compile(
+      {
+        filters: {
+          op: 'or',
+          filters: [
+            { op: 'eq', field: 'team', value: 'platform' },
+            { op: 'eq', field: 'team', value: 'runtime' },
+          ],
+        },
+      },
+      viewAllCtx,
+    );
+    expect(result.ok, result.ok ? '' : result.issues.join('; ')).toBe(true);
+    if (!result.ok) return;
+
+    const root = result.query.filter as { $and?: unknown[] };
+    expect(root.$and?.[0]).toEqual({ deleted_at: null });
+    expect(JSON.stringify(result.query.filter)).not.toContain('real_user_id');
+  });
+
+  it('unknown keys are rejected before compilation', () => {
+    const result = service.compile({ limit: 10, sneaky: 'exfiltrate' }, ctx);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues.join(' ')).toContain('sneaky');
+  });
+
+  it(`limit above ${MAX_QUERY_LIMIT} is rejected`, () => {
+    const result = service.compile({ limit: MAX_QUERY_LIMIT + 1 }, ctx);
+    expect(result.ok).toBe(false);
   });
 });
