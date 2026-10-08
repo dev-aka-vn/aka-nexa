@@ -186,10 +186,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
 - [ ] **LNK-03**: A one-time token is consumed atomically, and a MongoDB unique index on the token ID makes double consumption impossible even if Redis loses an acknowledged write during failover
 - [ ] **LNK-04**: An integration test that kills Redis mid-submit produces exactly one submission
-- [ ] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
-- [ ] **LNK-06**: A read link re-checks permission and compares `perm_version` on every access, and is rejected when they diverge
+- [x] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
+- [x] **LNK-06**: A read link re-checks permission and compares `perm_version` on every access, and is rejected when they diverge
 - [x] **LNK-07**: The read-link JWT claim shape — including `form_version`, `app_version`, and the epoch — is frozen in the foundations phase, because adding a claim later invalidates every outstanding link
-- [ ] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
+- [x] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
 - [ ] **LNK-09**: Every link access is logged with `jti`, `real_user_id`, action, IP, and User-Agent
 - [ ] **LNK-10**: Link URLs are unguessable and contain no sequential identifier
 - [x] **LNK-11**: An expired link returns a clear "link expired" message offering to request a new one via IM
@@ -471,9 +471,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RTE-09 | Phase 3 | Pending |
 | RTE-11 | Phase 3 | Pending |
 | OBS-02 | Phase 3 | Pending |
-| LNK-05 | Phase 4 | Pending |
-| LNK-06 | Phase 4 | Pending |
-| LNK-08 | Phase 4 | Pending |
+| LNK-05 | Phase 4 | Complete |
+| LNK-06 | Phase 4 | Complete |
+| LNK-08 | Phase 4 | Complete |
 | DAT-10 | Phase 4 | Complete |
 | DAT-11 | Phase 4 | Complete |
 | DAT-12 | Phase 4 | Complete |
