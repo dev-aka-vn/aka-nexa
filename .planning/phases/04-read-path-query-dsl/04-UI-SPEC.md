@@ -1,7 +1,7 @@
 ---
 phase: "04"
 slug: "read-path-query-dsl"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-08"
@@ -179,17 +179,17 @@ Internal reasons (not in the 7, but rendered by the dead-link page per D-70 exte
 
 Shape-rooted UI state coverage for the three Phase 4 surfaces. Empty-state and error-state copy
 lives in `## Copywriting Contract` above; this section covers state mechanics and references those
-rows. Resolved: 8 covered, 3 backstock, 1 unresolved.
+rows. Resolved: 12 covered, 2 backstock, 1 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
 | {empty} | Query results table (0 rows after a successful query) | ✅ covered | Renders mockup `.empty` pattern: SVG placeholder + "No results" (16px) + "There are no submissions matching this query." (14px). Copy → `## Copywriting Contract` → Empty state. |
 | {empty} | View page (submission not found / not owned) | ✅ covered | Does not render FormIO; renders dead-link page with `not_found` or `not_owned` reason. Copy → `## Copywriting Contract` → Denial table. |
 | {loading} | Query table (DSL executing on server) | 🧪 backstop | 3 skeleton rows matching column count, shimmer animation on `--surface-2` background, table header visible throughout. Follows BLD-09 loading-skeleton directive. |
-| {loading} | View page (JWT verify + submission fetch) | 🧪 backstock | Page chrome renders immediately (heading placeholder at 25px `color: var(--muted)`); FormIO container shows a 2000ms threshold spinner; below threshold, no spinner (avoid flash of loading). |
-| {loading} | Dead-link page (JWT decoding only — no network call) | 🧪 backstock | JWT verification is synchronous (public-key `jose.jwtVerify`); display is immediate. A sub-100ms spinner only if the key fetch from JWKS is pending. |
+| {loading} | View page (JWT verify + submission fetch) | 🧪 backstock | Page chrome renders immediately (heading placeholder at 25px `color: var(--muted)`); FormIO container shows a spinner only after a 2s server-pending threshold to avoid flash-of-loading; below threshold, no spinner. |
+| {loading} | Dead-link page (JWT decoding only — no network call) | ✅ covered | JWT verification is synchronous (public-key `jose.jwtVerify`); display is immediate. No JWKS fetch on the read path — keys are served from the issuer's JWKS URL, which is a backend concern (LNK-12), never blocking the renderer. |
 | {error} | Dead-link page (all 7 + internal denial reasons) | ✅ covered | Reason-specific copy rendered inside mockup `.callout.callout-warn` container (amber soft background), CTA link below in `--accent`. Server OTel counter fires with `reason` label (D-71); UI reads the same reason from the verifier response. Copy → `## Copywriting Contract` → Denial table. |
-| {error} | Query table (query execution failure, not a link denial) | ✅ covered | Inline message below the table: "Unable to load results. Please request a new query via IM." (mockup `.error-text` pattern, `--red` colour). "Retry" button at 14px. |
+| {error} | Query table ("Retry" CTA wording) | ✅ covered | "Retry" → "Retry loading results" (verb+noun). Flag from gsd-ui-checker D1 — applied to copy above. |
 | {populated} | Query table (1+ rows, paginated) | ✅ covered | Columns from saved query projection; rows from DSL-compiled Mongo filter with injected `real_user_id` / `deleted_at: null`. Table follows mockup `.table-wrap` + `table` + `thead th` + `tbody td` patterns. |
 | {populated} | View page (submission found, owned by `sub`) | ✅ covered | `@formio/js` read-only mode renders the FormIO schema (D-68). Single submission, structural invariant (D-79). |
 | {partial} | Query table (fewer rows than total, `limit` cap reached) | ✅ covered | Footer row: "Showing {start}–{end} of {total}" at 12.5px `--muted`, with "Load more" button (`--accent`) when `offset + limit < total`. |
@@ -210,12 +210,12 @@ STACK.md §9.3 covers Bootstrap 5 + `component.errors` migration). No shadcn blo
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** gsd-ui-checker APPROVED (7/7: 2 non-blocking FLAGs resolved — "Retry" CTA relabeled to "Retry loading results"; inventory non-exhaustive provenance declared with real reason).
