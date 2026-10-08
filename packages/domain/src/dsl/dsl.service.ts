@@ -7,12 +7,16 @@
  * (DAT-11). Keeping parse + compile behind one method is what guarantees no
  * caller can execute a DSL that skipped validation, or compiled one without
  * its auth wrapper.
+ *
+ * The service is stateless — the auth context arrives per call from the
+ * verifier's verified JWT claims, never from configuration.
  */
 
 import { Injectable } from '@nestjs/common';
 
-import type { ParseQueryDslResult } from './dsl.schema.js';
 import type { CompiledQuery, QueryCtx } from './ast.js';
+import { compileQuery } from './compiler.js';
+import { parseQueryDsl, type ParseQueryDslResult } from './dsl.schema.js';
 
 /** Result of validating + compiling an untrusted DSL document. */
 export type DslCompileResult =
@@ -26,17 +30,16 @@ export class DslService {
    *
    * Returns `{ok:false, issues}` for any schema violation — never a partial
    * or clamped query (a stored DSL that drifts out of contract must fail
-   * loudly, not silently narrow).
+   * loudly at load, not silently narrow at runtime).
    */
-  compile(_json: unknown, _ctx: QueryCtx): DslCompileResult {
-    void _json;
-    void _ctx;
-    return { ok: true, query: { filter: {}, limit: 100, offset: 0 } };
+  compile(json: unknown, ctx: QueryCtx): DslCompileResult {
+    const parsed = parseQueryDsl(json);
+    if (!parsed.ok) return { ok: false, issues: parsed.issues };
+    return { ok: true, query: compileQuery(parsed.dsl, ctx) };
   }
 
-  /** Exposed for callers that only need validation (e.g. seed loading). */
+  /** Validate-only seam for callers that need the AST but not a filter (e.g. seed loading). */
   parse(json: unknown): ParseQueryDslResult {
-    void json;
-    return { ok: true, dsl: {} };
+    return parseQueryDsl(json);
   }
 }

@@ -342,7 +342,8 @@ describe('DAT-12: per-construct auth survival through the service (D-72, D-74)',
     expect(result.query.sort).toEqual({ created_at: -1 });
     expect(result.query.limit).toBe(25);
     expect(result.query.offset).toBe(50);
-    expect((result.query.filter as { $and: unknown[] }).$and[0]).toEqual(OWNED_AUTH);
+    // No user filter here, so the emitted filter IS auth verbatim.
+    expect(result.query.filter).toEqual(OWNED_AUTH);
   });
 
   it('projection survives compilation; the emitted filter is still auth-wrapped', () => {
