@@ -49,6 +49,12 @@ export const DOMAIN_ELEMENT_TYPES = Object.freeze([
   'pipeline',
   'builder',
   'audit',
+  // Phase 4: the Query DSL compiler. Pure functions over the contract's DSL
+  // types — no I/O, no auth state — so its only edges point at the shared
+  // vocabulary (contract) and the platform/kernel primitives. Every consumer
+  // of the DSL (links, submissions) lists `dsl` explicitly below; `default:
+  // disallow` means an edge that is not listed is a build failure.
+  'dsl',
 ]);
 
 /**
@@ -130,11 +136,12 @@ export const ALLOWED_EDGES = Object.freeze({
   kernel: Object.freeze([]),
   platform: Object.freeze(['kernel']),
   contract: Object.freeze(['kernel']),
+  dsl: Object.freeze(['platform', 'kernel', 'contract']),
   identity: Object.freeze(['platform', 'kernel']),
   authz: Object.freeze(['platform', 'kernel', 'identity']),
   registry: Object.freeze(['platform', 'kernel', 'authz', 'forms']),
   forms: Object.freeze(['platform', 'kernel']),
-  links: Object.freeze(['platform', 'kernel', 'registry', 'authz', 'contract']),
+  links: Object.freeze(['platform', 'kernel', 'registry', 'authz', 'contract', 'dsl']),
   decision: Object.freeze(['platform', 'kernel', 'contract']),
   connectors: Object.freeze(['platform', 'kernel']),
   submissions: Object.freeze([
@@ -146,6 +153,7 @@ export const ALLOWED_EDGES = Object.freeze({
     'links',
     'registry',
     'audit',
+    'dsl',
   ]),
   datarouter: Object.freeze([
     'platform',

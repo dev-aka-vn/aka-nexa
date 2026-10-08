@@ -8,9 +8,12 @@
  *  - **DAT-10** — JSON → strict schema → AST. Unknown keys, `$` operators and
  *    out-of-range paging are rejected *before* anything is compiled. Raw Mongo
  *    is never expressible.
- *  - **DAT-11** — `buildAuthFilter` injects `app_id` + `deleted_at: null`
+ *  - **DAT-11** — `buildAuthFilter` injects `deleted_at: null`
  *    unconditionally and `real_user_id` unless the viewer holds `view_all`
- *    (D-76/D-78). `view_all` bypasses ownership, never soft-delete.
+ *    (D-78). `view_all` bypasses ownership, never soft-delete. App scoping
+ *    (D-76) is applied at the repository's per-app query root (plan 04-03),
+ *    deliberately outside this builder so its output stays exactly the
+ *    ownership + soft-delete pair the DAT-11 acceptance criteria name.
  *  - **DAT-12** — one test per D-72 construct asserting the injected auth
  *    filters survive compilation *structurally* — they sit at the root of the
  *    emitted filter, outside whatever the user's tree said.
@@ -24,7 +27,10 @@ import { describe, expect, it } from 'vitest';
 
 import { MAX_QUERY_LIMIT, type FilterExpr, type QueryDsl } from '@akane/contract';
 
+import type { QueryCtx } from '../ast.js';
+import { compileQuery } from '../compiler.js';
 import { parseQueryDsl, QueryDslSchema } from '../dsl.schema.js';
+import { buildAuthFilter } from '../filter-builder.js';
 
 /** Parse and assert rejection, returning the issue messages for message-level assertions. */
 function expectRejected(json: unknown): string[] {
@@ -160,5 +166,78 @@ describe('DAT-10: strict DSL schema', () => {
     // The service entry point must not disagree with the schema it wraps.
     expect(QueryDslSchema.safeParse({ limit: MAX_QUERY_LIMIT + 1 }).success).toBe(false);
     expect(QueryDslSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+// ─── DAT-11 ─────────────────────────────────────────────────────────────────
+
+describe('DAT-11: auth filter injection (D-74, D-78)', () => {
+  const viewerId = 'u_1';
+  const ctx: QueryCtx = { viewerId, hasViewAll: false, appId: 'app_1' };
+  const viewAllCtx: QueryCtx = { viewerId, hasViewAll: true, appId: 'app_1' };
+
+  /** What auth must look like for a plain viewer: both constraints, structurally ANDed. */
+  const OWNED_AUTH = { $and: [{ deleted_at: null }, { real_user_id: viewerId }] };
+  /** What auth must look like under `view_all`: soft-delete protection only (D-78). */
+  const VIEW_ALL_AUTH = { deleted_at: null };
+
+  it('always injects deleted_at: null — with and without view_all (D-78)', () => {
+    expect(buildAuthFilter(viewerId, false)).toEqual(OWNED_AUTH);
+    expect(buildAuthFilter(viewerId, true)).toEqual(VIEW_ALL_AUTH);
+  });
+
+  it('view_all bypasses real_user_id only — auth equals {deleted_at:null}', () => {
+    const auth = buildAuthFilter(viewerId, true);
+    expect(auth).toEqual({ deleted_at: null });
+    expect(JSON.stringify(auth)).not.toContain('real_user_id');
+  });
+
+  it('without view_all both constraints are present structurally', () => {
+    const auth = buildAuthFilter(viewerId, false) as { $and: unknown[] };
+    expect(Array.isArray(auth.$and)).toBe(true);
+    expect(auth.$and).toEqual([{ deleted_at: null }, { real_user_id: viewerId }]);
+  });
+
+  it('ANDs auth with the user filter at the root (D-74)', () => {
+    const compiled = compileQuery({ filters: { op: 'eq', field: 'status', value: 'open' } }, ctx);
+    expect(compiled.filter).toEqual({ $and: [OWNED_AUTH, { status: 'open' }] });
+  });
+
+  it('a top-level OR is a sibling of auth, never a replacement (D-74)', () => {
+    const compiled = compileQuery(
+      {
+        filters: {
+          op: 'or',
+          filters: [
+            { op: 'eq', field: 'team', value: 'platform' },
+            { op: 'eq', field: 'team', value: 'runtime' },
+          ],
+        },
+      },
+      ctx,
+    );
+    const root = (compiled.filter as { $and?: unknown[] }).$and;
+    expect(Array.isArray(root)).toBe(true);
+    // Auth sits at index 0, outside the user's tree; the OR is its sibling.
+    expect(root?.[0]).toEqual(OWNED_AUTH);
+    expect(root?.[1]).toEqual({
+      $or: [{ team: 'platform' }, { team: 'runtime' }],
+    });
+    // The OR carries no auth of its own — auth appears exactly once, at the root.
+    expect(JSON.stringify(root?.[1])).not.toContain('deleted_at');
+  });
+
+  it('view_all still gets deleted_at at the root when a user filter exists', () => {
+    const compiled = compileQuery(
+      { filters: { op: 'eq', field: 'status', value: 'open' } },
+      viewAllCtx,
+    );
+    expect(compiled.filter).toEqual({ $and: [VIEW_ALL_AUTH, { status: 'open' }] });
+    expect(JSON.stringify(compiled.filter)).not.toContain('real_user_id');
+  });
+
+  it('with no user filter the emitted filter IS auth verbatim', () => {
+    expect(compileQuery({}, ctx).filter).toEqual(OWNED_AUTH);
+    expect(compileQuery({}, viewAllCtx).filter).toEqual(VIEW_ALL_AUTH);
   });
 });
