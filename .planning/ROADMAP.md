@@ -170,7 +170,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [ ] 04-04-PLAN.md
 - [x] 04-05-PLAN.md
 - [ ] 04-06-PLAN.md
-- [ ] 04-07-PLAN.md
+- [x] 04-07-PLAN.md
 - [ ] 04-08-PLAN.md
 - [x] 04-09-PLAN.md
 - [x] 04-10-PLAN.md
@@ -304,7 +304,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 1. Foundations & Platform | 10/10 | Complete    | 2026-10-03 |
 | 2. The Vertical Slice | 3/3 | In Progress|  |
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
-| 4. Read Path & Query DSL | 6/10 | In Progress|  |
+| 4. Read Path & Query DSL | 7/10 | In Progress|  |
 | 5. Integration & Async Execution | 0/TBD | Not started | - |
 | 6. Self-Service App Builder | 0/TBD | Not started | - |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |

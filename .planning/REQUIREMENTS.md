@@ -258,7 +258,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     rather than one aggregating for the others. The `OTEL_NOT_STARTED` refusal was observed for
     real by booting a process that skipped `startOtel()`, and the plan-08 instrument was observed
     moving in a booted worker: `platform_heartbeat_total{otel_scope_name="akane"} 2`.
-- [ ] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
+- [x] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
 - [ ] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
@@ -470,7 +470,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RTE-08 | Phase 3 | Pending |
 | RTE-09 | Phase 3 | Pending |
 | RTE-11 | Phase 3 | Pending |
-| OBS-02 | Phase 3 | Pending |
+| OBS-02 | Phase 3 | Complete |
 | LNK-05 | Phase 4 | Complete |
 | LNK-06 | Phase 4 | Complete |
 | LNK-08 | Phase 4 | Complete |
