@@ -56,7 +56,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] **Phase 1: Foundations & Platform** - Three pinned entrypoints, build-failing module boundaries, and the four irreversible contracts + three conflict rulings encoded in code (completed 2026-10-03)
 - [ ] **Phase 2: The Vertical Slice — Slack + Internal Routing** - `/leave request` in Slack → signed link → rendered form → audited submission in chat, with identity, per-app RBAC, and one-time link security
 - [ ] **Phase 3: Natural-Language Routing** - A user gets the right app by describing it; the system still routes with every decision provider down
-- [ ] **Phase 4: Read Path & Query DSL** - 90-day stateless view/query links that die the instant permission changes, with auto-injected authorization filters
+- [x] **Phase 4: Read Path & Query DSL** - 90-day stateless view/query links that die the instant permission changes, with auto-injected authorization filters (plans created)
 - [ ] **Phase 5: Integration & Async Execution** - Connectors, transactional outbox, hybrid routing, three-state outbound model, and visible `partial` status
 - [ ] **Phase 6: Self-Service App Builder** - A department admin builds and publishes a working app with no engineering ticket and no platform admin
 - [ ] **Phase 7: Multi-IM Expansion & Two-Way Sync** - Teams parity plus signed inbound webhooks that notify the original submitter
@@ -293,7 +293,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 1. Foundations & Platform | 10/10 | Complete    | 2026-10-03 |
 | 2. The Vertical Slice | 3/3 | In Progress|  |
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
-| 4. Read Path & Query DSL | 0/TBD | Not started | - |
+| 4. Read Path & Query DSL | 10/10 | Planned | - |
 | 5. Integration & Async Execution | 0/TBD | Not started | - |
 | 6. Self-Service App Builder | 0/TBD | Not started | - |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
