@@ -11,6 +11,7 @@
         --color-text: #0f172a;
         --color-border: #e2e8f0;
         --color-danger: #991b1b;
+        --color-primary: #0f9d8f;
       }
       body {
         margin: 0;
@@ -40,8 +41,22 @@
         color: var(--color-danger);
       }
       p {
-        margin: 0;
+        margin: 0 0 1.5rem;
         font-size: 1.125rem;
+      }
+      .affordance {
+        display: inline-block;
+        padding: 0.625rem 1.25rem;
+        background: var(--color-primary);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 500;
+        transition: opacity 0.15s ease;
+      }
+      .affordance:hover {
+        opacity: 0.9;
       }
     </style>
   </head>
@@ -49,6 +64,7 @@
     <main class="card">
       <h1>Link Unavailable</h1>
       <p id="message">This link is invalid or has been tampered with.</p>
+      <a id="affordance" class="affordance" href="#" style="display: none;">Request a new one via IM</a>
     </main>
 
     <script type="module">
@@ -71,6 +87,21 @@
         el.textContent = message;
       }
       document.title = 'Link Unavailable';
+
+      // LNK-11: show the IM affordance for actionable reasons — ones where
+      // the user can self-serve by requesting a fresh link.
+      const actionable = new Set<ReadDenyReason>([
+        ReadDenyReason.expired,
+        ReadDenyReason.consumed,
+        ReadDenyReason.revoked,
+        ReadDenyReason.wrong_app,
+        ReadDenyReason.wrong_version,
+        ReadDenyReason.bad_signature,
+      ]);
+      const affordanceEl = document.getElementById('affordance');
+      if (affordanceEl && actionable.has(reason)) {
+        affordanceEl.style.display = 'inline-block';
+      }
     </script>
   </body>
 </html>
