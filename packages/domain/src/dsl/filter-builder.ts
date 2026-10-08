@@ -34,7 +34,8 @@ import type { MongoFilter } from './ast.js';
  * @param hasViewAll whether the viewer holds this app's `view_all` permission (D-76/D-77)
  */
 export function buildAuthFilter(viewerId: string, hasViewAll: boolean): MongoFilter {
-  void viewerId;
-  void hasViewAll;
-  return {};
+  // Soft-delete protection first, always (D-78)...
+  if (hasViewAll) return { deleted_at: null };
+  // ...ownership added only when `view_all` does not bypass it (D-76).
+  return { $and: [{ deleted_at: null }, { real_user_id: viewerId }] };
 }
