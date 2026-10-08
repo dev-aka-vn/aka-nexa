@@ -32,6 +32,8 @@ import { verifyReadLinkJwt } from '@akane/platform';
 import {
   ReadVerifierService,
   type ReadLinkJwtVerifier,
+  type SavedQueryLookup,
+  type SavedQueryRecord,
   type SubmissionLookup,
   type SubmissionRecord,
 } from './read-verifier.service.js';
@@ -102,6 +104,22 @@ class TestSubmissionLookup implements SubmissionLookup {
   }
 }
 
+// ─── TestSavedQueryLookup: in-memory D-73 seam, tracks calls ────────────────
+
+class TestSavedQueryLookup implements SavedQueryLookup {
+  readonly calls: Array<{ queryId: string; appId: string }> = [];
+  private store = new Map<string, SavedQueryRecord>();
+
+  set(record: SavedQueryRecord): void {
+    this.store.set(`${record.app_id}:${record.query_id}`, record);
+  }
+
+  async findSavedQuery(queryId: string, appId: string): Promise<SavedQueryRecord | null> {
+    this.calls.push({ queryId, appId });
+    return this.store.get(`${appId}:${queryId}`) ?? null;
+  }
+}
+
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -137,11 +155,21 @@ const testSubmission: SubmissionRecord = {
   data: { reason: 'vacation', days: 5 },
 };
 
+/** D-73 saved-query record matching the fixture claims (`query_version: 1`). */
+const testSavedQuery: SavedQueryRecord = {
+  query_id: 'qry_789',
+  query_version: 1,
+  app_id: 'leave-request',
+  intents: ['list pending leave requests'],
+  dsl: { filters: { op: 'eq', field: 'status', value: 'pending' } },
+};
+
 // ─── Suite ───────────────────────────────────────────────────────────────────
 
 describe('ReadVerifierService', () => {
   let jwt: TestReadLinkJwtVerifier;
   let submissions: TestSubmissionLookup;
+  let savedQueries: TestSavedQueryLookup;
   let permissionCheck: PermissionCheckService;
   let verifier: ReadVerifierService;
 
@@ -149,13 +177,15 @@ describe('ReadVerifierService', () => {
     jwt = new TestReadLinkJwtVerifier();
     submissions = new TestSubmissionLookup();
     submissions.set(testSubmission);
+    savedQueries = new TestSavedQueryLookup();
+    savedQueries.set(testSavedQuery);
     permissionCheck = new PermissionCheckService(
       new RbacService(),
       new RbacCacheService(),
     );
     // Default: permission granted
     vi.spyOn(permissionCheck, 'check').mockResolvedValue(true);
-    verifier = new ReadVerifierService(jwt, permissionCheck, submissions);
+    verifier = new ReadVerifierService(jwt, permissionCheck, submissions, savedQueries);
   });
 
   afterEach(() => {
@@ -254,8 +284,8 @@ describe('ReadVerifierService', () => {
 
   // ── query action ─────────────────────────────────────────────────────
 
-  describe('query action', () => {
-    it('returns success with claims only (no submission) for a valid query token', async () => {
+  describe('query action (LNK-05, LNK-06, D-73, D-75)', () => {
+    it('loads the saved query and returns it with the claims on a valid query token', async () => {
       const token = signTestJwt(makeClaims({ action: 'query', target_id: 'qry_789' }));
       const result = await verifier.verify(token);
 
@@ -263,7 +293,10 @@ describe('ReadVerifierService', () => {
       if (result.ok) {
         expect(result.claims.action).toBe('query');
         expect(result.submission).toBeUndefined();
-        // query still performs a perm_version check
+        expect(result.savedQuery).toEqual(testSavedQuery);
+        // the lookup is scoped by query_id AND app_id (D-73)
+        expect(savedQueries.calls).toEqual([{ queryId: 'qry_789', appId: 'leave-request' }]);
+        // query still performs a perm_version check (LNK-06)
         expect(permissionCheck.check).toHaveBeenCalledWith(
           'leave-request',
           'u_123',
@@ -273,13 +306,63 @@ describe('ReadVerifierService', () => {
       }
     });
 
-    it('returns denied when the permission check fails for query', async () => {
+    it('denies wrong_version when the saved query does not exist (D-75)', async () => {
+      const token = signTestJwt(makeClaims({ action: 'query', target_id: 'qry_missing' }));
+      const result = await verifier.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+    });
+
+    it('denies wrong_version when target_id (query_id) is absent', async () => {
+      const claims = { ...makeClaims({ action: 'query' }) };
+      delete claims['target_id'];
+      const token = signTestJwt(claims);
+      const result = await verifier.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+    });
+
+    it('denies wrong_version when the saved query_version is stale (D-75)', async () => {
+      savedQueries.set({ ...testSavedQuery, query_version: 2 });
+
+      const token = signTestJwt(
+        makeClaims({ action: 'query', target_id: 'qry_789', query_version: 1 }),
+      );
+      const result = await verifier.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+      // the permission check is not the reason for this denial
+      expect(permissionCheck.check).not.toHaveBeenCalled();
+    });
+
+    it('denies wrong_version for a query link when no lookup seam is wired (fail closed)', async () => {
+      const unwired = new ReadVerifierService(jwt, permissionCheck, submissions);
+      const token = signTestJwt(makeClaims({ action: 'query', target_id: 'qry_789' }));
+      const result = await unwired.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+    });
+
+    it('returns denied when the permission check fails for query (LNK-06)', async () => {
       vi.spyOn(permissionCheck, 'check').mockResolvedValue(false);
 
       const token = signTestJwt(makeClaims({ action: 'query', target_id: 'qry_789' }));
       const result = await verifier.verify(token);
 
       expect(result).toEqual({ ok: false, reason: ReadDenyReason.denied });
+    });
+
+    it('checks the version before the permission (plan order: wrong_version wins)', async () => {
+      vi.spyOn(permissionCheck, 'check').mockResolvedValue(false);
+      savedQueries.set({ ...testSavedQuery, query_version: 9 });
+
+      const token = signTestJwt(
+        makeClaims({ action: 'query', target_id: 'qry_789', query_version: 1 }),
+      );
+      const result = await verifier.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+      expect(permissionCheck.check).not.toHaveBeenCalled();
     });
   });
 
