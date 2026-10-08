@@ -10,6 +10,12 @@ export { IdentityMappingRepository } from './identity/identity-mapping.repositor
 export type { IdentityMapping } from './identity/identity-mapping.repository.js';
 export { LinkIssuerService } from './links/link-issuer.service.js';
 export type { IssueLinkInput } from './links/link-issuer.service.js';
+export { ReadDenyService } from './links/read-deny.service.js';
+export type {
+  ReadDenyAction,
+  ReadDenyContext,
+  ReadDenyRecorder,
+} from './links/read-deny.service.js';
 export { ReadVerifierService } from './links/read-verifier.service.js';
 export type {
   ReadVerifyResult,

@@ -207,7 +207,10 @@ describe('ReadVerifierService', () => {
     });
 
     it('returns bad_signature when target_id is missing for a view link', async () => {
-      const { target_id: _omitted, ...claims } = makeClaims({ action: 'view' });
+      const claims: Record<string, unknown> = {
+        ...makeClaims({ action: 'view' }),
+      };
+      delete claims['target_id'];
       const token = signTestJwt(claims);
       const result = await verifier.verify(token);
 
@@ -284,7 +287,6 @@ describe('ReadVerifierService', () => {
 
   describe('denial reasons', () => {
     it('returns bad_signature for a forged signature', async () => {
-      const now = nowSec();
       const claims = makeClaims({ action: 'view', target_id: 'sub_456' });
       const headerB64 = Buffer.from(
         JSON.stringify({ alg: 'ES256', typ: 'JWT' }),
