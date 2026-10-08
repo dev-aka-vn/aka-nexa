@@ -206,9 +206,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
 - [ ] **DAT-09**: An internal collection's declared indexes are created at publish time
-- [ ] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
-- [ ] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
-- [ ] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
+- [x] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
+- [x] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
+- [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
 - [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
 
@@ -474,9 +474,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LNK-05 | Phase 4 | Pending |
 | LNK-06 | Phase 4 | Pending |
 | LNK-08 | Phase 4 | Pending |
-| DAT-10 | Phase 4 | Pending |
-| DAT-11 | Phase 4 | Pending |
-| DAT-12 | Phase 4 | Pending |
+| DAT-10 | Phase 4 | Complete |
+| DAT-11 | Phase 4 | Complete |
+| DAT-12 | Phase 4 | Complete |
 | DAT-01 | Phase 5 | Pending |
 | DAT-03 | Phase 5 | Pending |
 | DAT-04 | Phase 5 | Pending |
