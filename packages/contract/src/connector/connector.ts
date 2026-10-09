@@ -46,26 +46,51 @@ export const ConnectorDescriptorSchema = z
 
 export type ConnectorDescriptor = z.infer<typeof ConnectorDescriptorSchema>;
 
-/**
- * What the data router hands a connector for one submission. Deliberately
- * minimal: Phase 1 publishes the seam, and every field added here is a field
- * the integration phase has to honour.
- */
-export interface ConnectorExecuteInput {
-  /** Opaque submission id. The connector must not synthesise a PII-bearing natural key from it. */
-  readonly submissionId: string;
-  readonly appId: string;
-  readonly formId: string;
-  /**
-   * The idempotency key, or `null` when the connector descriptor declares
-   * `supports_idempotency_key: false`. A connector that declares `true` and is
-   * handed `null` is a platform bug, and the integration phase's conformance
-   * test is where that gets caught.
-   */
-  readonly idempotencyKey: string | null;
-  /** The submitted form data. Shape is the form's business, not the connector's. */
-  readonly data: Readonly<Record<string, unknown>>;
-}
+export const ConnectorExecuteContextSchema = z
+  .object({
+    /** Optional correlation id for tracing. */
+    correlationId: z.string().min(1).optional(),
+    /** The idempotency key, or `null` when the connector descriptor declares
+     * `supports_idempotency_key: false`. */
+    idempotencyKey: z.string().nullable(),
+    /** Additional metadata that may be useful to the connector. */
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+export type ConnectorExecuteContext = z.infer<typeof ConnectorExecuteContextSchema>;
+
+export const ConnectorExecutePayloadSchema = z
+  .object({
+    /** Opaque submission id. The connector must not synthesise a PII-bearing natural key from it. */
+    submissionId: z.string().min(1),
+    appId: z.string().min(1),
+    formId: z.string().min(1),
+    /** The submitted form data. Shape is the form's business, not the connector's. */
+    data: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+export type ConnectorExecutePayload = z.infer<typeof ConnectorExecutePayloadSchema>;
+
+export const ConnectorTestResultSchema = z
+  .object({
+    ok: z.boolean(),
+    message: z.string().optional(),
+  })
+  .strict();
+
+export type ConnectorTestResult = z.infer<typeof ConnectorTestResultSchema>;
+
+export const ConnectorCapabilitySchema = z
+  .object({
+    name: z.string().min(1),
+    supportsIdempotency: z.boolean().optional(),
+    operations: z.array(z.string()).optional(),
+  })
+  .strict();
+
+export type ConnectorCapability = z.infer<typeof ConnectorCapabilitySchema>;
 
 export interface ConnectorExecuteOutcome {
   /** The downstream's own identifier for the created/updated record, when it returns one. */
@@ -77,9 +102,17 @@ export interface ConnectorExecuteOutcome {
 export interface Connector {
   readonly descriptor: ConnectorDescriptor;
   /**
+   * Test the connection/configuration of this connector.
+   */
+  testConnection(): Promise<ConnectorTestResult>;
+  /**
+   * Get capabilities of this connector.
+   */
+  getCapabilities(): Promise<ConnectorCapability[]>;
+  /**
    * Exactly one attempt. Retry, backoff and dead-lettering belong to the queue
    * (BullMQ, Phase 5) and the idempotency key, not to the connector — a
    * connector that retries internally defeats both.
    */
-  execute(input: ConnectorExecuteInput): Promise<ConnectorExecuteOutcome>;
+  execute(operation: string, payload: ConnectorExecutePayload, context: ConnectorExecuteContext): Promise<ConnectorExecuteOutcome>;
 }
