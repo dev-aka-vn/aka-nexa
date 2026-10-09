@@ -201,7 +201,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **DAT-02**: In `internal` mode a submission is written to the app's MongoDB collection, which is created on first write
 - [ ] **DAT-03**: In `external` mode a submission is pushed through a referenced connector using `{{form.field}}` and `{{real_user.attribute}}` field mapping
 - [x] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
-- [ ] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
+- [x] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
 - [x] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
 - [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
@@ -480,7 +480,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-01 | Phase 5 | Complete |
 | DAT-03 | Phase 5 | Pending |
 | DAT-04 | Phase 5 | Complete |
-| DAT-05 | Phase 5 | Pending |
+| DAT-05 | Phase 5 | Complete |
 | DAT-06 | Phase 5 | Complete |
 | DAT-07 | Phase 5 | Pending |
 | DAT-14 | Phase 5 | Pending |

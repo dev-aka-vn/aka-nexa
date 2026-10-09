@@ -1,15 +1,15 @@
 ---
 gsd_state_version: "1.0"
-current_plan: 2
+current_plan: 3
 status: shipped
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-10-09T10:45:05.569Z"
-state_head: c402b872ab5c5f5bc8db352d6ef6daa222dd60d1
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-10-09T13:03:04.531Z"
+state_head: b44ea89f2528b7df393af031000e23187ba79d45
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 37
-  completed_plans: 29
+  completed_plans: 30
   percent: 38
 last_activity: 2026-10-08
 current_phase: 04
@@ -19,13 +19,13 @@ last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 1
 
 ## Current Position
 
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 9
 
 ## Session
 
-**Last session:** 2026-10-09T10:45:05.142Z
-**Stopped at:** Completed 05-01-PLAN.md
+**Last session:** 2026-10-09T13:03:03.732Z
+**Stopped at:** Completed 05-03-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -39,6 +39,7 @@ Total Plans in Phase: 9
 | Phase 04-read-path-query-dsl P04 | 15m | 2 tasks | 3 files |
 | Phase 04-read-path-query-dsl P08 | 1032 | 2 tasks | 4 files |
 | Phase 05 P01 | 13m | 3 tasks | 14 files |
+| Phase 05 P03 | 45m | 3 tasks | 5 files |
 
 ## Decisions
 
@@ -47,3 +48,6 @@ Total Plans in Phase: 9
 - [Phase 04-read-path-query-dsl]: Created comprehensive read-verifier tests for LNK-05/LNK-06/D-79/D-75
 - [Phase 04-read-path-query-dsl]: controller-extended-with-query-endpoint
 - [Phase 04-read-path-query-dsl]: tests-cover-view-and-query-flows
+- [Phase 05]: Fail-closed on unknown modes: return failed_permanent without external sends
+- [Phase 05]: Empty external payloads treated as mapping failures (failed_permanent)
+- [Phase 05]: ConnectorRef required for external/hybrid modes
