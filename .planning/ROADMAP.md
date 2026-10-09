@@ -192,7 +192,16 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. An edit link can be reopened repeatedly but consumes on submit, and a second submit returns the original confirmation rather than creating a duplicate record.
   5. One app's traffic spike fails that app and not every app sharing the connector; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation.
 
-**Plans**: TBD
+**Plans**: 9 plans
+- [ ] 05-01-PLAN.md — Tracer: connector seam, boundary edge, credential store, transactional outbox, relay + delivery
+- [ ] 05-02-PLAN.md — Field-mapping resolver, HTTP→taxonomy split, Redmine contract spec
+- [ ] 05-03-PLAN.md — Data-mode routing, `partial` outcome, atomic outbox commit + repository
+- [ ] 05-04-PLAN.md — Backoff/DLQ budget, per-revision idempotency, reconciliation sweep
+- [ ] 05-05-PLAN.md — Real Redis ThrottlerStorage + business metrics (`submission_status`, connector counter)
+- [ ] 05-06-PLAN.md — Operator CLI: connector seed, `dlq list`/`retry`, audited `connector_ref` rebind
+- [ ] 05-07-PLAN.md — "My submissions" status surface via the frozen query action
+- [ ] 05-08-PLAN.md — Edit link: atomic consume-on-submit, new revision + D-95 replay
+- [ ] 05-09-PLAN.md — Renderer surfaces A–D, self-hosted FormIO, package-legitimacy gate
 **UI hint**: yes
 **Notes**: The hardest correctness surface in the system. The outbound state is modelled as **exactly three** states — `not_sent | sent_unconfirmed | confirmed` — and `sent_unconfirmed` is committed *before* the outbound call, because the PRD cannot express the gap between "sent" and "confirmed" and puts the idempotency guarantee on the wrong side of the wire. `FR-D-12` is implemented as the amended single-send guarantee recorded in Phase 1, surfaced to the builder at publish time. Connectors are **globally managed** — an app references a connector and never owns its credentials. `DAT-14` lands here because `partial` is unreachable before this phase.
 **Research**: `/gsd-plan-phase 5 --research-phase` — per-connector contract research for **Redmine**: field mapping, idempotency-key support, and error taxonomy. The transactional outbox pattern is well-understood; the Redmine contract is not.
