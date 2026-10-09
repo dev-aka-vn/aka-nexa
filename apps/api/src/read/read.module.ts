@@ -28,6 +28,7 @@ export interface ReadLinkConfig {
   readonly issuer: string;
   readonly audience: string;
   readonly publicKey: string;
+  readonly previousPublicKey?: string | null;
   readonly rendererOrigin: string;
 }
 
@@ -49,6 +50,7 @@ export function readReadLinkConfig(): ReadLinkConfig {
     issuer: process.env['JWT_ISSUER']!,
     audience: process.env['JWT_AUDIENCE']!,
     publicKey: process.env['JWT_READ_PUBLIC_KEY']!,
+    previousPublicKey: process.env['JWT_READ_PUBLIC_KEY_PREVIOUS'] ?? null,
     rendererOrigin: process.env['RENDERER_ORIGIN']!,
   };
 }
@@ -66,6 +68,7 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     private readonly publicKey: string,
     private readonly issuer: string,
     private readonly audience: string,
+    private readonly previousPublicKey?: string | null,
   ) {}
 
   async verify(token: string): Promise<Record<string, unknown>> {
@@ -73,6 +76,7 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
       issuer: this.issuer,
       audience: this.audience,
       algorithms: ['ES256'],
+      previousPublicKey: this.previousPublicKey,
     });
   }
 }
@@ -107,7 +111,12 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     {
       provide: 'READ_LINK_JWT_VERIFIER',
       useFactory: (config: ReadLinkConfig): ReadLinkJwtVerifier =>
-        new ReadLinkJwtVerifierImpl(config.publicKey, config.issuer, config.audience),
+        new ReadLinkJwtVerifierImpl(
+          config.publicKey,
+          config.issuer,
+          config.audience,
+          config.previousPublicKey,
+        ),
       inject: [{ token: 'READ_LINK_CONFIG', optional: false }],
     },
     PermissionCheckService,

@@ -52,6 +52,10 @@ export interface ReadLinkJwtVerifyOptions {
   readonly issuer: string;
   readonly audience: string;
   readonly algorithms: string[];
+  readonly previousPublicKey?: string | null;
+  readonly currentPublicKey?: string | null;
+  readonly publicKeys?: readonly string[] | readonly Array<{ kid?: string; key: string }>;
+  readonly keyId?: string | null;
 }
 
 /**
@@ -68,7 +72,7 @@ export type ReadLinkPublicKey = string;
  * Verify a read-link JWT and return its claims.
  *
  * @throws `jose.errors.JWTExpired` when `exp` has passed
- * @throws `jose.errorsJWTClaimValidationFailed` when `iss`/`aud` mismatch
+ * @throws `jose.errors.JWTClaimValidationFailed` when `iss`/`aud` mismatch
  * @throws `jose.errors.JWSSignatureVerificationFailed` on a bad signature
  *
  * The caller catches these and maps each to a {@link ReadDenyReason} — the
@@ -77,22 +81,99 @@ export type ReadLinkPublicKey = string;
  */
 export async function verifyReadLinkJwt(
   token: string,
-  publicKey: ReadLinkPublicKey,
+  publicKey: ReadLinkPublicKey | readonly ReadLinkPublicKey[],
   options: ReadLinkJwtVerifyOptions,
 ): Promise<Record<string, unknown>> {
-  // jose 6.x: KeyInput type = CryptoKey | KeyObject | JWK | Uint8Array
-  // (string is excluded from the type, though accepted at runtime). Convert
-  // the PEM string to a KeyObject so the type system and runtime agree.
-  const keyObject = createPublicKey(publicKey);
+  const keys: readonly string[] = Array.isArray(publicKey)
+    ? publicKey
+    : [publicKey];
 
-  const { payload } = await jose.jwtVerify(token, keyObject, {
-    issuer: options.issuer,
-    audience: options.audience,
-    algorithms: options.algorithms,
+  // Build key set with metadata
+  const keyEntries: Array<{ kid?: string; key: string }> = [];
+  // Add initial keys
+  for (const k of keys) {
+    keyEntries.push({ key: k });
+  }
+  if (options.currentPublicKey) {
+    keyEntries.push({ key: options.currentPublicKey });
+  }
+  if (options.previousPublicKey) {
+    keyEntries.push({ key: options.previousPublicKey });
+  }
+  if (options.publicKeys) {
+    for (const k of options.publicKeys) {
+      if (typeof k === 'string') {
+        keyEntries.push({ key: k });
+      } else {
+        keyEntries.push({ kid: k.kid, key: k.key });
+      }
+    }
+  }
+
+  // Deduplicate by key string
+  const seen = new Set<string>();
+  const uniqueKeys = keyEntries.filter((e) => {
+    if (seen.has(e.key)) return false;
+    seen.add(e.key);
+    return true;
   });
 
-  // jose returns a `JWTPayload`-shaped object whose fields are typed loosely.
-  // We return a plain record so the domain verifier can run its own frozen
-  // Zod schema over it (the schema is the source of truth, not jose's types).
-  return payload as Record<string, unknown>;
+  if (uniqueKeys.length === 0) {
+    throw new jose.errors.JWSSignatureVerificationFailed();
+  }
+
+  // Build key resolver for kid-based lookup with fallback to all keys
+  const keyResolver: jose.JWTVerifyGetKey = async (protectedHeader) => {
+    const kid = protectedHeader.kid;
+    if (kid) {
+      // Try to find key with matching kid
+      const match = uniqueKeys.find((e) => e.kid === kid);
+      if (match) {
+        return createPublicKey(match.key);
+      }
+      // If kid specified but no match found, do NOT return a default key
+      // Let verification fail - this prevents accepting tokens with unknown kids
+      throw new jose.errors.JWSSignatureVerificationFailed();
+    }
+    // No kid in header - try all keys (backward compat)
+    // Return the first key; jose will try multiple keys if we pass array,
+    // but with keyResolver returning single key, better approach is to pass array
+    return createPublicKey(uniqueKeys[0].key);
+  };
+
+  // For kid-agnostic fallback when no kid present, pass array of keys
+  const keyObjects = uniqueKeys.map((e) => createPublicKey(e.key));
+
+  try {
+    // Decode header to check for kid
+    let hasKid = false;
+    try {
+      const [headerPart] = token.split('.');
+      if (headerPart) {
+        const header = JSON.parse(Buffer.from(headerPart, 'base64url').toString());
+        hasKid = Boolean(header.kid);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (hasKid) {
+      const { payload } = await jose.jwtVerify(token, keyResolver, {
+        issuer: options.issuer,
+        audience: options.audience,
+        algorithms: options.algorithms,
+      });
+      return payload as Record<string, unknown>;
+    } else {
+      const { payload } = await jose.jwtVerify(token, keyObjects, {
+        issuer: options.issuer,
+        audience: options.audience,
+        algorithms: options.algorithms,
+      });
+      return payload as Record<string, unknown>;
+    }
+  } catch (err) {
+    throw err;
+  }
+}
 }
