@@ -1,10 +1,11 @@
 ---
 phase: "05"
 slug: "integration-async-execution"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-09"
+reviewed_at: "2026-10-09"
 ---
 
 # Phase 05 — UI Design Contract
@@ -221,7 +222,7 @@ read-link URL (JWT in the URL, no cookie — FRM-06). URL idioms mirror the exis
   (`apps/renderer/src/prefill.ts`) as the create form.
 - **Shape:** `.page-head` (`h1` "Edit submission" + `.sub` naming the app/form and the revision
   number) over the FormIO form in editable mode; footer with `.btn-primary` "Submit correction" and
-  a `.btn-ghost` "Cancel".
+  a `.btn-ghost` "Discard changes".
 - **Denial on access** (expired / revoked / not_owned / denied / wrong_version): reuse the
   `dead.html` denial page and the `DENY_REASON_COPY` map in `view.ts` — no edit form is rendered.
 - **Submit** creates a **new revision with a new send** (D-91); the downstream idempotency key is
@@ -263,6 +264,7 @@ an IM affordance where a user can self-serve, and never leaks internal detail.
 |---------|------|
 | Primary CTA | "Submit correction" (verb + noun — the `.btn-primary` on the edit page; consumes the edit link, creates a revision) |
 | Secondary action | "Edit submission" (verb + noun — owner-only row/detail affordance that opens the edit link) |
+| Dismiss (edit page) | "Discard changes" (verb + noun — the `.btn-ghost` that leaves the edit page without submitting; replaces the generic "Cancel") |
 | Empty state heading | "No submissions yet" |
 | Empty state body | "Nothing has been submitted for this app yet. Start one from chat and it will appear here." |
 | Error state (list load failure) | "Couldn't load your submissions. Request a new status link in chat and try again." |
@@ -312,13 +314,37 @@ denial page **verbatim** — Phase 5 introduces **no new denial reasons**. The e
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: {N covered, M backstop, K unresolved — or "none applicable"}
+Applicable state considerations resolved: 20 covered, 5 backstop, 0 unresolved (25 applicable;
+2 of the covered rows are recorded **dismissals** expressed as negative truths, with the reason in
+the row).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| {empty} | {list-collection} | ✅ covered | {concrete truth string} |
-| {long-text} | {static-content} | 🧪 backstop | {held-out/visual UI-state test} |
-| {overflow} | {list-collection} | ⚠ unresolved | {planner treats as assumption} |
+| empty | E1 "My submissions" status list | ✅ covered | Zero submissions renders the mockup `.empty` state — heading "No submissions yet" + body "Nothing has been submitted for this app yet…" (Copywriting Contract → Empty state heading/body). |
+| loading | E1 "My submissions" status list | 🧪 backstop | 3 shimmer skeleton rows on `--surface-2` beneath a visible column header while the saved query runs (mirrors 04-UI-SPEC loading pattern). |
+| error | E1 "My submissions" status list | ✅ covered | A list-load failure renders `.callout-danger` with "Couldn't load your submissions. Request a new status link in chat and try again." (Copywriting Contract → Error state (list load failure)). |
+| populated | E1 "My submissions" status list | ✅ covered | 1+ owned submissions populate `.table-wrap` + `table` with the Form / Submitted / Status badge / Destination columns (Surface A). |
+| partial | E1 "My submissions" status list | ✅ covered | Pagination footer "Showing {start}–{end} of {total}" + accent "Load more" when `offset + limit < total`; a `partial`-status row shows the amber `.badge-partial` + "Internal saved · {Connector}: retrying", read-only (D-81, Surface A). |
+| overflow | E1 "My submissions" status list | ✅ covered | `.table-wrap` scrolls horizontally on narrow widths; long cells ellipsis-truncate with a `title` tooltip (04-UI-SPEC overflow pattern). |
+| zero-one-many | E1 "My submissions" status list | ✅ covered | zero = `.empty` state; one = single-row table; many = paginated table with the accent "Load more" (Surface A). |
+| empty | E2 submission detail | ✅ covered | Blank field values render empty in FormIO read-only mode; the page renders only for an existing, owned submission — a missing/not-owned id routes to the denial page (Surface B). |
+| loading | E2 submission detail | 🧪 backstop | Page chrome renders immediately (25px `--muted` heading placeholder); the FormIO container shows a spinner only after a 2s server-pending threshold (04-UI-SPEC loading pattern). |
+| error | E2 submission detail | ✅ covered | A failed external call renders the status badge + `.callout-danger` with the user-safe reason; `partial` renders `.callout-warn` "Internal saved · {Connector}: retrying" (Surface B; copy → Copywriting Contract). |
+| partial | E2 submission detail | ✅ covered | `.callout-warn` above the read-only form with "Internal saved · {Connector}: retrying" + one explanatory Body sentence; read-only, no retry (D-81). |
+| long-text | E2 submission detail | 🧪 backstop | Long field values wrap naturally; a max-height with a "Show more" toggle at 14px accent past the threshold (04-UI-SPEC long-text pattern). |
+| empty | E3 edit-link entry | ✅ covered | A latest revision with no field values still renders the editable FormIO form (required-field validation applies on submit); an invalid/non-owned/expired link renders the denial page instead (Surface C). |
+| loading | E3 edit-link entry | 🧪 backstop | Edit-form chrome renders immediately; the editable FormIO container shows a spinner only after the 2s pending threshold (04-UI-SPEC loading pattern). |
+| error | E3 edit-link entry | ✅ covered | A submit failure renders inline "Your correction wasn't sent. Nothing was changed in {Connector}. Try again, or request a new edit link in chat." (Copywriting Contract → Error state (edit submit failure)). |
+| partial | E3 edit-link entry | ✅ covered | Field-level validation errors render inline in FormIO's Bootstrap-5 error styling (`component.errors`); incomplete input blocks submit (S1 spike). |
+| long-text | E3 edit-link entry | 🧪 backstop | Long text fields wrap; textarea content scrolls within a max-height (04-UI-SPEC long-text pattern). |
+| loading | E4 edit post-submit confirmation | ✅ covered | The `.btn-primary` "Submit correction" enters `.is-loading` while the revision is sent; the confirmation card renders on success (Surface D). |
+| error | E4 edit post-submit confirmation | ✅ covered | **No card error state (recorded dismissal — negative truth):** the confirmation card renders only on success; a failed submit stays on the edit form and shows the error there (Surface C). |
+| overflow | E4 edit post-submit confirmation | ✅ covered | A long downstream reference renders in a `.pill-mono` inline element that wraps/truncates within the card — the card never overflows horizontally. |
+| long-text | E4 edit post-submit confirmation | ✅ covered | The downstream reference and revision number wrap within the confirmation card. |
+| loading | E5 link denial page | ✅ covered | **No loading state (recorded dismissal — negative truth):** the denial page renders synchronously from the JWT verification response; there is no asynchronous content (04-UI-SPEC: dead-link rendering is immediate). |
+| error | E5 link denial page | ✅ covered | The page IS the error state: reason-specific copy in `.callout-warn` / `.callout-danger` + a "Request a new link in chat" action (Copywriting Contract → Denial copy; reuses `DENY_REASON_COPY`; Phase 5 adds no new denial reasons). |
+| overflow | E5 link denial page | ✅ covered | The reason sentence wraps within the max-width container; the action link stays within the viewport. |
+| long-text | E5 link denial page | ✅ covered | Denial reason copy wraps naturally (~44ch max-width); no truncation or ellipsis. |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
      ✅ covered   → a plain truth string lifted into must_haves.truths
@@ -344,15 +370,15 @@ new component package.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** gsd-ui-checker APPROVED (7/7: no BLOCKs; 2 non-blocking FLAGs resolved — edit-page dismiss label recorded as "Discard changes" in the Copywriting Contract and Surface C; `## Component Inventory` kept explicitly non-exhaustive per Dimension 7).
 
 ---
 
