@@ -12,8 +12,10 @@ export interface RouteSubmissionInput {
   readonly revision?: number;
 }
 
+export type RouteSubmissionStatus = 'accepted' | 'failed_permanent';
+
 export interface RouteSubmissionResult {
-  readonly status: 'accepted';
+  readonly status: RouteSubmissionStatus;
   readonly revision: number;
 }
 
@@ -22,7 +24,31 @@ export class DataRouterService {
   constructor(private readonly mongo: MongoService) {}
 
   async routeSubmission(input: RouteSubmissionInput, mode: RoutingMode): Promise<RouteSubmissionResult> {
+    if (mode !== 'internal' && mode !== 'external' && mode !== 'hybrid') {
+      return {
+        status: 'failed_permanent',
+        revision: input.revision ?? 0,
+      };
+    }
+
     const revision = input.revision ?? 0;
+    const payload = input.data ?? {};
+
+    const isEmptyPayload = typeof payload === 'object' && payload !== null && Object.keys(payload).length === 0;
+    if ((mode === 'external' || mode === 'hybrid') && isEmptyPayload) {
+      return {
+        status: 'failed_permanent',
+        revision,
+      };
+    }
+
+    if ((mode === 'external' || mode === 'hybrid') && !input.connectorRef) {
+      return {
+        status: 'failed_permanent',
+        revision,
+      };
+    }
+
     const session = this.mongo.client.startSession();
 
     try {
@@ -33,7 +59,7 @@ export class DataRouterService {
               submission_id: input.submissionId,
               revision,
               outbound: 'not_sent',
-              data: input.data,
+              data: payload,
               createdAt: new Date(),
             },
             { session },
@@ -41,21 +67,18 @@ export class DataRouterService {
         }
 
         if (mode === 'external' || mode === 'hybrid') {
-          if (!input.connectorRef) {
-            throw new Error('CONNECTOR_REF_REQUIRED: external/hybrid routing requires connectorRef');
-          }
           await this.mongo.db().collection('outbox').insertOne(
             {
               published: false,
               revisionRef: `${input.submissionId}:${revision}`,
-              connectorRef: input.connectorRef,
+              connectorRef: input.connectorRef!,
               submissionId: input.submissionId,
               revision,
               payload: {
                 submissionId: input.submissionId,
                 appId: input.appId,
                 formId: input.formId,
-                data: input.data,
+                data: payload,
               },
               createdAt: new Date(),
             },
