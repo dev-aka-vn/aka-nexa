@@ -30,6 +30,10 @@ import {
 import {
   ConnectorDeliveryProcessor,
 } from './processors/connector-delivery.processor.js';
+import {
+  ReconciliationProcessor,
+  reconciliationWorkersProvider,
+} from './processors/reconciliation.processor.js';
 import { OutboxRepository } from '@akane/domain/datarouter/data-access/outbox.repository.js';
 import { SubmissionRevisionsRepository } from '@akane/domain/submissions/data-access/submission-revisions.repository.js';
 import { ConnectorRegistry } from '@akane/domain/connectors/connector.registry.js';
@@ -61,17 +65,20 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     platformHeartbeatWorkersProvider,
     OutboxRelayProcessor,
     ConnectorDeliveryProcessor,
+    ReconciliationProcessor,
+    reconciliationWorkersProvider,
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
         delivery: ConnectorDeliveryProcessor,
-      ) => [platform, relay, delivery],
+        reconciliation: ReconciliationProcessor,
+      ) => [platform, relay, delivery, reconciliation],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
