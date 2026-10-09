@@ -33,11 +33,21 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
       return;
     }
 
-    if (revision.outbound !== 'not_sent') {
+    if (revision.outbound === 'confirmed') {
       return;
     }
 
-    await this.revisionsRepo.setSentUnconfirmed(data.submissionId, data.revision);
+    if (revision.outbound === 'not_sent') {
+      await this.revisionsRepo.setSentUnconfirmed(data.submissionId, data.revision);
+    } else if (revision.outbound === 'sent_unconfirmed') {
+      // Only retry if this is a BullMQ retry (not a redelivery)
+      // If attemptsMade > 0, it means this is a retry
+      if (!job.attemptsMade || job.attemptsMade === 0) {
+        return;
+      }
+    } else {
+      return;
+    }
 
     const connector = this.connectorRegistry.resolve(data.connectorRef);
     const result = await connector.execute('deliver', {
@@ -51,6 +61,11 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
 
     if (result.status === 'succeeded') {
       await this.revisionsRepo.setConfirmed(data.submissionId, data.revision, result.externalId);
+    } else if (result.status === 'failed_transient') {
+      throw new Error('connector delivery failed transient');
+    } else {
+      // failed_permanent, credential_rejected, rejected -> terminal, do not throw
+      return;
     }
   }
 }
