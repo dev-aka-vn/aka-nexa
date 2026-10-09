@@ -1,15 +1,15 @@
 ---
 gsd_state_version: "1.0"
-current_plan: 3
+current_plan: 4
 status: shipped
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-10-09T13:03:04.531Z"
-state_head: b44ea89f2528b7df393af031000e23187ba79d45
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-10-09T22:03:41.618Z"
+state_head: 478050f5ba1572141793f3d266a6c28b5a6c53d9
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 37
-  completed_plans: 30
+  completed_plans: 31
   percent: 38
 last_activity: 2026-10-08
 current_phase: 04
@@ -19,13 +19,13 @@ last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 1
 
 ## Current Position
 
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 9
 
 ## Session
 
-**Last session:** 2026-10-09T13:03:03.732Z
-**Stopped at:** Completed 05-03-PLAN.md
+**Last session:** 2026-10-09T22:03:41.216Z
+**Stopped at:** Completed 05-04-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -40,6 +40,7 @@ Total Plans in Phase: 9
 | Phase 04-read-path-query-dsl P08 | 1032 | 2 tasks | 4 files |
 | Phase 05 P01 | 13m | 3 tasks | 14 files |
 | Phase 05 P03 | 45m | 3 tasks | 5 files |
+| Phase 05 P04 | 60 | 3 tasks | 8 files |
 
 ## Decisions
 
@@ -51,3 +52,6 @@ Total Plans in Phase: 9
 - [Phase 05]: Fail-closed on unknown modes: return failed_permanent without external sends
 - [Phase 05]: Empty external payloads treated as mapping failures (failed_permanent)
 - [Phase 05]: ConnectorRef required for external/hybrid modes
+- [Phase 05]: Treat 'sent_unconfirmed' on fresh redelivery as idempotent short-circuit; allow retry on BullMQ retry attempts
+- [Phase 05]: Reconciliation marks outbox entries unpublished (not_sent only) so relay repicks them
+- [Phase 05]: Job Scheduler registered idempotently in scheduler app with both heartbeat and reconciliation

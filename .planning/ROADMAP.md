@@ -192,14 +192,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. An edit link can be reopened repeatedly but consumes on submit, and a second submit returns the original confirmation rather than creating a duplicate record.
   5. One app's traffic spike fails that app and not every app sharing the connector; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation.
 
-**Plans**: 2/9 plans executed
+**Plans**: 3/9 plans executed
 **Wave 1**
 - [x] 05-01-PLAN.md — Tracer: connector seam, boundary edge, credential store, transactional outbox, relay + delivery
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-02-PLAN.md — Field-mapping resolver, HTTP→taxonomy split, Redmine contract spec
 - [x] 05-03-PLAN.md — Data-mode routing, `partial` outcome, atomic outbox commit + repository
-- [ ] 05-04-PLAN.md — Backoff/DLQ budget, per-revision idempotency, reconciliation sweep
+- [x] 05-04-PLAN.md — Backoff/DLQ budget, per-revision idempotency, reconciliation sweep
 - [ ] 05-05-PLAN.md — Real Redis ThrottlerStorage + business metrics (`submission_status`, connector counter)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -324,7 +324,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 2. The Vertical Slice | 3/3 | In Progress|  |
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
-| 5. Integration & Async Execution | 2/9 | In Progress|  |
+| 5. Integration & Async Execution | 3/9 | In Progress|  |
 | 6. Self-Service App Builder | 0/TBD | Not started | - |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |
