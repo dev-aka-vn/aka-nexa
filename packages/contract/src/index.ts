@@ -83,6 +83,13 @@ export {
 } from './links/token-classes.js';
 export type { TokenClass } from './links/token-classes.js';
 
+export {
+  ALL_DENY_REASONS,
+  READ_DENY_REASONS,
+  ReadDenyReason,
+  isCountedReason,
+} from './links/read-deny-reasons.js';
+
 export { RateLimitKeySchema, RateLimitScopeSchema } from './links/rate-limit-key.js';
 export type { RateLimitKey, RateLimitScope } from './links/rate-limit-key.js';
 
@@ -99,3 +106,28 @@ export type { ImPlatform, InboundAction, InboundEvent } from './events/inbound-e
 
 export { OutboundActionSchema, OutboundMessageSchema } from './events/outbound-message.js';
 export type { OutboundAction, OutboundMessage } from './events/outbound-message.js';
+
+export {
+  DEFAULT_QUERY_LIMIT,
+  DSL_OPERATORS,
+  MAX_QUERY_LIMIT,
+  QUERY_DSL_CONTRACT_VERSION,
+} from './dsl/query-dsl.js';
+export type {
+  DslAndGroup,
+  DslContainsFilter,
+  DslEqFilter,
+  DslGteFilter,
+  DslInFilter,
+  DslLteFilter,
+  DslNeFilter,
+  DslOperator,
+  DslOrGroup,
+  DslScalar,
+  FilterExpr,
+  JsonValue,
+  Projection,
+  QueryDsl,
+  SortDirection,
+  SortSpec,
+} from './dsl/query-dsl.js';

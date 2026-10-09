@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script type="application/json" data-od-external-dependencies>["https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"]</script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>App Builder Console — IM-Driven Integration Gateway</title>
+<meta name="description" content="High-fidelity prototype of the IM-Driven App Builder console: apps, RBAC, forms, data routing, submissions, connectors, audit." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1420'/%3E%3Cpath d='M9 11h14M9 16h9M9 21h12' stroke='%230f9d8f' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+@layer od-layout {
+  :where(.od-stack,.od-row,.od-row-top,.od-cluster,.od-grid,.od-field,.od-stat,.od-cell,.od-tile) > :where(*) { min-width: 0; }
+  .od-stack   { display: flex; flex-direction: column; gap: var(--od-gap, 8px); }
+  .od-row     { display: flex; align-items: center; gap: var(--od-gap, 8px); }
+  .od-row-top { display: flex; align-items: flex-start; gap: var(--od-gap, 8px); }
+  .od-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--od-gap, 8px); }
+  .od-fill    { flex: 1 1 0; min-width: 0; }
+  .od-fixed   { flex: none; }
+  .od-grid    { display: grid; gap: var(--od-gap, 12px); grid-template-columns: repeat(var(--od-cols, 3), minmax(0, 1fr)); }
+  .od-stat, .od-field, .od-cell { display: grid; gap: var(--od-gap, 2px); }
+  :where(.od-stat,.od-field,.od-cell) > :where(*) { display: block; }
+  .od-tile { display: grid; grid-template-rows: auto 1fr; }
+  :where(.od-tile) > :where(*) { display: block; }
+  .od-media { display: block; width: 100%; height: auto; aspect-ratio: var(--od-ratio, auto); }
+  .od-media-cover { object-fit: cover; }
+  .od-truncate { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .od-clamp-2, .od-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .od-clamp-2 { -webkit-line-clamp: 2; }
+  .od-clamp-3 { -webkit-line-clamp: 3; }
+  .od-lines-2 { min-height: calc(2 * 1.4em); }
+  .od-nowrap  { white-space: nowrap; }
+  .od-keep    { word-break: keep-all; overflow-wrap: anywhere; }
+  .od-screen { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
+  .od-scroll { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+  .od-rail { display: flex; gap: var(--od-gap, 8px); overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none;
+             padding-inline: var(--od-rail-pad, 16px); scroll-padding-inline: var(--od-rail-pad, 16px); }
+  .od-rail::-webkit-scrollbar { display: none; }
+  :where(.od-rail) > :where(*) { flex: none; scroll-snap-align: start; }
+  :where(.od-rail) > :where(:last-child) { margin-inline-end: var(--od-rail-pad, 16px); }
+  .od-spacer { flex: none; visibility: hidden; pointer-events: none; }
+  .od-touch  { min-width: 44px; min-height: 44px; }
+}
+/* /OD-LAYOUT-PRIMITIVES v1 */
+
+:root{
+  --ink:#0e1420;
+  --ink-2:#151d2e;
+  --ink-3:#1e283c;
+  --canvas:#f6f8fa;
+  --surface:#ffffff;
+  --surface-2:#f0f3f7;
+  --line:#e2e8f0;
+  --line-strong:#cbd5e1;
+  --text:#101828;
+  --text-2:#475467;
+  --muted:#667085;
+  --accent:#0f9d8f;
+  --accent-strong:#0b7d72;
+  --accent-soft:#e4f5f2;
+  --amber:#b7791f;
+  --amber-soft:#fdf5e6;
+  --red:#c0392b;
+  --red-soft:#fdecea;
+  --green:#2f855a;
+  --green-soft:#e8f5ee;
+  --blue:#2b6cb0;
+  --blue-soft:#eaf2fb;
+  --violet:#6b5bd2;
+  --violet-soft:#eeebfb;
+  --radius-xs:6px;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06);
+  --shadow:0 4px 14px rgba(16,24,40,.08);
+  --shadow-lg:0 24px 48px rgba(16,24,40,.20);
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --display:"Space Grotesk","IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --topbar-h:60px;
+  --side-w:250px;
+  --od-gap:8px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.55;
+  color:var(--text);
+  background:var(--canvas);
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;font-family:var(--display);font-weight:600;letter-spacing:-.01em;color:var(--text)}
+p{margin:0}
+a{color:var(--accent-strong)}
+button{font:inherit;color:inherit}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.skip{position:absolute;left:8px;top:-60px;z-index:200;background:var(--ink);color:#fff;padding:10px 16px;border-radius:var(--radius);transition:top .15s ease}
+.skip:focus{top:8px}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.ic{width:1em;height:1em;stroke:currentColor;fill:none;vertical-align:-.14em;flex:none}
+
+/* ---------- shell ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{
+  position:fixed;inset:0 auto 0 0;width:var(--side-w);
+  background:var(--ink);color:#c7d1e0;
+  display:flex;flex-direction:column;z-index:60;
+  border-right:1px solid #0a0f18;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:18px 18px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.brand .mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(160deg,#14b8a6,#0f7d72);display:grid;place-items:center;flex:none}
+.brand .mark svg{width:18px;height:18px;stroke:#062a26}
+.brand b{font-family:var(--display);font-size:15px;color:#fff;font-weight:600;line-height:1.2;display:block}
+.brand small{font-size:11px;color:#7d8ba3;letter-spacing:.04em;text-transform:uppercase}
+.nav-scroll{overflow-y:auto;padding:14px 12px 24px;flex:1}
+.nav-group{margin-bottom:18px}
+.nav-label{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#5f6d85;padding:0 10px 7px}
+.nav-item{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  padding:9px 10px;border-radius:var(--radius);border:0;background:transparent;
+  color:#b7c2d4;cursor:pointer;font-size:14px;line-height:1.3;position:relative;
+  transition:background .15s ease,color .15s ease;
+}
+.nav-item svg{width:18px;height:18px;flex:none;stroke:currentColor}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav-item[aria-current="page"]{background:rgba(15,157,143,.16);color:#fff}
+.nav-item[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.nav-item .count{margin-left:auto;font-size:11px;font-family:var(--mono);background:rgba(255,255,255,.09);padding:1px 7px;border-radius:99px;color:#9fb0c7}
+.side-foot{padding:14px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:#6b7a92}
+.env-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#38d39f;margin-right:7px;box-shadow:0 0 0 3px rgba(56,211,159,.16)}
+
+.main{margin-left:var(--side-w);flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  position:sticky;top:0;z-index:40;height:var(--topbar-h);
+  background:rgba(255,255,255,.88);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:0 20px;
+}
+.hamburger{display:none}
+.crumbs{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--muted);min-width:0;flex:1}
+.crumbs b{color:var(--text);font-weight:600;font-family:var(--display);font-size:15px}
+.search{position:relative;width:290px;max-width:34vw}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--muted);pointer-events:none}
+.search input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2);font-size:14px}
+.search input:focus{background:#fff;border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.env-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;background:var(--ink);color:#c8e9e4;white-space:nowrap}
+.avatar{display:flex;align-items:center;gap:9px;padding-left:12px;border-left:1px solid var(--line)}
+.avatar .who{text-align:right;line-height:1.2}
+.avatar .who b{display:block;font-size:13.5px;font-weight:600}
+.avatar .who span{font-size:11.5px;color:var(--muted)}
+.avatar .pic{width:36px;height:36px;border-radius:50%;background:linear-gradient(160deg,#27405c,#16283e);color:#e8f5f3;display:grid;place-items:center;font-weight:600;font-size:13px;font-family:var(--display);flex:none}
+
+.view{flex:1;padding:26px 28px 64px;max-width:1440px;width:100%}
+.page-head{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+.page-head .titles{flex:1;min-width:240px}
+.page-head h1{font-size:25px;line-height:1.2}
+.page-head .sub{color:var(--muted);font-size:14px;margin-top:5px;max-width:70ch}
+.page-actions{display:flex;gap:9px;flex-wrap:wrap}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 15px;border-radius:var(--radius);border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
+  white-space:nowrap;min-height:40px;
+}
+.btn svg{width:16px;height:16px;stroke:currentColor;flex:none}
+.btn:hover{background:var(--surface-2);border-color:var(--muted)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#03211e;font-weight:600}
+.btn-primary:hover{background:var(--accent-strong);border-color:var(--accent-strong);color:#fff}
+.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+.btn-danger:hover{background:#a93226;border-color:#a93226}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-sm{padding:6px 11px;min-height:34px;font-size:13px}
+.btn-sm svg{width:14px;height:14px}
+.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
+.btn.is-loading{color:transparent !important;position:relative;pointer-events:none}
+.btn.is-loading::after{content:"";position:absolute;width:15px;height:15px;border-radius:50%;border:2px solid rgba(0,0,0,.25);border-top-color:currentColor;color:var(--text);animation:spin .7s linear infinite}
+.btn-primary.is-loading::after{border-color:rgba(255,255,255,.4);border-top-color:#fff}
+@keyframes spin{to{transform:rotate(360deg)}}
+.icon-btn{width:40px;height:40px;padding:0;border-radius:var(--radius);border:1px solid transparent;background:transparent;display:grid;place-items:center;cursor:pointer;color:var(--text-2)}
+.icon-btn svg{width:19px;height:19px;stroke:currentColor}
+.icon-btn:hover{background:var(--surface-2);color:var(--text);border-color:var(--line)}
+
+/* ---------- cards / stats ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden}
+.card-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-head h2,.card-head h3{font-size:15.5px}
+.card-head .spacer{flex:1}
+.card-body{padding:18px}
+.card-foot{padding:14px 18px;border-top:1px solid var(--line);background:var(--surface-2)}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.grid-main{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:18px;align-items:start}
+
+.stat-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:22px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px 18px;box-shadow:var(--shadow-sm);display:grid;gap:3px}
+.stat .k{font-size:12.5px;color:var(--muted);font-weight:500}
+.stat .v{font-family:var(--display);font-size:29px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.stat .d{font-size:12.5px;color:var(--muted)}
+.trend-up{color:var(--green);font-weight:600}
+.trend-down{color:var(--red);font-weight:600}
+
+/* ---------- badges ---------- */
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;white-space:nowrap;line-height:1.5}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.badge-published{background:var(--green-soft);color:#256b48}
+.badge-draft{background:var(--surface-2);color:var(--text-2)}
+.badge-deprecated{background:var(--amber-soft);color:#8a5a10}
+.badge-archived{background:var(--violet-soft);color:#4d3fb0}
+.badge-purged{background:var(--red-soft);color:#98291d}
+.badge-healthy{background:var(--green-soft);color:#256b48}
+.badge-degraded{background:var(--amber-soft);color:#8a5a10}
+.badge-unhealthy{background:var(--red-soft);color:#98291d}
+.badge-completed{background:var(--green-soft);color:#256b48}
+.badge-partial{background:var(--amber-soft);color:#8a5a10}
+.badge-pending{background:var(--blue-soft);color:#1f5289}
+.badge-failed{background:var(--red-soft);color:#98291d}
+.badge-neutral{background:var(--surface-2);color:var(--text-2)}
+.pill-mono{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:2px 7px;border-radius:var(--radius-xs);color:var(--text-2)}
+
+/* ---------- chips / rail ---------- */
+.rail{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.chip{
+  border:1px solid var(--line-strong);background:var(--surface);border-radius:99px;
+  padding:6px 14px;font-size:13px;color:var(--text-2);cursor:pointer;white-space:nowrap;flex:none;
+  transition:background .14s ease,border-color .14s ease,color .14s ease;
+}
+.chip:hover{border-color:var(--muted);color:var(--text)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ---------- toolbar ---------- */
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+
+/* ---------- tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+thead th{
+  text-align:left;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;padding:11px 16px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap;
+}
+tbody td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{transition:background .12s ease}
+tbody tr:hover{background:#fafcfe}
+tbody tr.clickable{cursor:pointer}
+.cell-strong{font-weight:600;color:var(--text)}
+.cell-mono{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+.cell-actions{text-align:right;white-space:nowrap}
+.cell-actions svg{width:16px;height:16px;stroke:currentColor;vertical-align:middle}
+.table-wrap td > svg{width:15px;height:15px;stroke:currentColor;vertical-align:middle}
+.tbl-empty{padding:48px 20px;text-align:center;color:var(--muted)}
+
+/* ---------- forms ---------- */
+.field{display:grid;gap:6px;margin-bottom:18px}
+.field > label,.field .label{font-size:13.5px;font-weight:600;color:var(--text)}
+.field .req{color:var(--red);margin-left:2px}
+.input,.select,.textarea{
+  width:100%;padding:9px 12px;border:1px solid var(--line-strong);border-radius:var(--radius);
+  background:var(--surface);font-size:14.5px;font-family:inherit;color:var(--text);transition:border-color .14s ease,box-shadow .14s ease;
+}
+.input:focus,.select:focus,.textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.input[readonly]{background:var(--surface-2);color:var(--text-2);cursor:not-allowed}
+.textarea{min-height:96px;resize:vertical;line-height:1.55}
+.helper{font-size:12.5px;color:var(--muted)}
+.error-text{font-size:12.5px;color:var(--red);font-weight:500;display:flex;gap:5px;align-items:center}
+.error-text svg{width:13px;height:13px;stroke:currentColor;flex:none}
+.input.invalid,.select.invalid,.textarea.invalid{border-color:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field-row-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+
+.radio-card{border:1px solid var(--line-strong);border-radius:var(--radius);padding:13px 15px;cursor:pointer;display:flex;gap:11px;align-items:flex-start;transition:border-color .14s ease,background .14s ease;background:var(--surface)}
+.radio-card:hover{border-color:var(--muted)}
+.radio-card input{margin-top:3px;accent-color:var(--accent)}
+.radio-card.sel{border-color:var(--accent);background:var(--accent-soft)}
+.radio-card .rc-t{font-weight:600;font-size:14px;display:block}
+.radio-card .rc-d{font-size:12.5px;color:var(--muted);margin-top:2px;display:block}
+
+.switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch .track{width:40px;height:23px;border-radius:99px;background:var(--line-strong);position:relative;transition:background .16s ease;flex:none}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:var(--shadow-sm);transition:transform .16s ease}
+.switch input:checked + .track{background:var(--accent)}
+.switch input:checked + .track::after{transform:translateX(17px)}
+.switch input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;margin-bottom:22px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  border:0;background:transparent;padding:11px 15px;font-size:14px;font-weight:500;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .14s ease,border-color .14s ease;
+}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--accent-strong);border-bottom-color:var(--accent);font-weight:600}
+
+/* ---------- misc ---------- */
+.empty{text-align:center;padding:52px 24px;color:var(--muted)}
+.empty svg{width:40px;height:40px;stroke:var(--line-strong);margin-bottom:14px}
+.empty h3{font-size:16px;color:var(--text);margin-bottom:6px}
+.empty p{font-size:14px;max-width:44ch;margin:0 auto 16px}
+.divider{height:1px;background:var(--line);margin:22px 0}
+.kv{display:grid;grid-template-columns:minmax(120px,180px) 1fr;gap:10px 18px;font-size:14px;margin:0}
+.kv dt{color:var(--muted);font-size:13px}
+.kv dd{margin:0;color:var(--text)}
+.code-inline{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 6px;border-radius:var(--radius-xs);color:var(--accent-strong)}
+.code-block{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--ink);color:#c9d6e6;border-radius:var(--radius);padding:14px 16px;overflow-x:auto;white-space:pre;margin:0}
+.callout{display:flex;gap:11px;padding:13px 15px;border-radius:var(--radius);font-size:13.5px;line-height:1.55;align-items:flex-start}
+.callout svg{width:17px;height:17px;flex:none;stroke:currentColor;margin-top:1px}
+.callout-info{background:var(--blue-soft);color:#1f5289}
+.callout-warn{background:var(--amber-soft);color:#7a4f0d}
+.callout-danger{background:var(--red-soft);color:#8f271b}
+.callout-accent{background:var(--accent-soft);color:var(--accent-strong)}
+.callout b{font-weight:600}
+.stack-list{display:grid;gap:10px}
+.list-row{display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);transition:border-color .14s ease,box-shadow .14s ease}
+.list-row:hover{border-color:var(--line-strong);box-shadow:var(--shadow-sm)}
+.list-row .lr-main{flex:1;min-width:0}
+.list-row .lr-t{font-weight:600;font-size:14px}
+.list-row .lr-s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.icon-tile{width:38px;height:38px;border-radius:var(--radius);display:grid;place-items:center;flex:none}
+.icon-tile svg{width:19px;height:19px;stroke:currentColor}
+.it-teal{background:var(--accent-soft);color:var(--accent-strong)}
+.it-blue{background:var(--blue-soft);color:#1f5289}
+.it-amber{background:var(--amber-soft);color:#8a5a10}
+.it-red{background:var(--red-soft);color:#98291d}
+.it-green{background:var(--green-soft);color:#256b48}
+.it-violet{background:var(--violet-soft);color:#4d3fb0}
+.it-neutral{background:var(--surface-2);color:var(--text-2)}
+.meter{height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;min-width:80px}
+.meter span{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.seg-list{display:grid;gap:0}
+.seg-item{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)}
+.seg-item:last-child{border-bottom:0}
+.step-rail{display:flex;gap:0;align-items:center;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:9px}
+.step .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--display);flex:none}
+.step.done .dot{background:var(--green);color:#fff}
+.step.now .dot{background:var(--accent);color:#03211e}
+.step.todo .dot{background:var(--surface-2);color:var(--muted);border:1px solid var(--line-strong)}
+.step .lbl{font-size:13px;font-weight:600}
+.step.todo .lbl{color:var(--muted)}
+.step-line{width:34px;height:2px;background:var(--line);margin:0 4px;flex:none}
+
+/* ---------- overlay: modal / drawer / toast ---------- */
+.scrim{position:fixed;inset:0;background:rgba(9,14,22,.5);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
+.scrim.on{opacity:1;pointer-events:auto}
+.modal-wrap{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:22px;pointer-events:none}
+.modal{
+  width:min(620px,100%);max-height:88vh;background:var(--surface);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);display:flex;flex-direction:column;pointer-events:auto;
+  opacity:0;transform:translateY(10px) scale(.99);transition:opacity .18s ease,transform .18s ease;
+  border:1px solid var(--line);
+}
+.modal.on{opacity:1;transform:none}
+.modal-head{display:flex;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.modal-head h2{font-size:18px}
+.modal-head .sub{font-size:13.5px;color:var(--muted);margin-top:4px}
+.modal-body{padding:20px 22px;overflow-y:auto}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--line);background:var(--surface-2);border-radius:0 0 var(--radius-lg) var(--radius-lg);flex-wrap:wrap}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--surface);z-index:95;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;border-left:1px solid var(--line)}
+.drawer.on{transform:none}
+.drawer-head{display:flex;gap:14px;padding:18px 20px;border-bottom:1px solid var(--line);align-items:flex-start}
+.drawer-head h2{font-size:17px}
+.drawer-body{padding:20px;overflow-y:auto;flex:1}
+.drawer-foot{padding:14px 20px;border-top:1px solid var(--line);background:var(--surface-2);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.toast-root{position:fixed;right:22px;bottom:22px;z-index:120;display:grid;gap:10px;max-width:360px}
+.toast{display:flex;gap:11px;align-items:flex-start;background:var(--ink);color:#e8eef7;padding:13px 15px;border-radius:var(--radius);box-shadow:var(--shadow-lg);font-size:13.5px;animation:toast-in .22s ease}
+.toast svg{width:17px;height:17px;flex:none;stroke:currentColor;margin-top:1px}
+.toast.ok svg{stroke:#4fd6a8}
+.toast.err svg{stroke:#ff8f80}
+.toast b{display:block;font-weight:600;margin-bottom:1px}
+.toast .tx{color:#a9b6c9}
+@keyframes toast-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* ---------- responsive ---------- */
+@media (max-width:1180px){
+  .grid-main{grid-template-columns:1fr}
+  .stat-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1024px){
+  .grid-3{grid-template-columns:1fr}
+  .field-row-3{grid-template-columns:1fr 1fr}
+}
+@media (max-width:960px){
+  :root{--side-w:0px}
+  .sidebar{transform:translateX(-100%);transition:transform .22s ease;width:264px;box-shadow:var(--shadow-lg)}
+  .sidebar.open{transform:none}
+  .main{margin-left:0}
+  .hamburger{display:grid}
+  .search{width:200px;max-width:38vw}
+  .view{padding:20px 16px 60px}
+}
+@media (max-width:768px){
+  .grid-2{grid-template-columns:1fr}
+  .field-row,.field-row-3{grid-template-columns:1fr}
+  .stat-strip{grid-template-columns:1fr 1fr;gap:12px}
+  .avatar .who{display:none}
+  .search{display:none}
+  .page-head h1{font-size:22px}
+  .toast-root{left:14px;right:14px;bottom:14px;max-width:none}
+}
+@media (max-width:520px){
+  .stat-strip{grid-template-columns:1fr}
+  .page-actions{width:100%}
+  .page-actions .btn{flex:1}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></symbol>
+    <symbol id="i-apps" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="m3 12 9 4.5L21 12"/><path d="m3 16.5 9 4.5 9-4.5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h5l1.5 3h5L16 12h5"/><path d="M5 5h14l2 7v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l2-7Z"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6M15 3v6"/><path d="M6 9h12v3a6 6 0 0 1-6 6 6 6 0 0 1-6-6V9Z"/><path d="M12 18v3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8"/><path d="M18 20a5 5 0 0 0-2.5-4.3"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.8 15H3.7a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.2-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10.5 4.5V4.4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.2 2.7h.1a2 2 0 1 1 0 4h-.1Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3 2.5 18a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 10v4M12 17.5h.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-1.5 5.5"/><path d="M20 5v6h-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6l1-8Z"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="6" height="5" rx="1.4"/><rect x="15" y="15" width="6" height="5" rx="1.4"/><path d="M9 6.5h5a3 3 0 0 1 3 3V15"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+    <symbol id="i-form" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 7-7M15 5l2 2M17 3l2 2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 21V4.5A1.5 1.5 0 0 1 7.5 3Z"/><path d="M14 3v4h4"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 1 0-5.6l2.4-2.4a4 4 0 0 1 5.6 5.6L16.6 13"/><path d="M14 10a4 4 0 0 1 0 5.6l-2.4 2.4a4 4 0 0 1-5.6-5.6L7.4 11"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Primary">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#062a26" stroke-width="2.2" stroke-linecap="round"><path d="M5 8h14M5 12h9M5 16h12"/></svg></span>
+      <span><b>App Builder</b><small>Integration Gateway</small></span>
+    </div>
+    <nav class="nav-scroll">
+      <div class="nav-group">
+        <div class="nav-label">Workspace</div>
+        <button class="nav-item" data-action="nav" data-route="#/dashboard"><svg aria-hidden="true"><use href="#i-dashboard"/></svg>Dashboard</button>
+        <button class="nav-item" data-action="nav" data-route="#/apps"><svg aria-hidden="true"><use href="#i-apps"/></svg>Apps<span class="count" id="nav-app-count">6</span></button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Operations</div>
+        <button class="nav-item" data-action="nav" data-route="#/submissions"><svg aria-hidden="true"><use href="#i-inbox"/></svg>Submissions</button>
+        <button class="nav-item" data-action="nav" data-route="#/connectors"><svg aria-hidden="true"><use href="#i-plug"/></svg>Connectors<span class="count" id="nav-conn-health">1</span></button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Governance</div>
+        <button class="nav-item" data-action="nav" data-route="#/audit"><svg aria-hidden="true"><use href="#i-shield"/></svg>Audit Log</button>
+        <button class="nav-item" data-action="nav" data-route="#/users"><svg aria-hidden="true"><use href="#i-users"/></svg>User Management</button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">System</div>
+        <button class="nav-item" data-action="nav" data-route="#/settings"><svg aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
+      </div>
+    </nav>
+    <div class="side-foot">
+      <div><span class="env-dot" aria-hidden="true"></span>Environment: production</div>
+      <div style="margin-top:4px">JEV chain · 3 providers</div>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn hamburger" data-action="toggle-nav" aria-label="Open navigation" aria-expanded="false"><svg aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <div class="crumbs" id="crumbs"><b>Dashboard</b></div>
+      <div class="search">
+        <svg aria-hidden="true"><use href="#i-search"/></svg>
+        <label class="sr" for="global-search">Search apps, submissions, users</label>
+        <input id="global-search" type="search" placeholder="Search apps, submissions…" autocomplete="off" />
+      </div>
+      <span class="env-pill"><span class="env-dot" aria-hidden="true"></span>prod</span>
+      <div class="avatar">
+        <div class="who"><b>An Nguyen</b><span>Global Admin</span></div>
+        <span class="pic" aria-hidden="true">AN</span>
+      </div>
+    </header>
+    <main id="main" class="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<div class="modal-wrap" id="modal-root" aria-hidden="true"></div>
+<div id="drawer-root"></div>
+<div class="toast-root" id="toast-root" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  "use strict";
+
+  /* ======================= demo data ======================= */
+  var DB = {
+    me:{ realUserId:"usr_42", name:"An Nguyen", email:"a.nguyen@company.com", role:"Global Admin" },
+    apps:[
+      {
+        id:"hr-leave-request", name:"Leave Request", icon:"i-clock", tone:"it-teal",
+        desc:"Submit and manage annual, sick, and unpaid leave requests with manager routing.",
+        owner:"An Nguyen", status:"published", version:3, mode:"hybrid",
+        updated:"2026-09-28T14:30:00Z", subs24h:62, subsTotal:1284, jev:0.94,
+        triggers:[
+          {type:"intent", intent:"request_leave", examples:["I want to take leave","Request annual leave","Book time off next week"]},
+          {type:"slash", command:"/leave request"}
+        ],
+        roles:[
+          {name:"user", permissions:["leave:create","leave:view_own","leave:edit_own"]},
+          {name:"manager", permissions:["leave:view_team","leave:approve","leave:reject"]},
+          {name:"admin", permissions:["leave:*"]}
+        ],
+        assignments:[
+          {role:"user", users:["usr_100 · Tran Minh","usr_101 · Le Ha","usr_102 · Pham Duy"], count:248},
+          {role:"manager", users:["usr_10 · Vu Lan"], count:14},
+          {role:"admin", users:["usr_42 · An Nguyen"], count:1}
+        ],
+        forms:[
+          {id:"create-leave", label:"Create leave", version:2, action:"create", perm:"leave:create", fields:14},
+          {id:"view-leave", label:"View leave", version:1, action:"view", perm:"leave:view_own", fields:0}
+        ],
+        data:{
+          mode:"hybrid",
+          collections:[{name:"leave_requests", indexes:[
+            {fields:"real_user_id, status", type:"compound"},
+            {fields:"created_at", type:"single", order:"-1"}
+          ]}],
+          connector:"hr-api-prod",
+          operation:"create_leave_request",
+          mapping:[
+            {from:"{{real_user.employee_code}}", to:"employee_code", transform:"direct"},
+            {from:"{{form.start_date}}", to:"start_date", transform:"date · ISO-8601"},
+            {from:"{{form.end_date}}", to:"end_date", transform:"date · ISO-8601"},
+            {from:"{{form.leave_type}}", to:"leave_type", transform:"lookup table"},
+            {from:"{{form.reason}}", to:"reason", transform:"direct"}
+          ]
+        },
+        retention:{mode:"purge_after_days", days:365},
+        deprecation:"",
+        prefill:[
+          {field:"Employee code", value:"EMP-2024-042"},
+          {field:"Department", value:"Engineering"}
+        ]
+      },
+      {
+        id:"ticket-create", name:"IT Ticket", icon:"i-bolt", tone:"it-blue",
+        desc:"File and route IT support tickets into Redmine with priority triage.",
+        owner:"Dang Khoa", status:"published", version:7, mode:"external",
+        updated:"2026-09-29T09:12:00Z", subs24h:184, subsTotal:3902, jev:0.91,
+        triggers:[
+          {type:"intent", intent:"create_ticket", examples:["Open a ticket","My laptop won't boot","Report a bug"]},
+          {type:"slash", command:"/ticket new"}
+        ],
+        roles:[
+          {name:"reporter", permissions:["ticket:create","ticket:view_own"]},
+          {name:"agent", permissions:["ticket:view_all","ticket:assign","ticket:close"]},
+          {name:"admin", permissions:["ticket:*"]}
+        ],
+        assignments:[
+          {role:"reporter", users:["usr_140 · Do Ngoc","usr_141 · Bui Tam"], count:612},
+          {role:"agent", users:["usr_22 · Hoang Yen"], count:31},
+          {role:"admin", users:["usr_18 · Dang Khoa"], count:2}
+        ],
+        forms:[
+          {id:"create-ticket", label:"Create ticket", version:5, action:"create", perm:"ticket:create", fields:9},
+          {id:"view-ticket", label:"View tickets", version:2, action:"query", perm:"ticket:view_own", fields:0}
+        ],
+        data:{
+          mode:"external",
+          collections:[],
+          connector:"redmine-prod",
+          operation:"create_issue",
+          mapping:[
+            {from:"{{form.title}}", to:"subject", transform:"direct"},
+            {from:"{{form.priority}}", to:"priority_id", transform:"lookup table"},
+            {from:"{{form.category}}", to:"category_id", transform:"lookup table"},
+            {from:"{{form.description}}", to:"description", transform:"direct"},
+            {from:"{{real_user.email}}", to:"author_email", transform:"direct"}
+          ]
+        },
+        retention:{mode:"keep_forever", days:null},
+        deprecation:"",
+        prefill:[{field:"Author email", value:"a.nguyen@company.com"}]
+      },
+      {
+        id:"asset-request", name:"Asset Request", icon:"i-db", tone:"it-violet",
+        desc:"Request laptops, monitors, and peripherals from the internal asset catalog.",
+        owner:"Dang Khoa", status:"draft", version:1, mode:"internal",
+        updated:"2026-09-30T08:40:00Z", subs24h:0, subsTotal:47, jev:0.0,
+        triggers:[
+          {type:"intent", intent:"request_asset", examples:["I need a monitor","Request a new laptop"]}
+        ],
+        roles:[
+          {name:"requester", permissions:["asset:create","asset:view_own"]},
+          {name:"admin", permissions:["asset:*"]}
+        ],
+        assignments:[
+          {role:"requester", users:["usr_100 · Tran Minh"], count:96},
+          {role:"admin", users:["usr_18 · Dang Khoa"], count:1}
+        ],
+        forms:[{id:"create-asset", label:"Create asset request", version:1, action:"create", perm:"asset:create", fields:7}],
+        data:{
+          mode:"internal",
+          collections:[{name:"asset_requests", indexes:[{fields:"real_user_id", type:"single"}]}],
+          connector:"", operation:"", mapping:[]
+        },
+        retention:{mode:"purge_after_days", days:180},
+        deprecation:"",
+        prefill:[{field:"Department", value:"Engineering"}]
+      },
+      {
+        id:"expense-claim", name:"Expense Claim", icon:"i-doc", tone:"it-amber",
+        desc:"Submit reimbursable expenses with attachments and route to the ERP.",
+        owner:"Vu Lan", status:"published", version:4, mode:"hybrid",
+        updated:"2026-09-27T16:05:00Z", subs24h:38, subsTotal:906, jev:0.88,
+        triggers:[
+          {type:"intent", intent:"claim_expense", examples:["Reimburse my taxi","File an expense"]},
+          {type:"slash", command:"/expense claim"}
+        ],
+        roles:[
+          {name:"claimant", permissions:["expense:create","expense:view_own"]},
+          {name:"approver", permissions:["expense:view_team","expense:approve"]}
+        ],
+        assignments:[
+          {role:"claimant", users:["usr_101 · Le Ha"], count:388},
+          {role:"approver", users:["usr_10 · Vu Lan"], count:22}
+        ],
+        forms:[
+          {id:"create-expense", label:"Create claim", version:3, action:"create", perm:"expense:create", fields:11},
+          {id:"view-expense", label:"View claims", version:1, action:"view", perm:"expense:view_own", fields:0}
+        ],
+        data:{
+          mode:"hybrid",
+          collections:[{name:"expense_claims", indexes:[{fields:"real_user_id, status", type:"compound"}]}],
+          connector:"erp-sap-prod",
+          operation:"post_expense",
+          mapping:[
+            {from:"{{form.amount}}", to:"gross_amount", transform:"number · 2dp"},
+            {from:"{{form.currency}}", to:"currency_code", transform:"direct"},
+            {from:"{{real_user.cost_center}}", to:"cost_center", transform:"direct"},
+            {from:"{{form.receipt}}", to:"attachment_url", transform:"file → URL"}
+          ]
+        },
+        retention:{mode:"purge_after_days", days:1095},
+        deprecation:"",
+        prefill:[{field:"Cost center", value:"CC-ENG-01"}]
+      },
+      {
+        id:"onboarding-checklist", name:"Onboarding Checklist", icon:"i-users", tone:"it-green",
+        desc:"Track new-hire setup tasks across IT, HR, and facilities.",
+        owner:"Vu Lan", status:"deprecated", version:2, mode:"hybrid",
+        updated:"2026-08-14T11:00:00Z", subs24h:4, subsTotal:812, jev:0.79,
+        triggers:[{type:"intent", intent:"start_onboarding", examples:["New hire checklist"]}],
+        roles:[
+          {name:"hr", permissions:["onboard:create","onboard:view_all"]},
+          {name:"buddy", permissions:["onboard:view_own"]}
+        ],
+        assignments:[
+          {role:"hr", users:["usr_10 · Vu Lan"], count:8},
+          {role:"buddy", users:["usr_140 · Do Ngoc"], count:57}
+        ],
+        forms:[{id:"start-onboard", label:"Start onboarding", version:2, action:"create", perm:"onboard:create", fields:8}],
+        data:{
+          mode:"hybrid",
+          collections:[{name:"onboarding", indexes:[{fields:"real_user_id", type:"single"}]}],
+          connector:"hr-api-prod", operation:"create_onboarding",
+          mapping:[{from:"{{form.start_date}}", to:"start_date", transform:"date · ISO-8601"}]
+        },
+        retention:{mode:"keep_forever", days:null},
+        deprecation:"This app will be replaced by HR Portal v2 in Q1 2027. Use the new portal instead.",
+        prefill:[]
+      },
+      {
+        id:"access-review", name:"Access Review", icon:"i-key", tone:"it-neutral",
+        desc:"Quarterly access review attestation for compliance reporting.",
+        owner:"An Nguyen", status:"archived", version:1, mode:"internal",
+        updated:"2026-06-02T10:20:00Z", subs24h:0, subsTotal:203, jev:0.0,
+        triggers:[],
+        roles:[{name:"reviewer", permissions:["review:attest"]}],
+        assignments:[{role:"reviewer", users:["usr_42 · An Nguyen"], count:12}],
+        forms:[{id:"attest", label:"Attestation", version:1, action:"create", perm:"review:attest", fields:5}],
+        data:{mode:"internal", collections:[{name:"access_reviews", indexes:[]}], connector:"", operation:"", mapping:[]},
+        retention:{mode:"purge_after_days", days:1095},
+        deprecation:"",
+        prefill:[]
+      }
+    ],
+    connectors:[
+      {id:"redmine-prod", name:"Redmine (Production)", type:"rest", status:"healthy", base:"https://redmine.internal.company.com/api/v2", rpm:60, linked:2, p95:412, success:99.4, manager:"usr_admin_01"},
+      {id:"hr-api-prod", name:"HR API (Production)", type:"rest", status:"healthy", base:"https://hr.internal.company.com/api/v2", rpm:60, linked:2, p95:238, success:99.8, manager:"usr_admin_01"},
+      {id:"jira-cloud", name:"Jira Cloud", type:"rest", status:"degraded", base:"https://company.atlassian.net/rest/api/3", rpm:30, linked:1, p95:1840, success:94.1, manager:"usr_admin_01"},
+      {id:"erp-sap-prod", name:"ERP — SAP Gateway", type:"soap", status:"unhealthy", base:"https://erp.internal.company.com/sap/opu", rpm:120, linked:1, p95:0, success:61.3, manager:"usr_admin_01"},
+      {id:"smtp-notify", name:"Notification Relay", type:"webhook", status:"healthy", base:"https://relay.internal.company.com/hooks", rpm:200, linked:3, p95:96, success:99.9, manager:"usr_admin_02"}
+    ],
+    submissions:[
+      {id:"sub_a1b2c3d4", app:"hr-leave-request", appName:"Leave Request", user:"usr_42 · An Nguyen", chat:"U12345", im:"Slack", form:"create-leave", formVersion:2, status:"completed", mode:"hybrid", created:"2026-09-30T09:59:00Z", completed:"2026-09-30T10:00:05Z", data:{start_date:"2026-10-15", end_date:"2026-10-17", leave_type:"annual", reason:"Family event"}, internal_ref:"leave_requests/doc_xyz789", external:{connector:"hr-api-prod", system_id:"LV-2026-0042", status:"synced"}, link:{type:"create", jti:"jwt_9f2a", issued:"2026-09-30T09:52:00Z", consumed:"2026-09-30T10:00:03Z"}},
+      {id:"sub_e5f6a7b8", app:"ticket-create", appName:"IT Ticket", user:"usr_140 · Do Ngoc", chat:"U99801", im:"Slack", form:"create-ticket", formVersion:5, status:"completed", mode:"external", created:"2026-09-30T09:41:00Z", completed:"2026-09-30T09:41:02Z", data:{title:"VPN disconnects every 10 minutes", priority:"high", category:"network", description:"Since the update yesterday the VPN drops repeatedly."}, internal_ref:null, external:{connector:"redmine-prod", system_id:"RM-88213", status:"synced"}, link:{type:"create", jti:"jwt_7c11", issued:"2026-09-30T09:34:00Z", consumed:"2026-09-30T09:41:01Z"}},
+      {id:"sub_c9d0e1f2", app:"expense-claim", appName:"Expense Claim", user:"usr_101 · Le Ha", chat:"T45210", im:"Teams", form:"create-expense", formVersion:3, status:"partial", mode:"hybrid", created:"2026-09-30T08:20:00Z", completed:null, data:{amount:145.5, currency:"USD", category:"travel", receipt:"taxi-20260930.jpg"}, internal_ref:"expense_claims/doc_7781", external:{connector:"erp-sap-prod", system_id:null, status:"retry_queued"}, link:{type:"create", jti:"jwt_3ab9", issued:"2026-09-30T08:12:00Z", consumed:"2026-09-30T08:20:14Z"}},
+      {id:"sub_11223344", app:"hr-leave-request", appName:"Leave Request", user:"usr_100 · Tran Minh", chat:"U23311", im:"Slack", form:"create-leave", formVersion:1, status:"failed", mode:"hybrid", created:"2026-09-29T17:02:00Z", completed:null, data:{start_date:"2026-11-02", end_date:"2026-11-04", leave_type:"unpaid", reason:""}, internal_ref:null, external:{connector:"hr-api-prod", system_id:null, status:"rejected · 400 bad request"}, link:{type:"edit", jti:"jwt_bb02", issued:"2026-09-29T16:50:00Z", consumed:"2026-09-29T17:02:41Z"}},
+      {id:"sub_55667788", app:"ticket-create", appName:"IT Ticket", user:"usr_141 · Bui Tam", chat:"U77012", im:"Zalo", form:"create-ticket", formVersion:4, status:"pending_external", mode:"external", created:"2026-09-30T07:55:00Z", completed:null, data:{title:"Printer on floor 4 offline", priority:"medium", category:"hardware", description:"No response from the shared printer."}, internal_ref:null, external:{connector:"jira-cloud", system_id:null, status:"retrying · attempt 2/5"}, link:{type:"create", jti:"jwt_5d70", issued:"2026-09-30T07:48:00Z", consumed:"2026-09-30T07:55:12Z"}},
+      {id:"sub_99aabbcc", app:"expense-claim", appName:"Expense Claim", user:"usr_10 · Vu Lan", chat:"U10002", im:"Slack", form:"create-expense", formVersion:3, status:"completed", mode:"hybrid", created:"2026-09-30T06:30:00Z", completed:"2026-09-30T06:30:04Z", data:{amount:68, currency:"USD", category:"meals", receipt:"lunch-team.jpg"}, internal_ref:"expense_claims/doc_7780", external:{connector:"erp-sap-prod", system_id:"EXP-4410", status:"synced"}, link:{type:"create", jti:"jwt_2210", issued:"2026-09-30T06:22:00Z", consumed:"2026-09-30T06:30:01Z"}},
+      {id:"sub_ddeeff00", app:"onboarding-checklist", appName:"Onboarding Checklist", user:"usr_140 · Do Ngoc", chat:"U99801", im:"Slack", form:"start-onboard", formVersion:2, status:"completed", mode:"hybrid", created:"2026-09-29T14:10:00Z", completed:"2026-09-29T14:10:03Z", data:{start_date:"2026-10-06", buddy:"usr_141 · Bui Tam", equipment:"laptop, monitor"}, internal_ref:"onboarding/doc_5510", external:{connector:"hr-api-prod", system_id:"ONB-2026-118", status:"synced"}, link:{type:"create", jti:"jwt_44aa", issued:"2026-09-29T14:02:00Z", consumed:"2026-09-29T14:10:02Z"}},
+      {id:"sub_13579bdf", app:"ticket-create", appName:"IT Ticket", user:"usr_42 · An Nguyen", chat:"U12345", im:"Slack", form:"create-ticket", formVersion:5, status:"completed", mode:"external", created:"2026-09-29T11:20:00Z", completed:"2026-09-29T11:20:02Z", data:{title:"SSO login loop on staging", priority:"critical", category:"access", description:"Redirect loop after clearing cookies."}, internal_ref:null, external:{connector:"redmine-prod", system_id:"RM-88190", status:"synced"}, link:{type:"create", jti:"jwt_66cd", issued:"2026-09-29T11:12:00Z", consumed:"2026-09-29T11:20:01Z"}}
+    ],
+    audit:[
+      {ts:"2026-09-30T10:00:05Z", actor:"usr_42 · An Nguyen", action:"submission.create", target:"sub_a1b2c3d4", app:"hr-leave-request", prev:"—", next:"status:completed", ip:"10.0.1.55"},
+      {ts:"2026-09-30T09:41:01Z", actor:"usr_140 · Do Ngoc", action:"submission.create", target:"sub_e5f6a7b8", app:"ticket-create", prev:"—", next:"status:completed", ip:"10.0.4.12"},
+      {ts:"2026-09-30T09:12:44Z", actor:"usr_18 · Dang Khoa", action:"app.update", target:"ticket-create", app:"ticket-create", prev:"version:6", next:"version:7", ip:"10.0.2.30"},
+      {ts:"2026-09-30T08:40:10Z", actor:"usr_18 · Dang Khoa", action:"app.create", target:"asset-request", app:"asset-request", prev:"—", next:"status:draft", ip:"10.0.2.30"},
+      {ts:"2026-09-30T08:20:14Z", actor:"usr_101 · Le Ha", action:"submission.create", target:"sub_c9d0e1f2", app:"expense-claim", prev:"—", next:"status:partial", ip:"10.0.7.9"},
+      {ts:"2026-09-30T07:55:12Z", actor:"usr_141 · Bui Tam", action:"submission.create", target:"sub_55667788", app:"ticket-create", prev:"—", next:"status:pending_external", ip:"10.0.9.4"},
+      {ts:"2026-09-29T16:44:00Z", actor:"usr_42 · An Nguyen", action:"rbac.permission_change", target:"hr-leave-request", app:"hr-leave-request", prev:"perm_version:41", next:"perm_version:42", ip:"10.0.1.55"},
+      {ts:"2026-09-29T15:02:00Z", actor:"usr_admin_01", action:"connector.test", target:"erp-sap-prod", app:"—", prev:"status:healthy", next:"status:unhealthy", ip:"10.0.0.8"},
+      {ts:"2026-09-28T14:30:00Z", actor:"usr_42 · An Nguyen", action:"app.publish", target:"hr-leave-request", app:"hr-leave-request", prev:"version:2,status:draft", next:"version:3,status:published", ip:"10.0.1.55"},
+      {ts:"2026-09-27T16:05:00Z", actor:"usr_10 · Vu Lan", action:"app.publish", target:"expense-claim", app:"expense-claim", prev:"version:3", next:"version:4", ip:"10.0.3.21"}
+    ],
+    users:[
+      {real:"usr_42", name:"An Nguyen", email:"a.nguyen@company.com", dept:"Engineering", code:"EMP-2024-042", ims:["Slack · U12345"], verified:"sso", status:"active"},
+      {real:"usr_10", name:"Vu Lan", email:"v.lan@company.com", dept:"HR", code:"EMP-2021-010", ims:["Slack · U10002","Teams · T10002"], verified:"admin_import", status:"active"},
+      {real:"usr_18", name:"Dang Khoa", email:"d.khoa@company.com", dept:"IT", code:"EMP-2022-018", ims:["Slack · U18000"], verified:"sso", status:"active"},
+      {real:"usr_100", name:"Tran Minh", email:"t.minh@company.com", dept:"Engineering", code:"EMP-2024-100", ims:["Slack · U23311"], verified:"otp", status:"active"},
+      {real:"usr_101", name:"Le Ha", email:"l.ha@company.com", dept:"Marketing", code:"EMP-2024-101", ims:["Teams · T45210"], verified:"otp", status:"active"},
+      {real:"usr_140", name:"Do Ngoc", email:"d.ngoc@company.com", dept:"Engineering", code:"EMP-2025-140", ims:["Slack · U99801"], verified:"otp", status:"active"},
+      {real:"usr_205", name:"Nguyen Bao", email:"n.bao@company.com", dept:"Finance", code:"EMP-2019-205", ims:["Slack · U20500"], verified:"admin_import", status:"deactivated"}
+    ],
+    jev:{
+      chain:[
+        {provider:"openjev-prod", spec:"1.0", timeout:500, minConf:0.7, status:"healthy", latency:230, uptime:"14d 4h"},
+        {provider:"openai-compatible", spec:"1.0", timeout:1000, minConf:0.75, status:"healthy", latency:640, uptime:"2d 11h"},
+        {provider:"rule-based", spec:"1.0", timeout:50, minConf:0.5, status:"healthy", latency:6, uptime:"31d 2h"}
+      ],
+      cache:{enabled:true, ttl:300, strategy:"hash(text + sorted(tool_ids) + locale)"},
+      healthInterval:60,
+      circuit:{failureThreshold:5, resetTimeout:30}
+    }
+  };
+
+  /* ======================= helpers ======================= */
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  var esc = function(s){
+    return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c];
+    });
+  };
+  function icon(name,cls){
+    return '<svg class="ic'+(cls?" "+cls:"")+'" aria-hidden="true" focusable="false"><use href="#'+name+'"/></svg>';
+  }
+  function fmtDate(iso){
+    if(!iso) return "—";
+    var d=new Date(iso); if(isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+  }
+  function fmtNum(n){ return (n||0).toLocaleString("en-US"); }
+  function statusBadge(s){
+    var map={
+      published:["badge-published","Published"], draft:["badge-draft","Draft"],
+      deprecated:["badge-deprecated","Deprecated"], archived:["badge-archived","Archived"],
+      purged:["badge-purged","Purged"], healthy:["badge-healthy","Healthy"],
+      degraded:["badge-degraded","Degraded"], unhealthy:["badge-unhealthy","Unhealthy"],
+      completed:["badge-completed","Completed"], partial:["badge-partial","Partial"],
+      pending_external:["badge-pending","Pending external"], failed:["badge-failed","Failed"],
+      active:["badge-healthy","Active"], deactivated:["badge-draft","Deactivated"]
+    };
+    var m=map[s]||["badge-neutral",s];
+    return '<span class="badge '+m[0]+'"><span class="dot"></span>'+esc(m[1])+'</span>';
+  }
+  function appById(id){ for(var i=0;i<DB.apps.length;i++){ if(DB.apps[i].id===id) return DB.apps[i]; } return null; }
+
+  /* ======================= toast ======================= */
+  function toast(title,text,kind){
+    var root=$("#toast-root");
+    var el=document.createElement("div");
+    el.className="toast "+(kind||"ok");
+    el.innerHTML=icon(kind==="err"?"i-alert":"i-check")+'<div><b>'+esc(title)+'</b>'+(text?'<span class="tx">'+esc(text)+'</span>':"")+'</div>';
+    root.appendChild(el);
+    setTimeout(function(){
+      el.style.transition="opacity .2s ease,transform .2s ease";
+      el.style.opacity="0"; el.style.transform="translateY(8px)";
+      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); },220);
+    },3800);
+  }
+
+  /* ======================= overlay (modal / drawer) ======================= */
+  var lastFocus=null;
+  function openModal(cfg){
+    lastFocus=document.activeElement;
+    var root=$("#modal-root");
+    var mid="modal-title-"+(cfg.key||"x");
+    root.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="'+mid+'">'+
+      '<div class="modal-head">'+(cfg.icon?'<span class="icon-tile '+(cfg.tone||"it-teal")+'">'+icon(cfg.icon)+'</span>':"")+
+      '<div class="od-fill"><h2 id="'+mid+'">'+esc(cfg.title)+'</h2>'+(cfg.sub?'<div class="sub">'+esc(cfg.sub)+'</div>':"")+'</div>'+
+      '<button class="icon-btn" data-action="close-overlay" aria-label="Close dialog">'+icon("i-x")+'</button></div>'+
+      '<div class="modal-body">'+cfg.body+'</div>'+
+      (cfg.footer?'<div class="modal-foot">'+cfg.footer+'</div>':"")+
+    '</div>';
+    root.setAttribute("aria-hidden","false");
+    requestAnimationFrame(function(){
+      var m=$(".modal",root); if(m) m.classList.add("on");
+      var f=root.querySelector("[data-autofocus]")||root.querySelector("button, input, select, textarea, a[href]");
+      if(f) f.focus();
+    });
+    $("#scrim").classList.add("on");
+  }
+  function syncScrim(){
+    var on=$(".modal.on") || $(".drawer.on");
+    $("#scrim").classList.toggle("on", !!on);
+  }
+  function closeModal(){
+    var root=$("#modal-root");
+    var m=$(".modal",root);
+    if(m) m.classList.remove("on");
+    root.setAttribute("aria-hidden","true");
+    setTimeout(function(){ root.innerHTML=""; },180);
+    syncScrim();
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  function openDrawer(html){
+    lastFocus=document.activeElement;
+    var root=$("#drawer-root");
+    root.innerHTML='<aside class="drawer" role="dialog" aria-modal="true" aria-label="Detail">'+html+'</aside>';
+    var d=$(".drawer",root);
+    requestAnimationFrame(function(){ d.classList.add("on"); var f=d.querySelector("[data-autofocus]")||d.querySelector("button"); if(f) f.focus(); });
+    $("#scrim").classList.add("on");
+  }
+  function closeDrawer(){
+    var root=$("#drawer-root"); var d=$(".drawer",root);
+    if(d) d.classList.remove("on");
+    setTimeout(function(){ root.innerHTML=""; },240);
+    syncScrim();
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  function closeAllOverlays(){ closeModal(); closeDrawer(); }
+
+  function toggleSidebar(force){
+    var sb=$("#sidebar");
+    var open = force==null ? !sb.classList.contains("open") : force;
+    sb.classList.toggle("open",open);
+    $(".hamburger").setAttribute("aria-expanded",String(open));
+  }
+  function closeSidebar(){ toggleSidebar(false); }
+
+  /* ======================= routing ======================= */
+  var ROUTES = {
+    "#/dashboard":{title:"Dashboard",render:renderDashboard},
+    "#/apps":{title:"Apps",render:renderApps},
+    "#/submissions":{title:"Submissions",render:renderSubmissions},
+    "#/connectors":{title:"Connectors",render:renderConnectors},
+    "#/audit":{title:"Audit Log",render:renderAudit},
+    "#/users":{title:"User Management",render:renderUsers},
+    "#/settings":{title:"Settings",render:renderSettings}
+  };
+  var ui={ appFilter:"all", appQuery:"", editorTab:"general", subStatus:"all", subQuery:"", auditQuery:"", userQuery:"" };
+
+  function parseHash(){
+    var raw=(location.hash||"#/dashboard").replace(/^#/,"");
+    var parts=raw.split("?");
+    var path="#/"+parts[0].replace(/^\//,"");
+    var q={};
+    if(parts[1]){ parts[1].split("&").forEach(function(p){ var kv=p.split("="); if(kv[0]) q[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1]||""); }); }
+    return {path:path,q:q};
+  }
+  function navigate(hash){ if(location.hash===hash){ route(); } else { location.hash=hash; } }
+
+  function route(){
+    var r=parseHash();
+    var v=$("#main");
+    var html,title;
+    if(r.path.indexOf("#/apps/")===0 && r.path.length>7){
+      var id=r.path.slice(7);
+      var app=appById(id);
+      if(!app){ html=notFound(); title="Apps"; }
+      else {
+        if(r.q.tab) ui.editorTab=r.q.tab;
+        else if(ui.lastAppId!==id) ui.editorTab="general";
+        ui.lastAppId=id;
+        html=renderAppEditor(app); title=app.name;
+      }
+    } else if(ROUTES[r.path]){
+      ui.lastAppId=null;
+      title=ROUTES[r.path].title;
+      html=ROUTES[r.path].render();
+    } else { html=notFound(); title="Not found"; }
+    v.innerHTML=html;
+    document.title=title+" · App Builder Console";
+    $("#crumbs").innerHTML='<b>'+esc(title)+'</b>';
+    $$(".nav-item").forEach(function(b){
+      var rt=b.getAttribute("data-route");
+      var cur = rt===r.path || (rt==="#/apps" && r.path.indexOf("#/apps")===0);
+      if(cur) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
+    });
+    closeSidebar();
+    window.scrollTo(0,0);
+  }
+
+  function notFound(){
+    return '<div class="empty">'+icon("i-search")+'<h3>Page not found</h3><p>The view you requested does not exist in this prototype.</p>'+
+      '<button class="btn btn-primary" data-action="nav" data-route="#/dashboard">Back to dashboard</button></div>';
+  }
+
+  /* ======================= render: dashboard ======================= */
+  function renderDashboard(){
+    var published=DB.apps.filter(function(a){return a.status==="published";}).length;
+    var bad=DB.connectors.filter(function(c){return c.status!=="healthy";});
+    var recent=DB.submissions.slice(0,5);
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Dashboard</h1><p class="sub">Your apps, live submission traffic, and integration health across the gateway.</p></div>'+
+      '<div class="page-actions">'+
+        '<button class="btn" data-action="nav" data-route="#/submissions">'+icon("i-inbox")+'Open submissions</button>'+
+        '<button class="btn btn-primary" data-action="new-app">'+icon("i-plus")+'New app</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="stat-strip">'+
+      stat("My apps", String(DB.apps.length), published+" published · "+(DB.apps.length-published)+" other")+
+      stat("Submissions (24h)", fmtNum(DB.submissions.length),"across "+DB.apps.filter(function(a){return a.subs24h>0;}).length+" active apps")+
+      stat("JEV confidence","0.91",'<span class="trend-up">▲ 0.03</span> vs. 7-day avg')+
+      stat("Connectors healthy",(DB.connectors.length-bad.length)+" / "+DB.connectors.length, bad.length?('<span class="trend-down">'+bad.length+' need attention</span>'):"all nominal")+
+    '</div>'+
+    '<div class="grid-main">'+
+      '<section class="card">'+
+        '<div class="card-head"><h2>Recent submissions</h2><span class="spacer"></span>'+
+          '<button class="btn btn-sm btn-ghost" data-action="nav" data-route="#/submissions">View all'+icon("i-chevron")+'</button></div>'+
+        '<div class="card-body" style="padding:0">'+subTable(recent,true)+'</div>'+
+      '</section>'+
+      '<div class="od-stack" style="--od-gap:18px">'+
+        '<section class="card"><div class="card-head"><h2>Connector health</h2></div><div class="card-body"><div class="stack-list">'+
+          DB.connectors.map(function(c){
+            var tone=c.status==="healthy"?"it-green":(c.status==="degraded"?"it-amber":"it-red");
+            return '<div class="list-row"><span class="icon-tile '+tone+'">'+icon("i-plug")+'</span>'+
+              '<div class="lr-main"><div class="lr-t od-nowrap">'+esc(c.name)+'</div>'+
+              '<div class="lr-s">'+c.linked+' app'+(c.linked===1?"":"s")+' · '+c.rpm+' rpm · p95 '+c.p95+'ms</div></div>'+
+              statusBadge(c.status)+'</div>';
+          }).join("")+
+        '</div></div></section>'+
+        '<section class="card"><div class="card-head"><h2>Platform activity</h2></div><div class="card-body"><div class="seg-list">'+
+          activityRow("i-form","it-teal","Forms in progress","3 drafts awaiting publish")+
+          activityRow("i-users","it-blue","Onboarding queue","2 users awaiting OTP verification")+
+          activityRow("i-alert","it-amber","Retry queue","1 external call retrying · DLQ 0")+
+          activityRow("i-key","it-violet","Permission changes","perm_version bumped for 1 app today")+
+        '</div></div></section>'+
+      '</div>'+
+    '</div>';
+  }
+  function stat(k,v,d){
+    return '<div class="stat"><span class="k">'+esc(k)+'</span><span class="v">'+v+'</span><span class="d">'+d+'</span></div>';
+  }
+  function activityRow(ic,tone,t,s){
+    return '<div class="seg-item"><span class="icon-tile '+tone+'">'+icon(ic)+'</span><div class="od-fill"><div class="lr-t">'+esc(t)+'</div><div class="lr-s">'+esc(s)+'</div></div></div>';
+  }
+
+  /* ======================= render: apps ======================= */
+  function renderApps(){
+    var q=ui.appQuery.toLowerCase();
+    var list=DB.apps.filter(function(a){
+      if(ui.appFilter!=="all" && a.status!==ui.appFilter) return false;
+      if(q && (a.name+" "+a.id+" "+a.desc).toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+    var filters=[["all","All"],["published","Published"],["draft","Draft"],["deprecated","Deprecated"],["archived","Archived"]];
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Apps</h1><p class="sub">Self-contained mini-apps you own or manage. Open one to edit triggers, RBAC, forms, and routing.</p></div>'+
+      '<div class="page-actions"><button class="btn btn-primary" data-action="new-app">'+icon("i-plus")+'New app</button></div>'+
+    '</div>'+
+    '<div class="toolbar">'+
+      '<div class="rail" style="flex:1" role="group" aria-label="Filter by status">'+
+        filters.map(function(f){ return '<button class="chip" data-action="app-filter" data-value="'+f[0]+'" aria-pressed="'+(ui.appFilter===f[0])+'">'+f[1]+'</button>'; }).join("")+
+      '</div>'+
+      '<div class="search" style="width:250px"><label class="sr" for="app-search">Filter apps</label>'+
+        '<input id="app-search" type="search" placeholder="Filter apps…" value="'+esc(ui.appQuery)+'" data-field="appQuery" />'+icon("i-search")+'</div>'+
+    '</div>'+
+    (list.length? '<div class="grid-3">'+list.map(appCard).join("")+'</div>' :
+      '<div class="card"><div class="empty">'+icon("i-apps")+'<h3>No apps match</h3><p>Try a different status filter or clear the search.</p>'+
+      '<button class="btn" data-action="app-filter" data-value="all">Clear filters</button></div></div>');
+  }
+  function appCard(a){
+    return '<article class="card" style="display:flex;flex-direction:column">'+
+      '<div class="card-body">'+
+        '<div class="od-row" style="--od-gap:12px;align-items:flex-start">'+
+          '<span class="icon-tile '+a.tone+'">'+icon(a.icon)+'</span>'+
+          '<div class="od-fill"><h3 style="font-size:16px" class="od-nowrap">'+esc(a.name)+'</h3>'+
+          '<div class="lr-s" style="font-family:var(--mono);font-size:12px">'+esc(a.id)+'</div></div>'+
+          statusBadge(a.status)+
+        '</div>'+
+        '<p class="od-clamp-2" style="color:var(--muted);font-size:13.5px;margin-top:12px;min-height:2.9em">'+esc(a.desc)+'</p>'+
+        '<div class="od-cluster" style="--od-gap:8px;margin-top:12px">'+
+          '<span class="pill-mono">v'+a.version+'</span>'+
+          '<span class="pill-mono">'+esc(a.data.mode)+'</span>'+
+          '<span class="pill-mono">'+a.forms.length+' form'+(a.forms.length===1?"":"s")+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="card-foot od-row" style="justify-content:space-between">'+
+        '<span class="lr-s">'+fmtNum(a.subsTotal)+' submissions</span>'+
+        '<button class="btn btn-sm" data-action="open-app" data-id="'+esc(a.id)+'">Open'+icon("i-chevron")+'</button>'+
+      '</div>'+
+    '</article>';
+  }
+
+  /* ======================= render: app editor ======================= */
+  function renderAppEditor(app){
+    var tabs=[["general","General"],["triggers","Triggers"],["rbac","RBAC"],["forms","Forms"],["routing","Data Routing"],["lifecycle","Lifecycle"]];
+    var body;
+    if(ui.editorTab==="triggers") body=tabTriggers(app);
+    else if(ui.editorTab==="rbac") body=tabRbac(app);
+    else if(ui.editorTab==="forms") body=tabForms(app);
+    else if(ui.editorTab==="routing") body=tabRouting(app);
+    else if(ui.editorTab==="lifecycle") body=tabLifecycle(app);
+    else body=tabGeneral(app);
+
+    var publishable=app.status==="draft"||app.status==="published";
+    return '<div class="page-head">'+
+      '<div class="titles"><div class="od-row" style="--od-gap:10px;margin-bottom:8px">'+
+        '<button class="icon-btn" data-action="nav" data-route="#/apps" aria-label="Back to apps">'+icon("i-arrow-left")+'</button>'+
+        '<span class="pill-mono">'+esc(app.id)+'</span>'+statusBadge(app.status)+'<span class="pill-mono">v'+app.version+'</span></div>'+
+        '<h1>'+esc(app.name)+'</h1><p class="sub">'+esc(app.desc)+'</p></div>'+
+      '<div class="page-actions">'+
+        '<button class="btn" data-action="preview-app" data-id="'+esc(app.id)+'">'+icon("i-eye")+'Preview</button>'+
+        '<button class="btn" data-action="save-app" data-id="'+esc(app.id)+'">'+icon("i-check")+'Save draft</button>'+
+        (publishable? '<button class="btn btn-primary" data-action="publish-app" data-id="'+esc(app.id)+'">'+icon("i-bolt")+'Publish</button>' :
+          '<button class="btn" disabled title="Archived apps are read-only">'+icon("i-bolt")+'Publish</button>')+
+      '</div>'+
+    '</div>'+
+    (app.status==="deprecated" && app.deprecation ? '<div class="callout callout-warn" style="margin-bottom:18px">'+icon("i-alert")+'<div><b>Deprecated:</b> '+esc(app.deprecation)+'</div></div>' : "")+
+    (app.status==="archived" ? '<div class="callout callout-info" style="margin-bottom:18px">'+icon("i-info")+'<div><b>Archived app —</b> read-only. Existing view links keep working, but no new triggers or submissions are accepted.</div></div>' : "")+
+    '<div class="tabs" role="tablist">'+tabs.map(function(t){
+      return '<button class="tab" role="tab" aria-selected="'+(ui.editorTab===t[0])+'" data-action="editor-tab" data-id="'+esc(app.id)+'" data-tab="'+t[0]+'">'+t[1]+'</button>';
+    }).join("")+'</div>'+
+    '<div role="tabpanel">'+body+'</div>';
+  }
+
+  function tabGeneral(a){
+    return '<div class="grid-main">'+
+      '<section class="card"><div class="card-head"><h2>General</h2></div><div class="card-body">'+
+        '<div class="field"><label for="g-name">App name<span class="req">*</span></label>'+
+          '<input id="g-name" class="input" value="'+esc(a.name)+'" /></div>'+
+        '<div class="field"><label for="g-id">App ID <span class="helper" style="font-weight:400">· immutable after publish</span></label>'+
+          '<input id="g-id" class="input" value="'+esc(a.id)+'" readonly /></div>'+
+        '<div class="field"><label for="g-desc">Description</label>'+
+          '<textarea id="g-desc" class="textarea">'+esc(a.desc)+'</textarea>'+
+          '<span class="helper">Shown to users when the app needs clarification in chat.</span></div>'+
+        '<div class="divider"></div>'+
+        '<h3 style="font-size:14px;margin-bottom:12px">Ownership</h3>'+
+        '<div class="callout callout-info">'+icon("i-info")+
+          '<div><b>Owner:</b> '+esc(a.owner)+'. Transferring ownership requires global admin approval; pending transfers auto-cancel after 7 days.</div></div>'+
+        '<div style="margin-top:16px"><button class="btn" data-action="transfer-owner" data-id="'+esc(a.id)+'">Request ownership transfer</button></div>'+
+      '</div></section>'+
+      '<section class="card"><div class="card-head"><h2>Metadata</h2></div><div class="card-body">'+
+        '<dl class="kv">'+
+          '<dt>Status</dt><dd>'+statusBadge(a.status)+'</dd>'+
+          '<dt>Version</dt><dd>v'+a.version+' <span class="helper">· last 20 kept</span></dd>'+
+          '<dt>Data mode</dt><dd>'+esc(a.data.mode)+'</dd>'+
+          '<dt>Submissions</dt><dd>'+fmtNum(a.subsTotal)+' total · '+a.subs24h+' in 24h</dd>'+
+          '<dt>JEV confidence</dt><dd>'+(a.jev?a.jev.toFixed(2):"—")+'</dd>'+
+          '<dt>Updated</dt><dd>'+fmtDate(a.updated)+'</dd>'+
+          '<dt>Owner</dt><dd>'+esc(a.owner)+'</dd>'+
+        '</dl>'+
+        '<div class="divider"></div>'+
+        '<h3 style="font-size:14px;margin-bottom:8px">Linked surfaces</h3>'+
+        '<div class="od-stack" style="--od-gap:8px">'+
+          '<div class="od-row"><span class="icon-tile it-neutral" style="width:30px;height:30px">'+icon("i-doc")+'</span><span class="od-fill" style="font-size:13.5px">Runtime app definition</span><span class="pill-mono">v'+a.version+'</span></div>'+
+          '<div class="od-row"><span class="icon-tile it-neutral" style="width:30px;height:30px">'+icon("i-form")+'</span><span class="od-fill" style="font-size:13.5px">FormIO.js schemas</span><span class="pill-mono">'+a.forms.length+'</span></div>'+
+        '</div>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  function tabTriggers(a){
+    var list=a.triggers.length? a.triggers.map(function(t,i){
+      var isIntent=t.type==="intent";
+      return '<div class="list-row"><span class="icon-tile '+(isIntent?"it-blue":"it-teal")+'">'+icon(isIntent?"i-flow":"i-bolt")+'</span>'+
+        '<div class="lr-main"><div class="lr-t">'+(isIntent?"Intent · ":"Slash command · ")+esc(isIntent?t.intent:t.command)+'</div>'+
+        (isIntent?'<div class="lr-s">Examples: '+t.examples.map(esc).join(" · ")+'</div>':'<div class="lr-s">Deterministic routing — bypasses JEV (no-JEV mode).</div>')+
+        '</div>'+
+        '<button class="icon-btn" data-action="remove-trigger" data-id="'+esc(a.id)+'" data-i="'+i+'" aria-label="Remove trigger">'+icon("i-trash")+'</button></div>';
+    }).join("") : '<div class="empty" style="padding:32px">'+icon("i-bolt")+'<h3>No triggers yet</h3><p>Add an intent or slash command so users can launch this app from chat.</p></div>';
+    return '<div class="grid-main">'+
+      '<section class="card"><div class="card-head"><h2>Triggers</h2><span class="spacer"></span>'+
+        '<button class="btn btn-sm" data-action="add-trigger" data-id="'+esc(a.id)+'">'+icon("i-plus")+'Add trigger</button></div>'+
+        '<div class="card-body"><div class="stack-list">'+list+'</div>'+
+        '<div class="callout callout-accent" style="margin-top:18px">'+icon("i-info")+
+          '<div>Only triggers for the requesting user are sent to the JEV decision engine. The global tool list is never exposed.</div></div>'+
+      '</div></section>'+
+      '<section class="card"><div class="card-head"><h2>JEV behavior</h2></div><div class="card-body">'+
+        '<div class="field"><label for="t-conf">Confidence threshold <span class="helper" style="font-weight:400">· per app</span></label>'+
+          '<input id="t-conf" class="input" type="number" value="0.70" step="0.05" min="0" max="1" />'+
+          '<span class="helper">Below threshold → clarification prompt or fall back to rule-based.</span></div>'+
+        '<label class="switch" style="margin-bottom:16px"><input type="checkbox" checked /><span class="track"></span>Present alternatives when within 10% of top confidence</label><br/>'+
+        '<label class="switch"><input type="checkbox" /><span class="track"></span>Allow no-JEV deterministic mode for slash commands</label>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  function tabRbac(a){
+    return '<div class="grid-main">'+
+      '<section class="card"><div class="card-head"><h2>Role assignments</h2><span class="spacer"></span>'+
+        '<button class="btn btn-sm" data-action="bulk-assign" data-id="'+esc(a.id)+'">'+icon("i-plus")+'Bulk CSV</button></div>'+
+        '<div class="card-body">'+
+          '<div class="field"><label for="rb-search">Assign a user by name or email</label>'+
+            '<div class="od-row">'+
+              '<div class="od-fill search" style="width:100%;max-width:none"><label class="sr" for="rb-search">Search users</label>'+
+              '<input id="rb-search" list="user-list" placeholder="e.g. Tran Minh or t.minh@company.com" />'+icon("i-search")+'</div>'+
+              '<select class="select od-fixed" id="rb-role" aria-label="Role" style="width:auto">'+a.roles.map(function(r){return '<option>'+esc(r.name)+'</option>';}).join("")+'</select>'+
+              '<button class="btn btn-primary od-fixed" data-action="assign-user" data-id="'+esc(a.id)+'">'+icon("i-plus")+'Assign</button>'+
+            '</div>'+
+            '<datalist id="user-list">'+DB.users.map(function(u){return '<option value="'+esc(u.name)+' · '+esc(u.email)+'">'+esc(u.dept)+'</option>';}).join("")+'</datalist>'+
+          '</div>'+
+          '<div class="table-wrap"><table><thead><tr><th>Role</th><th>Members</th><th>Users</th><th class="cell-actions">Actions</th></tr></thead><tbody>'+
+            a.assignments.map(function(as,i){
+              return '<tr><td class="cell-strong">'+esc(as.role)+'</td>'+
+                '<td><span class="pill-mono">'+as.count+'</span></td>'+
+                '<td class="cell-mono od-clamp-2" style="max-width:320px">'+as.users.map(esc).join(", ")+'</td>'+
+                '<td class="cell-actions"><button class="btn btn-sm btn-ghost" data-action="edit-assignment" data-id="'+esc(a.id)+'" data-i="'+i+'">Manage</button></td></tr>';
+            }).join("")+
+          '</tbody></table></div>'+
+        '</div></section>'+
+      '<section class="card"><div class="card-head"><h2>Roles &amp; permissions</h2></div><div class="card-body"><div class="stack-list">'+
+        a.roles.map(function(r){
+          return '<div style="border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px">'+
+            '<div class="od-row" style="justify-content:space-between"><b style="font-size:14px">'+esc(r.name)+'</b>'+
+            '<span class="pill-mono">'+r.permissions.length+' perm'+(r.permissions.length===1?"":"s")+'</span></div>'+
+            '<div class="od-cluster" style="--od-gap:6px;margin-top:9px">'+r.permissions.map(function(p){return '<span class="pill-mono">'+esc(p)+'</span>';}).join("")+'</div></div>';
+        }).join("")+
+      '</div>'+
+      '<div class="callout callout-warn" style="margin-top:18px">'+icon("i-alert")+
+        '<div><b>v1 constraint:</b> RBAC is scoped to <span class="code-inline">real_user_id</span> only. Group- and IM-role-based assignment is not supported.</div></div>'+
+      '<div class="callout callout-info" style="margin-top:12px">'+icon("i-key")+
+        '<div>Permission changes bump <span class="code-inline">perm_version</span>, invalidating outstanding read links immediately (current: v42).</div></div>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  function tabForms(a){
+    return '<div class="grid-main">'+
+      '<section class="card"><div class="card-head"><h2>Forms</h2><span class="spacer"></span>'+
+        '<button class="btn btn-sm" data-action="open-builder" data-id="'+esc(a.id)+'">'+icon("i-plus")+'New form</button></div>'+
+        '<div class="card-body"><div class="stack-list">'+
+          a.forms.map(function(f){
+            return '<div class="list-row"><span class="icon-tile it-teal">'+icon("i-form")+'</span>'+
+              '<div class="lr-main"><div class="lr-t">'+esc(f.label)+'</div>'+
+              '<div class="lr-s" style="font-family:var(--mono)">'+esc(f.id)+' · '+esc(f.action)+' · requires '+esc(f.perm)+'</div></div>'+
+              '<span class="pill-mono">v'+f.version+'</span>'+
+              '<button class="btn btn-sm" data-action="preview-form" data-id="'+esc(a.id)+'" data-form="'+esc(f.id)+'">'+icon("i-eye")+'Preview</button>'+
+            '</div>';
+          }).join("")+
+        '</div>'+
+        '<div class="callout callout-accent" style="margin-top:18px">'+icon("i-info")+
+          '<div>All forms are rendered by <b>FormIO.js</b> — the single permitted engine for both the drag-and-drop builder and the runtime renderer.</div></div>'+
+      '</div></section>'+
+      '<section class="card"><div class="card-head"><h2>Versioning</h2></div><div class="card-body">'+
+        '<div class="callout callout-info">'+icon("i-info")+
+          '<div>Published form changes never affect in-progress submissions. The form version is pinned at link creation.</div></div>'+
+        '<div class="divider"></div>'+
+        '<h3 style="font-size:14px;margin-bottom:10px">Recent schema versions</h3>'+
+        '<div class="stack-list">'+
+          '<div class="od-row" style="justify-content:space-between"><span class="od-fill" style="font-size:13.5px">'+esc(a.forms[0].label)+'</span><span class="pill-mono">v'+a.forms[0].version+' · current</span></div>'+
+          '<div class="od-row" style="justify-content:space-between"><span class="od-fill" style="font-size:13.5px">'+esc(a.forms[0].label)+'</span><span class="pill-mono">v'+Math.max(1,a.forms[0].version-1)+' · archived</span></div>'+
+        '</div>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  function tabRouting(a){
+    var modes=["internal","external","hybrid"];
+    var modeDesc={
+      internal:"Write to MongoDB collections owned by this app. Queries use the Query DSL with an auto-injected user filter.",
+      external:"Route to a referenced connector with field mapping. No internal storage.",
+      hybrid:"Internal write (synchronous) plus external call (asynchronous via BullMQ). Internal write must succeed to confirm."
+    };
+    return '<div class="grid-main">'+
+      '<section class="card"><div class="card-head"><h2>Data routing</h2></div><div class="card-body">'+
+        '<div class="field"><span class="label">Mode</span>'+
+          '<div class="od-stack" style="--od-gap:10px">'+modes.map(function(m){
+            return '<label class="radio-card '+(a.data.mode===m?"sel":"")+'"><input type="radio" name="mode-'+esc(a.id)+'" data-action="set-mode" data-id="'+esc(a.id)+'" data-value="'+m+'" '+(a.data.mode===m?"checked":"")+' />'+
+              '<span><span class="rc-t">'+m.charAt(0).toUpperCase()+m.slice(1)+'</span><span class="rc-d">'+modeDesc[m]+'</span></span></label>';
+          }).join("")+'</div>'+
+        '</div>'+
+        (a.data.collections.length? '<div class="divider"></div><h3 style="font-size:14px;margin-bottom:12px">Internal collections</h3>'+
+          a.data.collections.map(function(c){
+            return '<div class="field"><label>'+esc(c.name)+'</label>'+
+              '<div class="od-cluster" style="--od-gap:6px">'+(c.indexes.length?c.indexes.map(function(ix){return '<span class="pill-mono">idx: '+esc(ix.fields)+' ('+esc(ix.type)+')</span>';}).join(""):'<span class="helper">No declared indexes</span>')+'</div>'+
+              '<span class="helper">Indexes are created at publish time.</span></div>';
+          }).join("") : "")+
+        (a.data.connector? '<div class="field" style="margin-top:6px"><label for="r-conn">Connector reference</label>'+
+          '<select id="r-conn" class="select">'+DB.connectors.map(function(c){return '<option '+(c.id===a.data.connector?"selected":"")+'>'+esc(c.name)+'</option>';}).join("")+'</select>'+
+          '<span class="helper">Apps reference connectors; credentials are owned and managed globally.</span></div>'+
+          '<div class="field"><label for="r-op">Operation</label><input id="r-op" class="input" value="'+esc(a.data.operation)+'" /></div>' : "")+
+      '</div></section>'+
+      (a.data.mapping.length? '<section class="card"><div class="card-head"><h2>Field mapping</h2><span class="spacer"></span><span class="pill-mono">form → connector</span></div>'+
+        '<div class="card-body" style="padding:0"><div class="table-wrap" style="border:0;border-radius:0"><table style="min-width:520px"><thead><tr><th>Source</th><th></th><th>Destination</th><th>Transform</th></tr></thead><tbody>'+
+          a.data.mapping.map(function(m){
+            return '<tr><td class="cell-mono">'+esc(m.from)+'</td><td style="color:var(--muted);width:28px">'+icon("i-chevron")+'</td>'+
+              '<td class="cell-mono cell-strong">'+esc(m.to)+'</td><td><span class="pill-mono">'+esc(m.transform)+'</span></td></tr>';
+          }).join("")+
+        '</tbody></table></div></div>'+
+        '<div class="card-foot od-row" style="justify-content:space-between"><span class="helper">Transformations: date format, concatenation, lookup tables.</span>'+
+        '<button class="btn btn-sm" data-action="add-mapping" data-id="'+esc(a.id)+'">'+icon("i-plus")+'Add mapping</button></div>'+
+      '</section>' : '<section class="card"><div class="card-head"><h2>Field mapping</h2></div><div class="card-body"><div class="empty" style="padding:32px">'+icon("i-flow")+'<h3>Not required</h3><p>Internal-only mode stores the submission as-is; no field mapping is needed.</p></div></div></section>');
+  }
+
+  function tabLifecycle(a){
+    var states=["draft","published","deprecated","archived","purged"];
+    var cur=states.indexOf(a.status);
+    var retention=[
+      ["keep_forever","Keep forever","Retain all submissions indefinitely."],
+      ["purge_after_days","Purge after N days","Soft-delete first, hard-delete after a 30-day grace period."],
+      ["purge_immediately_on_archive","Purge on archive","Soft-delete immediately when the app is archived."]
+    ];
+    return '<div class="grid-main">'+
+      '<div class="od-stack" style="--od-gap:18px">'+
+        '<section class="card"><div class="card-head"><h2>Lifecycle state</h2></div><div class="card-body">'+
+          '<div class="step-rail" style="margin-bottom:18px">'+states.map(function(s,i){
+            var cls=i<cur?"done":(i===cur?"now":"todo");
+            return (i?'<span class="step-line"></span>':"")+'<span class="step '+cls+'"><span class="dot">'+(i<cur?"✓":(i+1))+'</span><span class="lbl">'+s.charAt(0).toUpperCase()+s.slice(1)+'</span></span>';
+          }).join("")+'</div>'+
+          '<div class="callout '+(a.status==="archived"?"callout-info":"callout-accent")+'">'+icon("i-info")+'<div>'+
+            (a.status==="draft"?"Draft forms are not reachable by any link or trigger. Publish to register triggers and create indexes.":
+             a.status==="published"?"Deprecating shows a notice and stops new trigger registration while keeping the app functional.":
+             a.status==="deprecated"?"Archiving makes the app read-only; existing view links keep working.":
+             a.status==="archived"?"Archived apps are read-only. Purge soft-deletes, then hard-deletes after 30 days.":
+             "Purged app data has been hard-deleted per policy.")+
+          '</div></div>'+
+          '<div class="od-row" style="--od-gap:10px;flex-wrap:wrap">'+
+            (a.status==="published"?'<button class="btn btn-sm" data-action="lifecycle" data-id="'+esc(a.id)+'" data-to="deprecated">Deprecate</button>':"")+
+            (a.status==="deprecated"?'<button class="btn btn-sm" data-action="lifecycle" data-id="'+esc(a.id)+'" data-to="archived">Archive</button>':"")+
+            (a.status==="archived"?'<button class="btn btn-sm btn-danger" data-action="lifecycle" data-id="'+esc(a.id)+'" data-to="purged">'+icon("i-trash")+'Purge</button>':"")+
+            (a.status==="draft"?'<button class="btn btn-sm btn-primary" data-action="publish-app" data-id="'+esc(a.id)+'">'+icon("i-bolt")+'Publish now</button>':"")+
+          '</div>'+
+        '</div></section>'+
+        '<section class="card"><div class="card-head"><h2>Retention policy</h2></div><div class="card-body"><div class="od-stack" style="--od-gap:10px">'+
+          retention.map(function(r){
+            return '<label class="radio-card '+(a.retention.mode===r[0]?"sel":"")+'"><input type="radio" name="ret-'+esc(a.id)+'" '+(a.retention.mode===r[0]?"checked":"")+' data-action="set-retention" data-id="'+esc(a.id)+'" data-value="'+r[0]+'" />'+
+              '<span><span class="rc-t">'+esc(r[1])+'</span><span class="rc-d">'+esc(r[2])+'</span></span></label>';
+          }).join("")+'</div>'+
+          (a.retention.mode==="purge_after_days"?'<div class="field" style="margin-top:16px;max-width:240px"><label for="ret-days">Retention period (days)</label><input id="ret-days" class="input" type="number" value="'+(a.retention.days||365)+'" /></div>':"")+
+          '<label class="switch" style="margin-top:8px"><input type="checkbox" /><span class="track"></span>Export to JSON Lines before purge</label>'+
+        '</div></section>'+
+      '</div>'+
+      '<section class="card"><div class="card-head"><h2>Deprecation notice</h2></div><div class="card-body">'+
+        '<div class="field"><label for="dep-note">User-facing notice</label>'+
+          '<textarea id="dep-note" class="textarea" placeholder="Shown to users in chat while the app is deprecated.">'+esc(a.deprecation)+'</textarea></div>'+
+        '<div class="callout callout-warn">'+icon("i-alert")+'<div>Purge operations are written to the immutable audit trail with operator ID and timestamp.</div></div>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  /* ======================= submit-table renderer ======================= */
+  function subTable(rows,compact){
+    if(!rows.length){ return '<div class="tbl-empty">No submissions yet.</div>'; }
+    return '<div class="table-wrap" style="border:'+(compact?'0':'1px solid var(--line)')+';border-radius:'+(compact?'0':'var(--radius-lg)')+'">'+
+      '<table'+(compact?' style="min-width:560px"':'')+'><thead><tr>'+
+        '<th>Submission</th><th>App</th><th>Submitted by</th><th>Mode</th><th>Status</th><th>Created</th><th class="cell-actions"></th>'+
+      '</tr></thead><tbody>'+
+      rows.map(function(s){
+        return '<tr class="clickable" data-action="view-submission" data-id="'+esc(s.id)+'">'+
+          '<td class="cell-mono cell-strong">'+esc(s.id)+'</td>'+
+          '<td>'+esc(s.appName)+'</td>'+
+          '<td class="od-nowrap">'+esc(s.user)+'</td>'+
+          '<td><span class="pill-mono">'+esc(s.mode)+'</span></td>'+
+          '<td>'+statusBadge(s.status)+'</td>'+
+          '<td class="cell-mono od-nowrap">'+fmtDate(s.created)+'</td>'+
+          '<td class="cell-actions">'+icon("i-chevron")+'</td>'+
+        '</tr>';
+      }).join("")+
+      '</tbody></table></div>';
+  }
+
+  /* ======================= render: submissions ======================= */
+  function renderSubmissions(){
+    var q=(ui.subQuery||"").toLowerCase();
+    var st=ui.subStatus||"all";
+    var rows=DB.submissions.filter(function(s){
+      if(st!=="all" && s.status!==st) return false;
+      if(q && (s.id+" "+s.appName+" "+s.user).toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+    var filters=[["all","All"],["completed","Completed"],["partial","Partial"],["pending_external","Pending"],["failed","Failed"]];
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Submissions</h1><p class="sub">Immutable records of every form submission. Each maps to a real user and a trace ID.</p></div>'+
+      '<div class="page-actions"><button class="btn" data-action="export">'+icon("i-download")+'Export CSV</button></div>'+
+    '</div>'+
+    '<div class="toolbar">'+
+      '<div class="rail" style="flex:1" role="group" aria-label="Filter by status">'+
+        filters.map(function(f){ return '<button class="chip" data-action="sub-filter" data-value="'+f[0]+'" aria-pressed="'+(st===f[0])+'">'+f[1]+'</button>'; }).join("")+
+      '</div>'+
+      '<div class="search" style="width:250px"><label class="sr" for="sub-search">Filter submissions</label>'+
+        '<input id="sub-search" type="search" placeholder="Filter submissions…" value="'+esc(ui.subQuery)+'" data-field="subQuery" />'+icon("i-search")+'</div>'+
+    '</div>'+
+    (rows.length? subTable(rows,false) :
+      '<div class="card"><div class="empty">'+icon("i-inbox")+'<h3>No submissions match</h3><p>Adjust the status filter or clear the search to see more records.</p>'+
+      '<button class="btn" data-action="sub-filter" data-value="all">Clear filters</button></div></div>');
+  }
+
+  /* ======================= render: connectors ======================= */
+  function renderConnectors(){
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Connectors</h1><p class="sub">Reusable integration instances managed globally. Apps reference these; they never own credentials.</p></div>'+
+      '<div class="page-actions"><button class="btn btn-primary" data-action="new-connector">'+icon("i-plus")+'New connector</button></div>'+
+    '</div>'+
+    '<div class="stat-strip">'+
+      stat("Connectors", String(DB.connectors.length), DB.connectors.filter(function(c){return c.status==="healthy";}).length+" healthy")+
+      stat("Linked apps", String(DB.connectors.reduce(function(n,c){return n+c.linked;},0)),"references across all apps")+
+      stat("Success rate", "97.4%","rolling 24h across all connectors")+
+      stat("Dead letter queue","0","no items awaiting manual retry")+
+    '</div>'+
+    '<div class="table-wrap"><table><thead><tr>'+
+      '<th>Connector</th><th>Type</th><th>Health</th><th>Rate limit</th><th>p95 latency</th><th>Success</th><th>Linked</th><th class="cell-actions">Actions</th>'+
+    '</tr></thead><tbody>'+
+    DB.connectors.map(function(c){
+      return '<tr>'+
+        '<td><div class="cell-strong">'+esc(c.name)+'</div><div class="cell-mono">'+esc(c.id)+'</div></td>'+
+        '<td><span class="pill-mono">'+esc(c.type)+'</span></td>'+
+        '<td>'+statusBadge(c.status)+'</td>'+
+        '<td class="cell-mono">'+c.rpm+' rpm</td>'+
+        '<td class="cell-mono">'+(c.p95?c.p95+" ms":"—")+'</td>'+
+        '<td><div class="od-row" style="--od-gap:9px"><span class="meter" style="width:70px"><span style="width:'+Math.round(c.success)+'%;background:'+(c.success>98?"var(--green)":(c.success>90?"var(--amber)":"var(--red)"))+'"></span></span><span class="cell-mono">'+c.success+'%</span></div></td>'+
+        '<td class="cell-mono">'+c.linked+'</td>'+
+        '<td class="cell-actions"><button class="btn btn-sm" data-action="test-connector" data-id="'+esc(c.id)+'">'+icon("i-refresh")+'Test</button></td>'+
+      '</tr>';
+    }).join("")+
+    '</tbody></table></div>'+
+    '<div class="grid-2" style="margin-top:18px">'+
+      '<section class="card"><div class="card-head"><h2>Retry &amp; backoff</h2></div><div class="card-body">'+
+        '<dl class="kv">'+
+          '<dt>Max attempts</dt><dd>5 attempts</dd>'+
+          '<dt>Backoff base</dt><dd>2 s · multiplier 2×</dd>'+
+          '<dt>Timeout</dt><dd>30 s default, per connector</dd>'+
+          '<dt>Idempotency</dt><dd><span class="code-inline">X-Submission-ID</span> header on every call</dd>'+
+          '<dt>On exhaustion</dt><dd>Route to Dead Letter Queue</dd>'+
+        '</dl></div></section>'+
+      '<section class="card"><div class="card-head"><h2>Secrets &amp; safety</h2></div><div class="card-body">'+
+        '<div class="callout callout-accent">'+icon("i-shield")+'<div>Credentials are encrypted at rest with <b>AES-256-GCM</b> using KMS-backed master keys, with rotation support.</div></div>'+
+        '<div class="callout callout-info" style="margin-top:12px">'+icon("i-info")+'<div>Connectivity, latency, and status are checked every 60 seconds. Unhealthy connectors trigger alerts and are skipped.</div></div>'+
+      '</div></section>'+
+    '</div>';
+  }
+
+  /* ======================= render: audit ======================= */
+  function renderAudit(){
+    var q=(ui.auditQuery||"").toLowerCase();
+    var rows=DB.audit.filter(function(r){
+      if(q && (r.actor+" "+r.action+" "+r.target+" "+r.app).toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Audit Log</h1><p class="sub">Append-only record of every state-changing action. Retained for a minimum of 3 years.</p></div>'+
+      '<div class="page-actions">'+
+        '<button class="btn" data-action="export">'+icon("i-download")+'Export JSON Lines</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="toolbar">'+
+      '<div class="search" style="width:320px"><label class="sr" for="audit-search">Filter audit log</label>'+
+        '<input id="audit-search" type="search" placeholder="Filter by actor, action, or target…" value="'+esc(ui.auditQuery)+'" data-field="auditQuery" />'+icon("i-search")+'</div>'+
+      '<span class="spacer" style="flex:1"></span>'+
+      '<span class="pill-mono">immutable · append-only</span>'+
+    '</div>'+
+    (rows.length? '<div class="table-wrap"><table style="min-width:920px"><thead><tr>'+
+      '<th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>App</th><th>Previous</th><th>New state</th><th>IP</th>'+
+    '</tr></thead><tbody>'+
+    rows.map(function(r){
+      return '<tr>'+
+        '<td class="cell-mono od-nowrap">'+fmtDate(r.ts)+'</td>'+
+        '<td class="od-nowrap">'+esc(r.actor)+'</td>'+
+        '<td><span class="pill-mono">'+esc(r.action)+'</span></td>'+
+        '<td class="cell-mono">'+esc(r.target)+'</td>'+
+        '<td>'+esc(r.app)+'</td>'+
+        '<td class="cell-mono">'+esc(r.prev)+'</td>'+
+        '<td class="cell-mono cell-strong">'+esc(r.next)+'</td>'+
+        '<td class="cell-mono">'+esc(r.ip)+'</td>'+
+      '</tr>';
+    }).join("")+
+    '</tbody></table></div>' : '<div class="card"><div class="empty">'+icon("i-shield")+'<h3>No audit entries match</h3><p>Clear the search to see the full trail.</p></div></div>');
+  }
+
+  /* ======================= render: users ======================= */
+  function renderUsers(){
+    var q=(ui.userQuery||"").toLowerCase();
+    var rows=DB.users.filter(function(u){
+      if(q && (u.name+" "+u.email+" "+u.real+" "+u.dept+" "+u.code).toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+    var pending=DB.users.filter(function(u){return u.status==="deactivated";}).length;
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>User Management</h1><p class="sub">Identity mappings between chat accounts and canonical real users.</p></div>'+
+      '<div class="page-actions">'+
+        '<button class="btn" data-action="import-csv">'+icon("i-download")+'Import CSV</button>'+
+        '<button class="btn btn-primary" data-action="map-user">'+icon("i-plus")+'Map user</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="stat-strip">'+
+      stat("Mapped users", String(DB.users.length), DB.users.filter(function(u){return u.status==="active";}).length+" active")+
+      stat("Chat identities", String(DB.users.reduce(function(n,u){return n+u.ims.length;},0)),"across Slack · Teams · Zalo")+
+      stat("Verified via OTP", String(DB.users.filter(function(u){return u.verified==="otp";}).length),"self-service onboarding")+
+      stat("Deactivated", String(pending), pending?"no historical data removed":"none")+
+    '</div>'+
+    '<div class="toolbar">'+
+      '<div class="search" style="width:320px"><label class="sr" for="user-search">Filter users</label>'+
+        '<input id="user-search" type="search" placeholder="Search by email, name, or employee code…" value="'+esc(ui.userQuery)+'" data-field="userQuery" />'+icon("i-search")+'</div>'+
+    '</div>'+
+    (rows.length? '<div class="table-wrap"><table style="min-width:900px"><thead><tr>'+
+      '<th>Real user</th><th>Email</th><th>Department</th><th>Employee code</th><th>Chat identities</th><th>Verified</th><th>Status</th>'+
+    '</tr></thead><tbody>'+
+    rows.map(function(u){
+      return '<tr>'+
+        '<td><div class="cell-strong">'+esc(u.name)+'</div><div class="cell-mono">'+esc(u.real)+'</div></td>'+
+        '<td>'+esc(u.email)+'</td>'+
+        '<td>'+esc(u.dept)+'</td>'+
+        '<td class="cell-mono">'+esc(u.code)+'</td>'+
+        '<td class="cell-mono">'+u.ims.map(esc).join("<br/>")+'</td>'+
+        '<td><span class="pill-mono">'+esc(u.verified)+'</span></td>'+
+        '<td>'+statusBadge(u.status)+'</td>'+
+      '</tr>';
+    }).join("")+
+    '</tbody></table></div>' : '<div class="card"><div class="empty">'+icon("i-users")+'<h3>No users match</h3><p>Clear the search to see all identity mappings.</p></div></div>');
+  }
+
+  /* ======================= render: settings ======================= */
+  function renderSettings(){
+    var j=DB.jev;
+    return '<div class="page-head">'+
+      '<div class="titles"><h1>Settings</h1><p class="sub">Platform defaults, JEV provider chain, and operational guardrails.</p></div>'+
+      '<div class="page-actions"><button class="btn btn-primary" data-action="save-settings">'+icon("i-check")+'Save settings</button></div>'+
+    '</div>'+
+    '<div class="grid-main">'+
+      '<div class="od-stack" style="--od-gap:18px">'+
+        '<section class="card"><div class="card-head"><h2>JEV provider chain</h2><span class="spacer"></span><span class="pill-mono">fallback order · top to bottom</span></div>'+
+          '<div class="card-body"><div class="stack-list">'+
+            j.chain.map(function(p,i){
+              return '<div class="list-row"><span class="icon-tile it-neutral" style="font-family:var(--mono);font-weight:600;font-size:13px">'+(i+1)+'</span>'+
+                '<div class="lr-main"><div class="lr-t">'+esc(p.provider)+'</div>'+
+                '<div class="lr-s">spec v'+esc(p.spec)+' · timeout '+p.timeout+'ms · min confidence '+p.minConf+' · uptime '+esc(p.uptime)+'</div></div>'+
+                '<span class="pill-mono">'+(p.latency)+' ms</span>'+statusBadge(p.status)+'</div>';
+            }).join("")+
+          '</div>'+
+          '<div class="callout callout-accent" style="margin-top:16px">'+icon("i-bolt")+
+            '<div>If the primary provider is unhealthy, the next in the chain is used automatically. If all are down, decisions fall back to rule-based matching.</div></div>'+
+        '</div></section>'+
+        '<section class="card"><div class="card-head"><h2>Decision cache</h2></div><div class="card-body">'+
+          '<div class="field-row">'+
+            '<div class="field"><label for="s-ttl">Cache TTL (seconds)</label><input id="s-ttl" class="input" type="number" value="'+j.cache.ttl+'" /></div>'+
+            '<div class="field"><label for="s-health">Health check interval (seconds)</label><input id="s-health" class="input" type="number" value="'+j.healthInterval+'" /></div>'+
+          '</div>'+
+          '<div class="field"><label for="s-key">Cache key strategy</label><input id="s-key" class="input" value="'+esc(j.cache.strategy)+'" readonly /></div>'+
+          '<label class="switch"><input type="checkbox" '+(j.cache.enabled?"checked":"")+' /><span class="track"></span>Enable decision caching</label>'+
+        '</div></section>'+
+        '<section class="card"><div class="card-head"><h2>Circuit breaker</h2></div><div class="card-body"><div class="field-row">'+
+          '<div class="field"><label for="s-fail">Failure threshold</label><input id="s-fail" class="input" type="number" value="'+j.circuit.failureThreshold+'" /></div>'+
+          '<div class="field"><label for="s-reset">Reset timeout (seconds)</label><input id="s-reset" class="input" type="number" value="'+j.circuit.resetTimeout+'" /></div>'+
+        '</div><span class="helper">After the threshold is reached, the provider is skipped until the reset timeout elapses.</span></div></section>'+
+      '</div>'+
+      '<div class="od-stack" style="--od-gap:18px">'+
+        '<section class="card"><div class="card-head"><h2>Platform defaults</h2></div><div class="card-body"><dl class="kv">'+
+          '<dt>Create link TTL</dt><dd>30 min</dd>'+
+          '<dt>Edit link TTL</dt><dd>4 hours</dd>'+
+          '<dt>Max upload size</dt><dd>10 MB</dd>'+
+          '<dt>Rate limit / user</dt><dd>10 req / min</dd>'+
+          '<dt>Rate limit / app</dt><dd>100 req / min</dd>'+
+          '<dt>Replica set</dt><dd>MongoDB 3-node · Redis cluster 3</dd>'+
+        '</dl></div></section>'+
+        '<section class="card"><div class="card-head"><h2>Compliance</h2></div><div class="card-body">'+
+          '<div class="callout callout-info">'+icon("i-shield")+'<div>Audit logs are retained for a minimum of 3 years and are exportable as CSV or JSON Lines.</div></div>'+
+          '<div class="callout callout-accent" style="margin-top:12px">'+icon("i-download")+'<div>Quarterly access-review reports are generated automatically (who has access to what).</div></div>'+
+        '</div></section>'+
+      '</div>'+
+    '</div>';
+  }
+
+  /* ======================= form schemas (FormIO.js demo) ======================= */
+  var FORM_DEFS = {
+    "create-leave":{ title:"Leave Request", fields:[
+      {name:"employee_code", label:"Employee code", type:"text", readonly:true, value:"EMP-2024-042"},
+      {name:"department", label:"Department", type:"text", readonly:true, value:"Engineering"},
+      {name:"leave_type", label:"Leave type", type:"select", required:true, options:["Annual","Sick","Unpaid","Parental"]},
+      {name:"start_date", label:"Start date", type:"date", required:true},
+      {name:"end_date", label:"End date", type:"date", required:true},
+      {name:"reason", label:"Reason", type:"textarea", required:true, helper:"Briefly describe the reason for this request."}
+    ]},
+    "create-ticket":{ title:"IT Ticket", fields:[
+      {name:"title", label:"Title", type:"text", required:true, helper:"One line summarizing the issue."},
+      {name:"priority", label:"Priority", type:"select", required:true, options:["Low","Medium","High","Critical"]},
+      {name:"category", label:"Category", type:"select", required:true, options:["Hardware","Network","Access","Software","Other"]},
+      {name:"description", label:"Description", type:"textarea", required:true},
+      {name:"attachment", label:"Attachment", type:"file"}
+    ]},
+    "create-asset":{ title:"Asset Request", fields:[
+      {name:"item", label:"Requested item", type:"select", required:true, options:["Laptop","Monitor","Keyboard","Headset"]},
+      {name:"justification", label:"Justification", type:"textarea", required:true}
+    ]},
+    "create-expense":{ title:"Expense Claim", fields:[
+      {name:"amount", label:"Amount", type:"number", required:true},
+      {name:"currency", label:"Currency", type:"select", required:true, options:["USD","EUR","VND"]},
+      {name:"category", label:"Category", type:"select", required:true, options:["Travel","Meals","Equipment","Other"]},
+      {name:"receipt", label:"Receipt", type:"file"},
+      {name:"notes", label:"Notes", type:"textarea"}
+    ]},
+    "attest":{ title:"Access Review Attestation", fields:[
+      {name:"reviewed", label:"I have reviewed all listed accesses", type:"select", required:true, options:["Yes","No"]},
+      {name:"comments", label:"Comments", type:"textarea"}
+    ]}
+  };
+
+  function fieldDef(id){
+    return FORM_DEFS[id] || FORM_DEFS["create-leave"];
+  }
+
+  /* ======================= overlays ======================= */
+  function openSubmission(id){
+    var s=null;
+    DB.submissions.forEach(function(x){ if(x.id===id) s=x; });
+    if(!s) return;
+    var dataRows=Object.keys(s.data).map(function(k){
+      return '<div class="od-row" style="justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)">'+
+        '<span class="cell-mono" style="min-width:130px">'+esc(k)+'</span>'+
+        '<span class="od-fill" style="text-align:right">'+(s.data[k]===""?'<span class="helper">empty</span>':esc(s.data[k]))+'</span></div>';
+    }).join("");
+    var html='<div class="drawer-head"><div class="od-fill">'+
+        '<div class="od-row" style="--od-gap:9px;margin-bottom:6px">'+statusBadge(s.status)+'<span class="pill-mono">'+esc(s.mode)+'</span></div>'+
+        '<h2>'+esc(s.id)+'</h2><div class="lr-s">'+esc(s.appName)+' · '+esc(s.form)+' v'+s.formVersion+'</div></div>'+
+        '<button class="icon-btn" data-action="close-overlay" aria-label="Close detail" data-autofocus>'+icon("i-x")+'</button></div>'+
+      '<div class="drawer-body od-stack" style="--od-gap:20px">'+
+        '<div><h3 style="font-size:14px;margin-bottom:10px">Identity &amp; trace</h3><dl class="kv">'+
+          '<dt>Real user</dt><dd>'+esc(s.user)+'</dd>'+
+          '<dt>Chat user</dt><dd>'+esc(s.chat)+'</dd>'+
+          '<dt>IM platform</dt><dd>'+esc(s.im)+'</dd>'+
+          '<dt>Trace ID</dt><dd><span class="code-inline">'+esc(s.id)+'</span></dd>'+
+        '</dl></div>'+
+        '<div><h3 style="font-size:14px;margin-bottom:10px">Submitted data</h3>'+dataRows+'</div>'+
+        '<div><h3 style="font-size:14px;margin-bottom:10px">Destination</h3>'+
+          '<dl class="kv">'+
+            '<dt>Internal ref</dt><dd class="cell-mono">'+(s.internal_ref?esc(s.internal_ref):'<span class="helper">—</span>')+'</dd>'+
+            '<dt>Connector</dt><dd class="cell-mono">'+esc(s.external.connector)+'</dd>'+
+            '<dt>External ID</dt><dd class="cell-mono">'+(s.external.system_id?esc(s.external.system_id):'<span class="helper">pending</span>')+'</dd>'+
+            '<dt>Sync status</dt><dd>'+esc(s.external.status)+'</dd>'+
+          '</dl>'+
+          (s.status==="partial"? '<div class="callout callout-warn" style="margin-top:12px">'+icon("i-alert")+'<div>Internal write succeeded. The external call failed and has been queued for retry with exponential backoff.</div></div>':"")+
+          (s.status==="failed"? '<div class="callout callout-danger" style="margin-top:12px">'+icon("i-alert")+'<div>The external call was rejected. Review the mapping and re-submit from a fresh link.</div></div>':"")+
+        '</div>'+
+        '<div><h3 style="font-size:14px;margin-bottom:10px">Link lifecycle</h3><dl class="kv">'+
+          '<dt>Link type</dt><dd>'+esc(s.link.type)+'</dd>'+
+          '<dt>JWT ID</dt><dd class="cell-mono">'+esc(s.link.jti)+'</dd>'+
+          '<dt>Issued</dt><dd>'+fmtDate(s.link.issued)+'</dd>'+
+          '<dt>Consumed</dt><dd>'+fmtDate(s.link.consumed)+'</dd>'+
+        '</dl></div>'+
+        '<div class="callout callout-info">'+icon("i-info")+'<div>Every access is logged: JWT ID, real user, action, IP, user agent, and timestamp.</div></div>'+
+      '</div>'+
+      '<div class="drawer-foot">'+
+        '<button class="btn btn-ghost" data-action="close-overlay">Close</button>'+
+        (s.status!=="completed"? '<button class="btn btn-primary" data-action="retry-submission" data-id="'+esc(s.id)+'">'+icon("i-refresh")+'Retry external call</button>':'')+
+      '</div>';
+    openDrawer(html);
+  }
+
+  function openPublish(id){
+    var a=appById(id); if(!a) return;
+    var changes=[];
+    if(a.status==="draft"){ changes.push(["Status","draft","published"]); }
+    changes.push(["App version","v"+a.version,"v"+(a.version+1)]);
+    changes.push(["Form versions","current","pinned at link creation"]);
+    if(a.data.collections.length) changes.push(["Indexes","—","creation on "+a.data.collections.map(function(c){return c.name;}).join(", ")]);
+    changes.push(["Triggers",a.triggers.length? "registered":"none", a.triggers.length? (a.triggers.length+" active"):"none registered"]);
+    var list=changes.map(function(c){
+      return '<div class="od-row" style="justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">'+
+        '<span class="od-fill" style="font-size:14px">'+esc(c[0])+'</span>'+
+        '<span class="cell-mono">'+esc(c[1])+'</span><span style="color:var(--muted)">'+icon("i-chevron")+'</span>'+
+        '<span class="cell-mono cell-strong">'+esc(c[2])+'</span></div>';
+    }).join("");
+    openModal({
+      key:"publish", icon:"i-bolt", tone:"it-teal",
+      title:"Publish “"+a.name+"”?", sub:"Review the changes that take effect immediately.",
+      body:'<div>'+list+'</div>'+
+        '<div class="callout callout-accent" style="margin-top:16px">'+icon("i-info")+
+        '<div>Publishing registers triggers and creates declared indexes. This action is versioned and written to the audit trail.</div></div>',
+      footer:'<button class="btn" data-action="close-overlay">Cancel</button>'+
+        '<button class="btn btn-primary" data-action="confirm-publish" data-id="'+esc(a.id)+'" data-autofocus>'+icon("i-bolt")+'Confirm publish</button>'
+    });
+  }
+
+  function openNewApp(){
+    openModal({
+      key:"newapp", icon:"i-plus", tone:"it-teal",
+      title:"Create a new app", sub:"Step 1 of 5 — name and purpose. You can change everything later.",
+      body:'<div class="step-rail" style="margin-bottom:20px">'+
+          '<span class="step now"><span class="dot">1</span><span class="lbl">Basics</span></span><span class="step-line"></span>'+
+          '<span class="step todo"><span class="dot">2</span><span class="lbl">Triggers</span></span><span class="step-line"></span>'+
+          '<span class="step todo"><span class="dot">3</span><span class="lbl">RBAC</span></span><span class="step-line"></span>'+
+          '<span class="step todo"><span class="dot">4</span><span class="lbl">Form</span></span><span class="step-line"></span>'+
+          '<span class="step todo"><span class="dot">5</span><span class="lbl">Routing</span></span>'+
+        '</div>'+
+        '<div class="field"><label for="na-name">App name<span class="req">*</span></label>'+
+          '<input id="na-name" class="input" placeholder="e.g. Leave Request" data-autofocus /></div>'+
+        '<div class="field"><label for="na-id">App ID<span class="req">*</span></label>'+
+          '<input id="na-id" class="input" placeholder="e.g. hr-leave-request" />'+
+          '<span class="helper">Lowercase, hyphenated. Immutable after first publish.</span></div>'+
+        '<div class="field"><label for="na-desc">Description</label>'+
+          '<textarea id="na-desc" class="textarea" placeholder="What business function does this app perform?"></textarea></div>'+
+        '<div class="field"><span class="label">Data mode</span>'+
+          '<div class="od-cluster" style="--od-gap:8px">'+
+            '<span class="pill-mono">internal</span><span class="pill-mono">external</span><span class="pill-mono">hybrid</span>'+
+          '</div><span class="helper">Chosen in step 5 — all three are available.</span></div>',
+      footer:'<button class="btn" data-action="close-overlay">Cancel</button>'+
+        '<button class="btn btn-primary" data-action="create-app">Create app</button>'
+    });
+  }
+
+  function openFormPreview(appId, formId){
+    var a=appById(appId); if(!a) return;
+    var def=fieldDef(formId);
+    var fields=def.fields.map(function(f,i){
+      var id="pf-"+f.name;
+      var input;
+      if(f.type==="textarea") input='<textarea id="'+id+'" class="textarea" data-pf="'+esc(f.name)+'" data-required="'+(!!f.required)+'"></textarea>';
+      else if(f.type==="select") input='<select id="'+id+'" class="select" data-pf="'+esc(f.name)+'" data-required="'+(!!f.required)+'"><option value="">Select…</option>'+f.options.map(function(o){return '<option>'+esc(o)+'</option>';}).join("")+'</select>';
+      else if(f.type==="date") input='<input id="'+id+'" class="input" type="date" data-pf="'+esc(f.name)+'" data-required="'+(!!f.required)+'" />';
+      else if(f.type==="number") input='<input id="'+id+'" class="input" type="number" data-pf="'+esc(f.name)+'" data-required="'+(!!f.required)+'" />';
+      else if(f.type==="file") input='<input id="'+id+'" class="input" type="file" data-pf="'+esc(f.name)+'" data-required="false" />';
+      else input='<input id="'+id+'" class="input" type="text" value="'+esc(f.value||"")+'" '+(f.readonly?"readonly":"")+' data-pf="'+esc(f.name)+'" data-required="'+(!!f.required)+'" />';
+      return '<div class="field"><label for="'+id+'">'+esc(f.label)+(f.required?'<span class="req">*</span>':'')+(f.readonly?' <span class="helper" style="font-weight:400">· pre-filled from profile</span>':'')+'</label>'+
+        input+(f.helper?'<span class="helper">'+esc(f.helper)+'</span>':'')+
+        '<span class="error-text" hidden></span></div>';
+    }).join("");
+    openModal({
+      key:"preview", icon:"i-form", tone:"it-teal",
+      title:def.title, sub:"FormIO.js renderer preview · "+a.name+" · in-progress drafts are not reachable by links",
+      body:'<div id="form-preview-root">'+fields+
+        '<div id="pf-success" hidden><div class="callout callout-accent">'+icon("i-check")+
+          '<div><b>Submitted.</b> Submission <span class="code-inline">sub_preview_001</span> validated and routed. In the real system this opens from a one-time signed link and consumes the token atomically.</div></div></div>'+
+      '</div>',
+      footer:'<button class="btn" data-action="close-overlay">Close</button>'+
+        '<button class="btn" data-action="reset-preview">Reset</button>'+
+        '<button class="btn btn-primary" data-action="submit-preview" data-id="'+esc(appId)+'">'+icon("i-check")+'Submit preview</button>'
+    });
+  }
+
+  function openConnectorTest(id){
+    var c=null; DB.connectors.forEach(function(x){ if(x.id===id) c=x; });
+    if(!c) return;
+    openModal({
+      key:"testconn", icon:"i-plug", tone:"it-teal",
+      title:"Test “"+c.name+"”", sub:c.base,
+      body:'<div id="conn-test-result"><div class="callout callout-info">'+icon("i-info")+
+        '<div>The platform calls the connector health endpoint and validates credentials. No side effects are produced (dry-run).</div></div></div>'+
+        '<dl class="kv" style="margin-top:18px">'+
+          '<dt>Type</dt><dd>'+esc(c.type)+'</dd>'+
+          '<dt>Rate limit</dt><dd>'+c.rpm+' requests / min</dd>'+
+          '<dt>Timeout</dt><dd>30 s</dd>'+
+          '<dt>Managed by</dt><dd class="cell-mono">'+esc(c.manager)+'</dd>'+
+        '</dl>',
+      footer:'<button class="btn" data-action="close-overlay">Close</button>'+
+        '<button class="btn btn-primary" data-action="run-connector-test" data-id="'+esc(c.id)+'" data-autofocus>'+icon("i-refresh")+'Run test</button>'
+    });
+  }
+
+  function openNewConnector(){
+    openModal({
+      key:"newconn", icon:"i-plug", tone:"it-teal",
+      title:"Register a connector", sub:"Connectors are shared, globally managed integration instances.",
+      body:'<div class="field"><label for="nc-name">Display name<span class="req">*</span></label><input id="nc-name" class="input" placeholder="e.g. HR API (Production)" data-autofocus /></div>'+
+        '<div class="field-row">'+
+          '<div class="field"><label for="nc-type">Type</label><select id="nc-type" class="select"><option>rest</option><option>soap</option><option>graphql</option><option>webhook</option></select></div>'+
+          '<div class="field"><label for="nc-rpm">Rate limit (rpm)</label><input id="nc-rpm" class="input" type="number" value="60" /></div>'+
+        '</div>'+
+        '<div class="field"><label for="nc-url">Base URL<span class="req">*</span></label><input id="nc-url" class="input" placeholder="https://system.internal.company.com/api" /></div>'+
+        '<div class="field"><label for="nc-cred">Credential</label><input id="nc-cred" class="input" type="password" placeholder="••••••••••••" />'+
+          '<span class="helper">Stored encrypted with AES-256-GCM via KMS. Never written to config or logs.</span></div>',
+      footer:'<button class="btn" data-action="close-overlay">Cancel</button>'+
+        '<button class="btn btn-primary" data-action="create-connector">Register connector</button>'
+    });
+  }
+
+  function openMappingModal(appId){
+    var a=appById(appId); if(!a) return;
+    openModal({
+      key:"mapping", icon:"i-flow", tone:"it-teal",
+      title:"Add field mapping", sub:"Map a form or profile value onto the connector payload.",
+      body:'<div class="field"><label for="mp-from">Source expression</label><input id="mp-from" class="input" placeholder="{{form.field_name}}" data-autofocus /><span class="helper">Use {{form.*}} or {{real_user.*}}.</span></div>'+
+        '<div class="field"><label for="mp-to">Destination field</label><input id="mp-to" class="input" placeholder="connector_field" /></div>'+
+        '<div class="field"><label for="mp-tr">Transform</label><select id="mp-tr" class="select"><option>direct</option><option>date · ISO-8601</option><option>number · 2dp</option><option>lookup table</option><option>file → URL</option></select></div>',
+      footer:'<button class="btn" data-action="close-overlay">Cancel</button>'+
+        '<button class="btn btn-primary" data-action="save-mapping" data-id="'+esc(appId)+'">Add mapping</button>'
+    });
+  }
+
+  function openTransferOwner(appId){
+    var a=appById(appId); if(!a) return;
+    openModal({
+      key:"transfer", icon:"i-users", tone:"it-amber",
+      title:"Request ownership transfer", sub:a.name,
+      body:'<div class="callout callout-warn">'+icon("i-alert")+
+          '<div>Ownership transfer requires global admin approval. Pending requests auto-cancel after 7 days. An app must always have exactly one owner.</div></div>'+
+        '<div class="field" style="margin-top:18px"><label for="to-user">New owner<span class="req">*</span></label>'+
+          '<input id="to-user" class="input" list="user-list2" placeholder="Search by name or email" data-autofocus />'+
+          '<datalist id="user-list2">'+DB.users.map(function(u){return '<option value="'+esc(u.name)+' · '+esc(u.email)+'">'+esc(u.dept)+'</option>';}).join("")+'</datalist></div>'+
+        '<div class="field"><label for="to-reason">Reason</label><textarea id="to-reason" class="textarea" placeholder="Optional context for the approver."></textarea></div>',
+      footer:'<button class="btn" data-action="close-overlay">Cancel</button>'+
+        '<button class="btn btn-primary" data-action="confirm-transfer" data-id="'+esc(appId)+'">Submit request</button>'
+    });
+  }
+
+  /* ======================= interactions ======================= */
+  function validatePreview(){
+    var root=$("#form-preview-root"); if(!root) return true;
+    var ok=true, firstBad=null;
+    $$("[data-pf]",root).forEach(function(el){
+      var wrap=el.closest(".field");
+      var err=wrap? wrap.querySelector(".error-text") : null;
+      var req=el.getAttribute("data-required")==="true";
+      var val=(el.value||"").trim();
+      var bad=req && !val;
+      el.classList.toggle("invalid",bad);
+      if(err){
+        if(bad){ err.hidden=false; err.innerHTML=icon("i-alert")+"<span>This field is required.</span>"; if(!firstBad) firstBad=el; ok=false; }
+        else { err.hidden=true; err.innerHTML=""; }
+      }
+    });
+    if(firstBad) firstBad.focus();
+    return ok;
+  }
+
+  function doPublish(id){
+    var a=appById(id); if(!a) return;
+    if(a.status==="draft") a.status="published";
+    a.version=a.version+1;
+    a.updated=new Date().toISOString();
+    DB.audit.unshift({ts:a.updated, actor:"usr_42 · An Nguyen", action:"app.publish", target:a.id, app:a.id, prev:"version:"+(a.version-1), next:"version:"+a.version+",status:published", ip:"10.0.1.55"});
+    closeAllOverlays();
+    toast("App published","v"+a.version+" · triggers registered, indexes created");
+    route();
+  }
+
+  document.addEventListener("click", function(e){
+    var el=e.target.closest("[data-action]");
+    if(!el) return;
+    var action=el.getAttribute("data-action");
+    var id=el.getAttribute("data-id");
+    switch(action){
+      case "nav": navigate(el.getAttribute("data-route")); break;
+      case "toggle-nav": toggleSidebar(); break;
+      case "open-app": navigate("#/apps/"+id); break;
+      case "editor-tab": ui.editorTab=el.getAttribute("data-tab"); route(); break;
+      case "app-filter": ui.appFilter=el.getAttribute("data-value"); route(); break;
+      case "sub-filter": ui.subStatus=el.getAttribute("data-value"); route(); break;
+
+      case "publish-app": openPublish(id); break;
+      case "confirm-publish": doPublish(id); break;
+      case "save-app": toast("Draft saved","Changes stored to the app definition · not yet published"); break;
+      case "preview-app": navigate("#/apps/"+id+"?tab=forms"); toast("Preview mode","Open a form below to preview the FormIO.js renderer"); break;
+      case "preview-form": openFormPreview(id, el.getAttribute("data-form")); break;
+      case "open-builder": toast("Form builder","FormIO.js drag-and-drop builder opens here in the full product"); break;
+
+      case "add-trigger": {
+        var app=appById(id);
+        if(app){ app.triggers.push({type:"intent", intent:"new_intent", examples:["Example phrase"]}); route(); toast("Trigger added","Edit the intent name and example phrases"); }
+        break;
+      }
+      case "remove-trigger": {
+        var app2=appById(id);
+        if(app2){ app2.triggers.splice(parseInt(el.getAttribute("data-i"),10),1); route(); toast("Trigger removed"); }
+        break;
+      }
+      case "assign-user": {
+        var app3=appById(id);
+        var val=$("#rb-search") ? $("#rb-search").value.trim() : "";
+        var roleEl=$("#rb-role"); var role=roleEl? roleEl.value : "";
+        if(!val){ toast("Nothing to assign","Enter a user name or email first", "err"); break; }
+        if(app3){
+          var found=null;
+          for(var i=0;i<app3.assignments.length;i++){ if(app3.assignments[i].role===role){ found=app3.assignments[i]; break; } }
+          if(!found){ found={role:role, users:[], count:0}; app3.assignments.push(found); }
+          found.users.push(val); found.count++;
+          toast("User assigned", val+" → "+role);
+          route();
+        }
+        break;
+      }
+      case "bulk-assign": toast("Bulk assignment","Upload a CSV of real_user_ids and roles to assign in bulk"); break;
+      case "edit-assignment": toast("Manage assignment","Role editor opens here in the full product"); break;
+      case "add-mapping": openMappingModal(id); break;
+      case "save-mapping": {
+        var app4=appById(id);
+        var from=$("#mp-from")?$("#mp-from").value.trim():"";
+        var to=$("#mp-to")?$("#mp-to").value.trim():"";
+        var tr=$("#mp-tr")?$("#mp-tr").value:"direct";
+        if(from && to && app4){ app4.data.mapping.push({from:from,to:to,transform:tr}); closeAllOverlays(); toast("Mapping added", from+" → "+to); route(); }
+        else toast("Mapping incomplete","Provide both a source and a destination", "err");
+        break;
+      }
+      case "set-mode": {
+        var app5=appById(id);
+        if(app5){ app5.data.mode=el.getAttribute("data-value"); route(); toast("Data mode set", app5.data.mode); }
+        break;
+      }
+      case "set-retention": {
+        var app6=appById(id);
+        if(app6){ app6.retention.mode=el.getAttribute("data-value"); route(); }
+        break;
+      }
+      case "lifecycle": {
+        var app7=appById(id); var to=el.getAttribute("data-to");
+        if(app7){
+          app7.status=to;
+          DB.audit.unshift({ts:new Date().toISOString(), actor:"usr_42 · An Nguyen", action:"app."+(to==="purged"?"purge":to), target:app7.id, app:app7.id, prev:"status", next:"status:"+to, ip:"10.0.1.55"});
+          toast("Lifecycle updated", app7.name+" → "+to);
+          route();
+        }
+        break;
+      }
+      case "transfer-owner": openTransferOwner(id); break;
+      case "confirm-transfer": closeAllOverlays(); toast("Transfer requested","Awaiting global admin approval · auto-cancels in 7 days"); break;
+
+      case "view-submission": openSubmission(id); break;
+      case "retry-submission": {
+        var s=null; DB.submissions.forEach(function(x){ if(x.id===id) s=x; });
+        if(s){ s.status="pending_external"; s.external.status="retrying · attempt 1/5"; closeAllOverlays(); toast("Retry queued","External call re-enqueued with exponential backoff"); route(); }
+        break;
+      }
+
+      case "test-connector": openConnectorTest(id); break;
+      case "run-connector-test": {
+        var btn=el; btn.classList.add("is-loading");
+        var result=$("#conn-test-result");
+        setTimeout(function(){
+          btn.classList.remove("is-loading");
+          var c=null; DB.connectors.forEach(function(x){ if(x.id===id) c=x; });
+          if(!c) return;
+          var ok=c.status==="healthy";
+          if(result){
+            result.innerHTML='<div class="callout '+(ok?"callout-accent":(c.status==="degraded"?"callout-warn":"callout-danger"))+'">'+icon(ok?"i-check":"i-alert")+
+              '<div><b>'+(ok?"Healthy":(c.status==="degraded"?"Degraded":"Unreachable"))+'.</b> '+
+              (ok?("Responded in "+c.p95+" ms · credentials valid."):(c.status==="degraded"?("Responded in "+c.p95+" ms · slower than the 1000 ms target."):"No response within the 30 s timeout. Last success 4 h ago."))+'</div></div>';
+          }
+          toast(ok?"Connection healthy":"Connection problem", c.name+(ok?" responded normally":" needs attention"), ok?"ok":"err");
+        },850);
+        break;
+      }
+      case "new-connector": openNewConnector(); break;
+      case "create-connector": {
+        var nm=$("#nc-name")?$("#nc-name").value.trim():"";
+        if(!nm){ toast("Name required","Give the connector a display name", "err"); break; }
+        closeAllOverlays();
+        toast("Connector registered", nm+" · health check scheduled");
+        break;
+      }
+
+      case "new-app": openNewApp(); break;
+      case "create-app": {
+        var an=$("#na-name")?$("#na-name").value.trim():"";
+        if(!an){ toast("App name required","Enter a name to continue", "err"); break; }
+        closeAllOverlays();
+        toast("App created","Saved as a draft · continue through the wizard steps");
+        navigate("#/apps/asset-request");
+        break;
+      }
+      case "import-csv": toast("CSV import","Upload employee emails and chat IDs to pre-provision mappings"); break;
+      case "map-user": toast("Map user","Create a chat_user_id → real_user_id mapping"); break;
+      case "export": toast("Export started","A download will be prepared in your browser"); break;
+      case "save-settings": toast("Settings saved","JEV chain and defaults updated"); break;
+
+      case "close-overlay": closeAllOverlays(); break;
+      case "reset-preview": {
+        var proot=$("#form-preview-root"); if(proot){
+          $$("[data-pf]",proot).forEach(function(f){
+            if(f.tagName==="SELECT" || f.tagName==="INPUT"){ f.value=""; }
+            else if(f.tagName==="TEXTAREA"){ f.value=""; }
+            f.classList.remove("invalid");
+            var w=f.closest(".field"); var er=w?w.querySelector(".error-text"):null;
+            if(er){ er.hidden=true; er.innerHTML=""; }
+          });
+          var sc=$("#pf-success"); if(sc) sc.hidden=true;
+          var f0=$("[data-pf]",proot); if(f0) f0.focus();
+        }
+        break;
+      }
+
+      case "submit-preview": {
+        if(!validatePreview()){ toast("Please fix the errors","Required fields are highlighted", "err"); break; }
+        var succ=$("#pf-success"); if(succ) succ.hidden=false;
+        var root=$("#form-preview-root"); if(root) root.scrollIntoView({block:"start"});
+        toast("Form submitted","Validation passed · routing simulated");
+        break;
+      }
+      default: break;
+    }
+  });
+
+  document.addEventListener("input", function(e){
+    var t=e.target;
+    if(t && t.getAttribute && t.getAttribute("data-field")){
+      var f=t.getAttribute("data-field");
+      ui[f]=t.value;
+      clearTimeout(window.__filterTimer);
+      window.__filterTimer=setTimeout(function(){ var pos=t.selectionStart; route(); var again=$('[data-field="'+f+'"]'); if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(err){} } },220);
+    }
+  });
+
+  document.addEventListener("blur", function(e){
+    var t=e.target;
+    if(t && t.getAttribute && t.getAttribute("data-pf") && t.getAttribute("data-required")==="true"){
+      var wrap=t.closest(".field"); var err=wrap?wrap.querySelector(".error-text"):null;
+      var bad=!(t.value||"").trim();
+      t.classList.toggle("invalid",bad);
+      if(err){ err.hidden=!bad; err.innerHTML=bad?(icon("i-alert")+"<span>This field is required.</span>"):""; }
+    }
+  }, true);
+
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape"){ if($("#modal-root").firstChild || $("#drawer-root").firstChild){ closeAllOverlays(); } }
+  });
+
+  $("#scrim").addEventListener("click", closeAllOverlays);
+
+  $("#global-search").addEventListener("keydown", function(e){
+    if(e.key==="Enter"){
+      var v=e.target.value.trim();
+      ui.appQuery=v; ui.subQuery=v; ui.userQuery=v;
+      navigate("#/apps");
+      toast("Searching", v?('Results for “'+v+'”'):"Cleared");
+    }
+  });
+
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>
+</body>
+</html>

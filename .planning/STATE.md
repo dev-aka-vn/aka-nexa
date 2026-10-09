@@ -1,17 +1,48 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 03
-current_phase_name: Natural-Language Routing
+current_plan: 10
 status: shipped
-stopped_at: null
-last_updated: "2026-10-08T17:00:00Z"
-last_activity: 2026-10-10
-last_activity_desc: Phase 03 shipped — PR #3 created, documentation generated (ARCHITECTURE, GETTING-STARTED, DEVELOPMENT, TESTING, CONFIGURATION, API, DEPLOYMENT)
-state_head: b64d32b76b0b9e4f8c8e2c5d1d3e5f7a9c2e4f6a
+stopped_at: Completed Phase 04 verification (04-VERIFICATION.md)
+last_updated: "2026-10-09T03:17:58.677Z"
+state_head: 3938f6fb9ee7de957e77213076c16682f07a4149
 progress:
   total_phases: 8
-  completed_phases: 2
-  total_plans: 18
-  completed_plans: 19
-  percent: 14
+  completed_phases: 3
+  total_plans: 28
+  completed_plans: 28
+  percent: 38
+last_activity: 2026-10-08
+current_phase: 04
+current_phase_name: Read Path & Query DSL
+last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 10 testable checks covering SC#1-4 and all 6 requirements."
 ---
+
+## Current Position
+
+Current Plan: 10
+Total Plans in Phase: 10
+
+## Session
+
+**Last session:** 2026-10-09T03:17:58.051Z
+**Stopped at:** Completed Phase 04 verification (04-VERIFICATION.md)
+**Resume file:** None
+
+## Performance Metrics
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 04 P02 | 40m | 3 tasks | 7 files |
+| Phase 04-read-path-query-dsl P09 | 1m | 1 tasks | 1 files |
+| Phase 4 P05 | 00:05:30 | 2 tasks | 3 files |
+| Phase 04 P07 | 300 | 1 tasks | 3 files |
+| Phase 04-read-path-query-dsl P04 | 15m | 2 tasks | 3 files |
+| Phase 04-read-path-query-dsl P08 | 1032 | 2 tasks | 4 files |
+
+## Decisions
+
+- [Phase 04-read-path-query-dsl]: UAT-GAPS.md already existed with all three required sections; plan 10 is an idempotent no-op — verified rather than re-wrote
+- [Phase 04-read-path-query-dsl]: Verified existing DAT-11/DAT-12 DSL auth invariant tests remain green
+- [Phase 04-read-path-query-dsl]: Created comprehensive read-verifier tests for LNK-05/LNK-06/D-79/D-75
+- [Phase 04-read-path-query-dsl]: controller-extended-with-query-endpoint
+- [Phase 04-read-path-query-dsl]: tests-cover-view-and-query-flows

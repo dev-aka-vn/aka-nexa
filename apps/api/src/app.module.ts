@@ -15,6 +15,7 @@ import {
   shutdownOtel,
 } from '@akane/platform';
 
+import { ReadModule } from './read/read.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
 /**
@@ -65,6 +66,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     MongoModule,
     TerminusModule.forRoot(),
     MetricsModule,
+    ReadModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -1,0 +1,34 @@
+[
+  {
+    "query_id": "qry_pending_leave",
+    "query_version": 1,
+    "app_id": "leave-request",
+    "intents": ["list pending leave requests", "what leave is awaiting approval"],
+    "dsl": {
+      "filters": {
+        "op": "eq",
+        "field": "data.status",
+        "value": "pending"
+      },
+      "sort": [{ "field": "created_at", "dir": "desc" }],
+      "limit": 50
+    }
+  },
+  {
+    "query_id": "qry_my_leave_this_year",
+    "query_version": 1,
+    "app_id": "leave-request",
+    "intents": ["my leave requests this year"],
+    "dsl": {
+      "filters": {
+        "op": "and",
+        "filters": [
+          { "op": "gte", "field": "created_at", "value": "2026-01-01" },
+          { "op": "contains", "field": "data.reason", "value": "leave" }
+        ]
+      },
+      "sort": [{ "field": "created_at", "dir": "desc" }],
+      "projection": { "_id": 1, "data": 1, "created_at": 1, "status": 1 }
+    }
+  }
+]

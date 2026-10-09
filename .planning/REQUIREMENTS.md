@@ -186,10 +186,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
 - [ ] **LNK-03**: A one-time token is consumed atomically, and a MongoDB unique index on the token ID makes double consumption impossible even if Redis loses an acknowledged write during failover
 - [ ] **LNK-04**: An integration test that kills Redis mid-submit produces exactly one submission
-- [ ] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
-- [ ] **LNK-06**: A read link re-checks permission and compares `perm_version` on every access, and is rejected when they diverge
+- [x] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
+- [x] **LNK-06**: A read link re-checks permission and compares `perm_version` on every access, and is rejected when they diverge
 - [x] **LNK-07**: The read-link JWT claim shape — including `form_version`, `app_version`, and the epoch — is frozen in the foundations phase, because adding a claim later invalidates every outstanding link
-- [ ] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
+- [x] **LNK-08**: A read-link denial is counted per reason across all seven revocation events, not a single aggregate counter
 - [ ] **LNK-09**: Every link access is logged with `jti`, `real_user_id`, action, IP, and User-Agent
 - [ ] **LNK-10**: Link URLs are unguessable and contain no sequential identifier
 - [x] **LNK-11**: An expired link returns a clear "link expired" message offering to request a new one via IM
@@ -206,9 +206,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
 - [ ] **DAT-09**: An internal collection's declared indexes are created at publish time
-- [ ] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
-- [ ] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
-- [ ] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
+- [x] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
+- [x] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
+- [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
 - [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
 
@@ -258,7 +258,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     rather than one aggregating for the others. The `OTEL_NOT_STARTED` refusal was observed for
     real by booting a process that skipped `startOtel()`, and the plan-08 instrument was observed
     moving in a booted worker: `platform_heartbeat_total{otel_scope_name="akane"} 2`.
-- [ ] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
+- [x] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
 - [ ] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
@@ -470,13 +470,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RTE-08 | Phase 3 | Pending |
 | RTE-09 | Phase 3 | Pending |
 | RTE-11 | Phase 3 | Pending |
-| OBS-02 | Phase 3 | Pending |
-| LNK-05 | Phase 4 | Pending |
-| LNK-06 | Phase 4 | Pending |
-| LNK-08 | Phase 4 | Pending |
-| DAT-10 | Phase 4 | Pending |
-| DAT-11 | Phase 4 | Pending |
-| DAT-12 | Phase 4 | Pending |
+| OBS-02 | Phase 3 | Complete |
+| LNK-05 | Phase 4 | Complete |
+| LNK-06 | Phase 4 | Complete |
+| LNK-08 | Phase 4 | Complete |
+| DAT-10 | Phase 4 | Complete |
+| DAT-11 | Phase 4 | Complete |
+| DAT-12 | Phase 4 | Complete |
 | DAT-01 | Phase 5 | Pending |
 | DAT-03 | Phase 5 | Pending |
 | DAT-04 | Phase 5 | Pending |

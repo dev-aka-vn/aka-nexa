@@ -10,6 +10,36 @@ export { IdentityMappingRepository } from './identity/identity-mapping.repositor
 export type { IdentityMapping } from './identity/identity-mapping.repository.js';
 export { LinkIssuerService } from './links/link-issuer.service.js';
 export type { IssueLinkInput } from './links/link-issuer.service.js';
+export { ReadDenyService } from './links/read-deny.service.js';
+export type {
+  ReadDenyAction,
+  ReadDenyContext,
+  ReadDenyRecorder,
+} from './links/read-deny.service.js';
+export { ReadVerifierService } from './links/read-verifier.service.js';
+export type {
+  ReadVerifyResult,
+  ReadVerifySuccess,
+  ReadVerifyFailure,
+  ReadLinkJwtVerifier,
+  SavedQueryLookup,
+  SavedQueryRecord,
+  SubmissionLookup,
+  SubmissionRecord,
+} from './links/read-verifier.service.js';
+export { PermissionCheckService } from './authz/permission-check.service.js';
+export { RbacService } from './authz/rbac.service.js';
+export { RbacCacheService } from './authz/rbac-cache.service.js';
+export { DslService } from './dsl/dsl.service.js';
+export type { DslCompileResult } from './dsl/dsl.service.js';
+export type { CompiledQuery, MongoFilter, QueryCtx } from './dsl/ast.js';
+export { SubmissionRepository } from './submissions/submission.repository.js';
+export type {
+  QueryPage,
+  QueryRow,
+  QueryWithDslResult,
+  Submission,
+} from './submissions/submission.repository.js';
 export { PublishedAppLoader } from './decision/published-app-loader.js';
 export type {
   AuthorizedApp,
