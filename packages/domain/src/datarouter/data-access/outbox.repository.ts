@@ -1,4 +1,4 @@
-import { MongoService } from '../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '../../../../platform/src/mongo/mongo.service.js';
 import { ClientSession, ObjectId } from 'mongodb';
 
 export interface OutboxDocument {
@@ -50,7 +50,10 @@ export class OutboxRepository {
       .toArray();
   }
 
-  async markPublished(_id: ObjectId): Promise<void> {
-    await this.collection.updateOne({ _id }, { $set: { published: true, publishedAt: new Date() } });
+  async markPublished(revisionRef: string): Promise<void> {
+    await this.collection.updateOne(
+      { revisionRef, published: false },
+      { $set: { published: true, publishedAt: new Date() } },
+    );
   }
 }
