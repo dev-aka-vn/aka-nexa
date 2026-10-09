@@ -5,6 +5,7 @@ import { ReadDenyReason } from '@akane/contract';
 import {
   ReadVerifierService,
   type ReadVerifyResult,
+  SubmissionRepository,
 } from '@akane/domain';
 import type { ReadLinkConfig } from './read.module.js';
 
@@ -36,6 +37,7 @@ export class ReadController {
 
   constructor(
     private readonly verifier: ReadVerifierService,
+    private readonly submissions: SubmissionRepository,
     @Inject('READ_LINK_CONFIG') config: ReadLinkConfig,
   ) {
     this.rendererOrigin = config.rendererOrigin;
@@ -67,6 +69,46 @@ export class ReadController {
 
     // LNK-08: record the distinct denial reason.
     logger.warn(`view access denied: reason=${result.reason}`);
+
+    this.redirectToDead(res, result.reason);
+  }
+
+  @Get('query/:jti')
+  async query(
+    @Query('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!token) {
+      this.redirectToDead(res, ReadDenyReason.bad_signature);
+      return;
+    }
+
+    const result: ReadVerifyResult = await this.verifier.verify(token);
+
+    if (result.ok) {
+      logger.log(
+        `query access granted: jti=${result.claims.jti} app=${result.claims.app_id} sub=${result.claims.sub}`,
+      );
+
+      const queryResult = await this.submissions.queryWithDsl(
+        result.savedQuery?.dsl ?? {},
+        {
+          viewerId: result.claims.sub,
+          hasViewAll: false,
+          appId: result.claims.app_id,
+        },
+      );
+
+      res.status(200).json({
+        claims: result.claims,
+        savedQuery: result.savedQuery ?? null,
+        result: queryResult.ok ? queryResult : { ok: false, issues: queryResult.issues },
+      });
+      return;
+    }
+
+    // LNK-08: record the distinct denial reason.
+    logger.warn(`query access denied: reason=${result.reason}`);
 
     this.redirectToDead(res, result.reason);
   }
