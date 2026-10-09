@@ -197,12 +197,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Submissions & Data Routing
 
-- [ ] **DAT-01**: Each app selects one data mode: `internal`, `external`, or `hybrid`
+- [x] **DAT-01**: Each app selects one data mode: `internal`, `external`, or `hybrid`
 - [ ] **DAT-02**: In `internal` mode a submission is written to the app's MongoDB collection, which is created on first write
 - [ ] **DAT-03**: In `external` mode a submission is pushed through a referenced connector using `{{form.field}}` and `{{real_user.attribute}}` field mapping
-- [ ] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
+- [x] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
 - [ ] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
-- [ ] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
+- [x] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
 - [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
 - [ ] **DAT-09**: An internal collection's declared indexes are created at publish time
@@ -214,8 +214,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Connectors & Async Execution
 
-- [ ] **CON-01**: A connector implements one common interface — `testConnection()`, `execute(operation, payload, context)`, `getCapabilities()`
-- [ ] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
+- [x] **CON-01**: A connector implements one common interface — `testConnection()`, `execute(operation, payload, context)`, `getCapabilities()`
+- [x] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
 - [ ] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
 - [ ] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
@@ -223,7 +223,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
 - [ ] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
 - [ ] **CON-09**: A Redmine connector ships as the first and only v1 external integration, including field mapping and its error taxonomy
-- [ ] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
+- [x] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
 
 ### Audit, Compliance & Data Protection
 
@@ -477,15 +477,15 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-10 | Phase 4 | Complete |
 | DAT-11 | Phase 4 | Complete |
 | DAT-12 | Phase 4 | Complete |
-| DAT-01 | Phase 5 | Pending |
+| DAT-01 | Phase 5 | Complete |
 | DAT-03 | Phase 5 | Pending |
-| DAT-04 | Phase 5 | Pending |
+| DAT-04 | Phase 5 | Complete |
 | DAT-05 | Phase 5 | Pending |
-| DAT-06 | Phase 5 | Pending |
+| DAT-06 | Phase 5 | Complete |
 | DAT-07 | Phase 5 | Pending |
 | DAT-14 | Phase 5 | Pending |
-| CON-01 | Phase 5 | Pending |
-| CON-02 | Phase 5 | Pending |
+| CON-01 | Phase 5 | Complete |
+| CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |
 | CON-04 | Phase 5 | Pending |
 | CON-05 | Phase 5 | Pending |
@@ -493,7 +493,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-07 | Phase 5 | Pending |
 | CON-08 | Phase 5 | Pending |
 | CON-09 | Phase 5 | Pending |
-| CON-10 | Phase 5 | Pending |
+| CON-10 | Phase 5 | Complete |
 | LNK-02 | Phase 5 | Pending |
 | OBS-04 | Phase 5 | Pending |
 | BLD-01 | Phase 6 | Pending |
