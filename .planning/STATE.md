@@ -1,15 +1,15 @@
 ---
 gsd_state_version: "1.0"
-current_plan: 5
+current_plan: 6
 status: shipped
-stopped_at: Completed 05-06-PLAN.md
-last_updated: "2026-10-10T13:25:25.222Z"
-state_head: d253c35552ff1aa521651b59c5f958eb8a42a8cf
+stopped_at: Completed 05-07-PLAN.md
+last_updated: "2026-10-10T15:32:24.642Z"
+state_head: 12a901b8ce19330b26962a1a131ad18c696488af
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 37
-  completed_plans: 34
+  completed_plans: 35
   percent: 38
 last_activity: 2026-10-08
 current_phase: 04
@@ -19,13 +19,13 @@ last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 1
 
 ## Current Position
 
-Current Plan: 5
+Current Plan: 6
 Total Plans in Phase: 9
 
 ## Session
 
-**Last session:** 2026-10-10T13:25:24.666Z
-**Stopped at:** Completed 05-06-PLAN.md
+**Last session:** 2026-10-10T15:32:24.136Z
+**Stopped at:** Completed 05-07-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -42,6 +42,7 @@ Total Plans in Phase: 9
 | Phase 05 P03 | 45m | 3 tasks | 5 files |
 | Phase 05 P04 | 60 | 3 tasks | 8 files |
 | Phase 05-integration-async-execution P06 | 30m | 3 tasks | 10 files |
+| Phase 05 P07 | 105m | 2 tasks | 7 files |
 
 ## Decisions
 
@@ -58,3 +59,6 @@ Total Plans in Phase: 9
 - [Phase 05]: Job Scheduler registered idempotently in scheduler app with both heartbeat and reconciliation
 - [Phase 05-integration-async-execution]: upsert-keyed-by-connector-ref: Idempotent loader keyed by connector_ref
 - [Phase 05-integration-async-execution]: dlq-redacted-by-default: DLQ list excludes payload/PII by default
+- [Phase 05]: Extend query action in place (no new route/action/claim) returning projected rows
+- [Phase 05]: Partial status derived from not_sent/sent_unconfirmed latest revision with retrying destination
+- [Phase 05]: Failed status uses taxonomy code mapped to user-safe reason string

@@ -210,7 +210,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
 - [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
-- [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
+- [x] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
 
 ### Connectors & Async Execution
 
@@ -483,7 +483,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-05 | Phase 5 | Complete |
 | DAT-06 | Phase 5 | Complete |
 | DAT-07 | Phase 5 | Pending |
-| DAT-14 | Phase 5 | Pending |
+| DAT-14 | Phase 5 | Complete |
 | CON-01 | Phase 5 | Complete |
 | CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |
