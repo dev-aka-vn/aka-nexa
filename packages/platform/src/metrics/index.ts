@@ -17,6 +17,8 @@ export {
   PLATFORM_HEARTBEAT_METRIC,
   QUEUE_JOB_FAILURES_METRIC,
   QUEUE_OLDEST_ITEM_AGE_METRIC,
+  SUBMISSION_STATUS_METRIC,
+  CONNECTOR_OUTCOME_METRIC,
   registerBusinessMetrics,
   type BusinessMetrics,
 } from './business-metrics.js';

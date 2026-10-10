@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { metrics, type Counter, type MeterProvider } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { PLATFORM_HEARTBEAT_METRIC, QUEUE_JOB_FAILURES_METRIC } from './business-metrics.js';
+import {
+  PLATFORM_HEARTBEAT_METRIC,
+  QUEUE_JOB_FAILURES_METRIC,
+  SUBMISSION_STATUS_METRIC,
+  CONNECTOR_OUTCOME_METRIC,
+} from './business-metrics.js';
 
 /**
  * Business metric registration, and the single-metric-path assertion (OBS-01).
@@ -75,17 +80,24 @@ describe('registerBusinessMetrics (OBS-01)', () => {
     expect(recorder.meters.map((meter) => meter.name)).toEqual([name]);
     expect(name).toBe('akane');
     expect([...recorder.counters.keys()].sort()).toEqual(
-      [PLATFORM_HEARTBEAT_METRIC, QUEUE_JOB_FAILURES_METRIC].sort(),
+      [
+        PLATFORM_HEARTBEAT_METRIC,
+        QUEUE_JOB_FAILURES_METRIC,
+        SUBMISSION_STATUS_METRIC,
+        CONNECTOR_OUTCOME_METRIC,
+      ].sort(),
     );
 
     // A real `Counter`, not just an object that quacks like one: the
     // heartbeat processor calls `.add()` on this handle, and a
     // structurally-compatible stub would let a signature drift through.
-    for (const handle of Object.values(handles) as Counter[]) {
+    const handleValues = Object.values(handles) as Counter[];
+    for (const handle of handleValues) {
       expect(typeof handle.add).toBe('function');
       handle.add(1);
     }
-    expect(recorder.observations).toEqual([1, 1]);
+    expect(recorder.observations.length).toBe(handleValues.length);
+    expect(recorder.observations.every((v) => v === 1)).toBe(true);
   });
 
   it('returns the same handles on a second call, and creates nothing new', async () => {

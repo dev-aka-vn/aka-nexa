@@ -45,11 +45,21 @@ export const QUEUE_JOB_FAILURES_METRIC = 'queue.job.failures';
  */
 export const QUEUE_OLDEST_ITEM_AGE_METRIC = 'queue.oldest.item.age';
 
+/** Submission status transitions by status attribute (queued, sent, confirmed, partial, failed). */
+export const SUBMISSION_STATUS_METRIC = 'submission.status';
+
+/** Connector call outcomes by app_id and taxonomy_code (credential_rejected, endpoint_unreachable, failed_permanent, mapping_error). */
+export const CONNECTOR_OUTCOME_METRIC = 'connector.outcome';
+
 export interface BusinessMetrics {
   /** Incremented by the platform heartbeat processor. */
   readonly platformHeartbeat: Counter;
   /** Incremented when a job reaches the `failed` set. */
   readonly queueJobFailures: Counter;
+  /** Submission status transitions. */
+  readonly submissionStatus: Counter;
+  /** Connector call outcomes. */
+  readonly connectorOutcome: Counter;
 }
 
 let cached: BusinessMetrics | undefined;
@@ -78,6 +88,12 @@ export function registerBusinessMetrics(): BusinessMetrics {
       }),
       queueJobFailures: meter.createCounter(QUEUE_JOB_FAILURES_METRIC, {
         description: 'Jobs that reached the failed set, by queue and job name.',
+      }),
+      submissionStatus: meter.createCounter(SUBMISSION_STATUS_METRIC, {
+        description: 'Submission status transitions.',
+      }),
+      connectorOutcome: meter.createCounter(CONNECTOR_OUTCOME_METRIC, {
+        description: 'Connector call outcomes.',
       }),
     });
   }
