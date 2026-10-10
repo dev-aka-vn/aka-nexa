@@ -217,11 +217,11 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **CON-01**: A connector implements one common interface — `testConnection()`, `execute(operation, payload, context)`, `getCapabilities()`
 - [x] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
-- [ ] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
+- [x] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
 - [ ] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
 - [ ] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
 - [ ] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
-- [ ] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
+- [x] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
 - [ ] **CON-09**: A Redmine connector ships as the first and only v1 external integration, including field mapping and its error taxonomy
 - [x] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
 
@@ -487,11 +487,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-01 | Phase 5 | Complete |
 | CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |
-| CON-04 | Phase 5 | Pending |
+| CON-04 | Phase 5 | Complete |
 | CON-05 | Phase 5 | Pending |
 | CON-06 | Phase 5 | Pending |
 | CON-07 | Phase 5 | Pending |
-| CON-08 | Phase 5 | Pending |
+| CON-08 | Phase 5 | Complete |
 | CON-09 | Phase 5 | Pending |
 | CON-10 | Phase 5 | Complete |
 | LNK-02 | Phase 5 | Pending |
