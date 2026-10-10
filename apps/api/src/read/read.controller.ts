@@ -6,8 +6,10 @@ import {
   ReadVerifierService,
   type ReadVerifyResult,
   SubmissionRepository,
+  SubmissionRevisionsRepository,
 } from '@akane/domain';
 import type { ReadLinkConfig } from './read.module.js';
+import { projectSubmissionStatus } from './status-projection.js';
 
 const logger = new Logger('ReadController');
 
@@ -38,6 +40,7 @@ export class ReadController {
   constructor(
     private readonly verifier: ReadVerifierService,
     private readonly submissions: SubmissionRepository,
+    private readonly revisions: SubmissionRevisionsRepository,
     @Inject('READ_LINK_CONFIG') config: ReadLinkConfig,
   ) {
     this.rendererOrigin = config.rendererOrigin;
@@ -99,10 +102,34 @@ export class ReadController {
         },
       );
 
+      if (!queryResult.ok) {
+        res.status(200).json({
+          claims: result.claims,
+          savedQuery: result.savedQuery ?? null,
+          rows: [],
+        });
+        return;
+      }
+
+      const rows = await Promise.all(
+        queryResult.rows.map(async (row) => {
+          const submissionId =
+            (row as any).submission_id ??
+            (row as any)._id ??
+            (row as any).id ??
+            result.claims.sub;
+          const latest = await this.revisions.findLatest(String(submissionId));
+          return projectSubmissionStatus({
+            queryRow: row as any,
+            latestRevision: latest,
+          });
+        }),
+      );
+
       res.status(200).json({
         claims: result.claims,
         savedQuery: result.savedQuery ?? null,
-        result: queryResult.ok ? queryResult : { ok: false, issues: queryResult.issues },
+        rows,
       });
       return;
     }

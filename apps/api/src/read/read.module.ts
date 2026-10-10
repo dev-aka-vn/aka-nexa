@@ -8,6 +8,7 @@ import {
   RbacService,
   RbacCacheService,
   SubmissionRepository,
+  SubmissionRevisionsRepository,
   type ReadLinkJwtVerifier,
 } from '@akane/domain';
 import { verifyReadLinkJwt } from '@akane/platform/crypto';
@@ -126,6 +127,7 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     // without this provider SubmissionRepository cannot be constructed.
     DslService,
     SubmissionRepository,
+    SubmissionRevisionsRepository,
     {
       provide: ReadDenyService,
       useFactory: (): ReadDenyService => {
