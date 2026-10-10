@@ -183,7 +183,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### Links & Token Security
 
 - [ ] **LNK-01**: A create link is single-use, expires after a configurable TTL (default 30 minutes), and cannot be submitted twice
-- [ ] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
+- [x] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
 - [ ] **LNK-03**: A one-time token is consumed atomically, and a MongoDB unique index on the token ID makes double consumption impossible even if Redis loses an acknowledged write during failover
 - [ ] **LNK-04**: An integration test that kills Redis mid-submit produces exactly one submission
 - [x] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
@@ -494,7 +494,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-08 | Phase 5 | Complete |
 | CON-09 | Phase 5 | Pending |
 | CON-10 | Phase 5 | Complete |
-| LNK-02 | Phase 5 | Pending |
+| LNK-02 | Phase 5 | Complete |
 | OBS-04 | Phase 5 | Pending |
 | BLD-01 | Phase 6 | Pending |
 | BLD-02 | Phase 6 | Pending |

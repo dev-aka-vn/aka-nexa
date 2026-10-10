@@ -192,7 +192,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. An edit link can be reopened repeatedly but consumes on submit, and a second submit returns the original confirmation rather than creating a duplicate record.
   5. One app's traffic spike fails that app and not every app sharing the connector; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation.
 
-**Plans**: 7/9 plans executed
+**Plans**: 9/9 plans executed
 **Wave 1**
 - [x] 05-01-PLAN.md — Tracer: connector seam, boundary edge, credential store, transactional outbox, relay + delivery
 
@@ -207,10 +207,10 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] 05-07-PLAN.md — "My submissions" status surface via the frozen query action
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 05-08-PLAN.md — Edit link: atomic consume-on-submit, new revision + D-95 replay
+- [x] 05-08-PLAN.md — Edit link: atomic consume-on-submit, new revision + D-95 replay
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 05-09-PLAN.md — Renderer surfaces A–D, self-hosted FormIO, package-legitimacy gate
+- [x] 05-09-PLAN.md — Renderer surfaces A–D, self-hosted FormIO, package-legitimacy gate
 
 **UI hint**: yes
 **Notes**: The hardest correctness surface in the system. The outbound state is modelled as **exactly three** states — `not_sent | sent_unconfirmed | confirmed` — and `sent_unconfirmed` is committed *before* the outbound call, because the PRD cannot express the gap between "sent" and "confirmed" and puts the idempotency guarantee on the wrong side of the wire. `FR-D-12` is implemented as the amended single-send guarantee recorded in Phase 1, surfaced to the builder at publish time. Connectors are **globally managed** — an app references a connector and never owns its credentials. `DAT-14` lands here because `partial` is unreachable before this phase.
@@ -324,7 +324,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 2. The Vertical Slice | 3/3 | In Progress|  |
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
-| 5. Integration & Async Execution | 7/9 | In Progress|  |
+| 5. Integration & Async Execution | 9/9 | In Progress|  |
 | 6. Self-Service App Builder | 0/TBD | Not started | - |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |

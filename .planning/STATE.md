@@ -1,15 +1,15 @@
 ---
 gsd_state_version: "1.0"
-current_plan: 6
+current_plan: 7
 status: shipped
-stopped_at: Completed 05-07-PLAN.md
-last_updated: "2026-10-10T15:32:24.642Z"
-state_head: 12a901b8ce19330b26962a1a131ad18c696488af
+stopped_at: Completed 05-09-PLAN.md
+last_updated: "2026-10-10T17:34:56.763Z"
+state_head: 4eb9bdb9a88022dad90edaa7e60d2b300a83abd9
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 37
   percent: 38
 last_activity: 2026-10-08
 current_phase: 04
@@ -19,13 +19,13 @@ last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 1
 
 ## Current Position
 
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 9
 
 ## Session
 
-**Last session:** 2026-10-10T15:32:24.136Z
-**Stopped at:** Completed 05-07-PLAN.md
+**Last session:** 2026-10-10T17:34:56.281Z
+**Stopped at:** Completed 05-09-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -43,6 +43,7 @@ Total Plans in Phase: 9
 | Phase 05 P04 | 60 | 3 tasks | 8 files |
 | Phase 05-integration-async-execution P06 | 30m | 3 tasks | 10 files |
 | Phase 05 P07 | 105m | 2 tasks | 7 files |
+| Phase 05 P09 | 23min | 3 tasks | 11 files |
 
 ## Decisions
 
@@ -62,3 +63,6 @@ Total Plans in Phase: 9
 - [Phase 05]: Extend query action in place (no new route/action/claim) returning projected rows
 - [Phase 05]: Partial status derived from not_sent/sent_unconfirmed latest revision with retrying destination
 - [Phase 05]: Failed status uses taxonomy code mapped to user-safe reason string
+- [Phase 05]: Pinned @formio/js@5.6.1 exactly after a blocking package-legitimacy gate (MIT, official Form.io publisher); self-hosted same-origin so CSP script-src 'self' holds and no CDN asset is referenced (FRM-07).
+- [Phase 05]: Renderer modules stay DOM-free at import with a guarded browser entry that dynamically imports FormIO, keeping the pure status/edit logic testable in the node vitest environment.
+- [Phase 05]: A consumed edit link replays its recorded confirmation (D-95) — never the dead-link denial page; no user-facing retry control exists on any status/detail/partial surface (D-81).

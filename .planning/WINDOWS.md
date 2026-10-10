@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 10
 waived_count: 1
 fixed_count: 10
-total_count: 19
-last_updated: 2026-10-07T05:39:10.973Z
+total_count: 21
+last_updated: 2026-10-10T17:32:27.220Z
 ---
 
 # Broken Windows Ledger
@@ -34,6 +34,8 @@ last_updated: 2026-10-07T05:39:10.973Z
 | 17 | 01 | deviation | .planning/REQUIREMENTS.md |  | phase.complete flipped FND-10, AUD-10 and DAT-13 from Pending to Complete on 2026-10-03, overriding deliberate deferrals the verifier had just confirmed as honestly held. The requirement bodies still read STAYS PENDING, so the artifact contradicted itself. Reverted by hand. The CLI's phase-status update is keyed on phase completion rather than per-requirement evidence, so any deliberately-deferred requirement is at risk of the same overwrite until that is addressed. FND-10 in particular must stay Pending: Phase 5 must not store a connector credential before a KMS vendor is named (B-3/D-27). SCOPE CORRECTION 2026-10-04: phase.complete writes TWO machine-consumed fields per requirement — the `- [x]` checkbox and the coverage-table Status cell. The 2026-10-03 revert changed only the table, so the checkbox kept reading delivered for FND-10, AUD-10 and DAT-13 while the table and the requirement bodies said Pending; a Nyquist re-verification caught it. Any revert of this class must change BOTH fields. | open |  | 2026-10-04T01:28:19.120Z |  |
 | 18 | 01 | unrun-verify | .planning/phases/01-foundations-platform/01-11-PLAN.md |  | Task 2's documented-path verify command fails on this host: its probe allows 30x500ms (15s) for /health/ready, but external load (load avg 7-15, ~1GB free RAM) stretches Nest+instrumented-driver module load to ~29s. Run verbatim it exits 1 with NOT_READY. The identical boot reaches READY_OK mongo,redis_cache,redis_queue after 28.8s, so the documented path is correct and only the probe budget is host-dependent. Not fixed by editing the command (plan forbids it); re-run on an idle host or widen N deliberately. | fixed |  | 2026-10-05T05:52:40.336Z | 2026-10-05T16:02:22.934Z |
 | 19 | 03 | deviation | tooling/boundaries.config.mjs |  | decision element allow-edge extended to contract; api/domain tsconfig references added to unblock tsc -b | open |  | 2026-10-07T05:39:10.973Z |  |
+| 20 | 05 | unrun-verify | .planning/phases/05-integration-async-execution/05-09-PLAN.md |  | Full suite (npx vitest run, 83 spec files incl. Docker-backed integration specs) not run to completion — exceeded a 10-min timeout; plan-scoped renderer suite is green (97 tests). | open |  | 2026-10-10T17:32:26.285Z |  |
+| 21 | 05 | deviation | apps/api/src/read/status-surface.integration.spec.ts |  | Pre-existing red from plan 05-08: read.controller.ts gained a LinkTokenStore constructor dependency (index 3) but status-surface.integration.spec.ts (last touched 05-07) does not provide it in its RootTestModule, so the spec fails with a Nest DI resolution error. Not caused by 05-09 (renderer-only). Owner: plan 05-08. | open |  | 2026-10-10T17:32:27.220Z |  |
 
 ````json
 [
@@ -276,6 +278,32 @@ last_updated: 2026-10-07T05:39:10.973Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-07T05:39:10.973Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 20,
+    "kind": "unrun-verify",
+    "phase": "05",
+    "file": ".planning/phases/05-integration-async-execution/05-09-PLAN.md",
+    "line": null,
+    "description": "Full suite (npx vitest run, 83 spec files incl. Docker-backed integration specs) not run to completion — exceeded a 10-min timeout; plan-scoped renderer suite is green (97 tests).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T17:32:26.285Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 21,
+    "kind": "deviation",
+    "phase": "05",
+    "file": "apps/api/src/read/status-surface.integration.spec.ts",
+    "line": null,
+    "description": "Pre-existing red from plan 05-08: read.controller.ts gained a LinkTokenStore constructor dependency (index 3) but status-surface.integration.spec.ts (last touched 05-07) does not provide it in its RootTestModule, so the spec fails with a Nest DI resolution error. Not caused by 05-09 (renderer-only). Owner: plan 05-08.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T17:32:27.220Z",
     "resolved_at": null,
     "milestone": null
   }
