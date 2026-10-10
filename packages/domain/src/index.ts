@@ -40,6 +40,11 @@ export type {
   QueryWithDslResult,
   Submission,
 } from './submissions/submission.repository.js';
+export { SubmissionRevisionsRepository } from './submissions/data-access/submission-revisions.repository.js';
+export type {
+  OutboundState,
+  SubmissionRevisionDocument,
+} from './submissions/data-access/submission-revisions.repository.js';
 export { PublishedAppLoader } from './decision/published-app-loader.js';
 export type {
   AuthorizedApp,

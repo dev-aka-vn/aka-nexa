@@ -63,4 +63,17 @@ export class SubmissionRevisionsRepository {
       { $set: { outbound: 'sent_unconfirmed', updatedAt: new Date() } },
     );
   }
+
+  async findByOutboundStatus(outbound: OutboundState): Promise<SubmissionRevisionDocument[]> {
+    return this.collection.find({ outbound }).toArray();
+  }
+
+  async findLatest(submissionId: string): Promise<SubmissionRevisionDocument | null> {
+    const doc = await this.collection
+      .find({ submission_id: submissionId })
+      .sort({ revision: -1 })
+      .limit(1)
+      .toArray();
+    return doc[0] ?? null;
+  }
 }
