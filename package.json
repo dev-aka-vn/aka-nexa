@@ -20,6 +20,7 @@
     "start:scheduler": "node --import ./apps/scheduler/otel.mjs ./apps/scheduler/dist/main.js"
   },
   "dependencies": {
+    "@formio/js": "5.6.1",
     "@nestjs/bullmq": "12.0.0",
     "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^12.0.1",
