@@ -12,6 +12,7 @@ export interface SubmissionRevisionDocument {
   readonly createdAt: Date;
   readonly updatedAt?: Date;
   readonly downstreamReference?: string | null;
+  readonly edit_jti?: string | null;
 }
 
 export class SubmissionRevisionsRepository {
@@ -21,12 +22,33 @@ export class SubmissionRevisionsRepository {
     return this.mongo.db().collection<SubmissionRevisionDocument>('submission_revisions');
   }
 
+  private ensureIndexPromise: Promise<void> | null = null;
+
+  private ensureIndex(): Promise<void> {
+    if (this.ensureIndexPromise === null) {
+      this.ensureIndexPromise = this.collection
+        .createIndex(
+          { edit_jti: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { edit_jti: { $exists: true } },
+            background: true,
+          },
+        )
+        .then(() => undefined)
+        .catch(() => undefined);
+    }
+    return this.ensureIndexPromise;
+  }
+
   async insertInSession(
     submissionId: string,
     revision: number,
     data: Record<string, unknown>,
     session: ClientSession,
+    editJti?: string | null,
   ): Promise<void> {
+    await this.ensureIndex();
     await this.collection.insertOne(
       {
         submission_id: submissionId,
@@ -34,6 +56,7 @@ export class SubmissionRevisionsRepository {
         outbound: 'not_sent',
         data,
         createdAt: new Date(),
+        ...(editJti ? { edit_jti: editJti } : {}),
       },
       { session },
     );
@@ -75,5 +98,9 @@ export class SubmissionRevisionsRepository {
       .limit(1)
       .toArray();
     return doc[0] ?? null;
+  }
+
+  async findByEditJti(jti: string): Promise<SubmissionRevisionDocument | null> {
+    return this.collection.findOne({ edit_jti: jti });
   }
 }

@@ -9,9 +9,13 @@ import {
   RbacCacheService,
   SubmissionRepository,
   SubmissionRevisionsRepository,
+  LinkTokenStore,
+  DataRouterService,
   type ReadLinkJwtVerifier,
 } from '@akane/domain';
 import { verifyReadLinkJwt } from '@akane/platform/crypto';
+import { MongoModule } from '../../../../packages/platform/src/mongo/mongo.module.js';
+import { redisCacheProvider } from '../../../../packages/platform/src/redis/redis.provider.js';
 
 import { ReadController } from './read.controller.js';
 import { registerReadDenyMetrics } from '../common/metrics/read-deny.metrics.js';
@@ -103,8 +107,10 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
  * for `CRYPTO_LOCAL_KEY_FILE`. The factory fails loudly if any are absent.
  */
 @Module({
+  imports: [MongoModule],
   controllers: [ReadController],
   providers: [
+    redisCacheProvider,
     {
       provide: 'READ_LINK_CONFIG',
       useFactory: (): ReadLinkConfig => readReadLinkConfig(),
@@ -129,6 +135,12 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     SubmissionRepository,
     SubmissionRevisionsRepository,
     {
+      provide: 'READ_LINK_CONFIG',
+      useFactory: (): ReadLinkConfig => readReadLinkConfig(),
+    },
+    LinkTokenStore,
+    DataRouterService,
+    {
       provide: ReadDenyService,
       useFactory: (): ReadDenyService => {
         const recorder = registerReadDenyMetrics();
@@ -142,12 +154,16 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
         permissionCheck: PermissionCheckService,
         submissions: SubmissionRepository,
         denyService: ReadDenyService,
-      ): ReadVerifierService => new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService),
+        revisions: SubmissionRevisionsRepository,
+        tokenStore: LinkTokenStore,
+      ): ReadVerifierService => new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService, revisions, tokenStore),
       inject: [
         { token: 'READ_LINK_JWT_VERIFIER', optional: false },
         PermissionCheckService,
         SubmissionRepository,
         ReadDenyService,
+        SubmissionRevisionsRepository,
+        LinkTokenStore,
       ],
     },
   ],

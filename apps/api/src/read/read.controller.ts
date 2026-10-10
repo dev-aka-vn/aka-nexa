@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, Logger, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Res, Logger, Inject } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { ReadDenyReason } from '@akane/contract';
@@ -7,6 +7,8 @@ import {
   type ReadVerifyResult,
   SubmissionRepository,
   SubmissionRevisionsRepository,
+  LinkTokenStore,
+  DataRouterService,
 } from '@akane/domain';
 import type { ReadLinkConfig } from './read.module.js';
 import { projectSubmissionStatus } from './status-projection.js';
@@ -41,6 +43,8 @@ export class ReadController {
     private readonly verifier: ReadVerifierService,
     private readonly submissions: SubmissionRepository,
     private readonly revisions: SubmissionRevisionsRepository,
+    private readonly tokenStore: LinkTokenStore,
+    private readonly dataRouter: DataRouterService,
     @Inject('READ_LINK_CONFIG') config: ReadLinkConfig,
   ) {
     this.rendererOrigin = config.rendererOrigin;
@@ -138,6 +142,125 @@ export class ReadController {
     logger.warn(`query access denied: reason=${result.reason}`);
 
     this.redirectToDead(res, result.reason);
+  }
+
+  @Get('edit/:jti')
+  async editGet(
+    @Query('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!token) {
+      this.redirectToDead(res, ReadDenyReason.bad_signature);
+      return;
+    }
+
+    const result: ReadVerifyResult = await this.verifier.verify(token);
+
+    if (result.ok) {
+      logger.log(
+        `edit access granted: jti=${result.claims.jti} app=${result.claims.app_id} sub=${result.claims.sub}`,
+      );
+
+      res.status(200).json({
+        claims: result.claims,
+        submission: result.submission ?? null,
+        latestRevision: result.latestRevision ?? null,
+        editOutcome: result.editOutcome ?? null,
+      });
+      return;
+    }
+
+    logger.warn(`edit access denied: reason=${result.reason}`);
+    this.redirectToDead(res, result.reason);
+  }
+
+  @Post('edit/:jti')
+  async editPost(
+    @Query('token') token: string,
+    @Body() body: Record<string, unknown>,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!token) {
+      this.redirectToDead(res, ReadDenyReason.bad_signature);
+      return;
+    }
+
+    const result: ReadVerifyResult = await this.verifier.verify(token);
+
+    if (!result.ok) {
+      logger.warn(`edit submit denied: reason=${result.reason}`);
+      this.redirectToDead(res, result.reason);
+      return;
+    }
+
+    const jti = result.claims.jti;
+
+    // 2. Check for existing outcome (replay)
+    const existingOutcome = await this.tokenStore.readOutcome(jti);
+    if (existingOutcome) {
+      res.status(200).json({
+        status: 'replayed',
+        submission_id: existingOutcome.submission_id,
+        revision: existingOutcome.revision,
+        downstreamRef: existingOutcome.downstreamRef ?? null,
+      });
+      return;
+    }
+
+    try {
+      // 3. Route edit with editJti in transaction
+      const routeResult = await this.dataRouter.routeEdit({
+        submissionId: result.claims.target_id ?? '',
+        appId: result.claims.app_id,
+        formId: result.claims.form_id,
+        data: body,
+        connectorRef: (body as any)?.connectorRef as string | undefined,
+        revision: (body as any)?.revision as number | undefined,
+        editJti: jti,
+      });
+
+      // 4. Record outcome
+      const outcome = {
+        submission_id: result.claims.target_id ?? '',
+        revision: routeResult.revision,
+        downstreamRef: null,
+      };
+      await this.tokenStore.recordOutcome(jti, outcome, 14400); // 4 hours default
+
+      res.status(200).json({
+        status: 'accepted',
+        submission_id: outcome.submission_id,
+        revision: outcome.revision,
+        downstreamRef: outcome.downstreamRef,
+      });
+    } catch (error: any) {
+      // Check for duplicate key error (concurrent submit)
+      if (error?.code === 11000 || error?.message?.includes('duplicate')) {
+        // Try to find existing by edit_jti and return replay
+        const existing = await this.revisions.findByEditJti(jti);
+        if (existing) {
+          const outcomeReplay = await this.tokenStore.readOutcome(jti);
+          if (outcomeReplay) {
+            res.status(200).json({
+              status: 'replayed',
+              submission_id: outcomeReplay.submission_id,
+              revision: outcomeReplay.revision,
+              downstreamRef: outcomeReplay.downstreamRef ?? null,
+            });
+            return;
+          }
+          res.status(200).json({
+            status: 'replayed',
+            submission_id: existing.submission_id,
+            revision: existing.revision,
+            downstreamRef: existing.downstreamReference ?? null,
+          });
+          return;
+        }
+      }
+      // Re-throw other errors (transaction failed - should not consume token)
+      throw error;
+    }
   }
 
   /**

@@ -26,7 +26,19 @@ export type {
   SavedQueryRecord,
   SubmissionLookup,
   SubmissionRecord,
+  SubmissionRevisionLookup,
+  SubmissionRevisionRecord,
+  LinkTokenStoreSeam,
+  EditOutcome,
 } from './links/read-verifier.service.js';
+export { LinkTokenStore } from './links/link-token.store.js';
+export type {
+  LinkTokenStore as LinkTokenStoreInterface,
+  CreateOutcome,
+  EditOutcome as LinkTokenEditOutcome,
+  TokenOutcome,
+  RedisStructuralSeam,
+} from './links/link-token.store.js';
 export { PermissionCheckService } from './authz/permission-check.service.js';
 export { RbacService } from './authz/rbac.service.js';
 export { RbacCacheService } from './authz/rbac-cache.service.js';
@@ -74,3 +86,5 @@ export type {
   ClarificationResponse,
 } from './decision/clarification-session.service.js';
 export { redact, isUncertain, type RedactionResult } from './decision/redaction.js';
+export { DataRouterService } from './datarouter/data-router.service.js';
+export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
