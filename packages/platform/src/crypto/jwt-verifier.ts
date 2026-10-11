@@ -54,7 +54,7 @@ export interface ReadLinkJwtVerifyOptions {
   readonly algorithms: string[];
   readonly previousPublicKey?: string | null;
   readonly currentPublicKey?: string | null;
-  readonly publicKeys?: readonly string[] | readonly Array<{ kid?: string; key: string }>;
+  readonly publicKeys?: readonly string[] | readonly { kid?: string; key: string }[];
   readonly keyId?: string | null;
 }
 
@@ -122,58 +122,55 @@ export async function verifyReadLinkJwt(
     throw new jose.errors.JWSSignatureVerificationFailed();
   }
 
-  // Build key resolver for kid-based lookup with fallback to all keys
+  // kid-keyed lookup. An unknown `kid` must NOT fall back to another key: a
+  // token naming a key we do not hold is unverifiable (T-04-01).
   const keyResolver: jose.JWTVerifyGetKey = async (protectedHeader) => {
-    const kid = protectedHeader.kid;
-    if (kid) {
-      // Try to find key with matching kid
-      const match = uniqueKeys.find((e) => e.kid === kid);
-      if (match) {
-        return createPublicKey(match.key);
-      }
-      // If kid specified but no match found, do NOT return a default key
-      // Let verification fail - this prevents accepting tokens with unknown kids
+    const match = uniqueKeys.find((e) => e.kid === protectedHeader.kid);
+    if (!match) {
       throw new jose.errors.JWSSignatureVerificationFailed();
     }
-    // No kid in header - try all keys (backward compat)
-    // Return the first key; jose will try multiple keys if we pass array,
-    // but with keyResolver returning single key, better approach is to pass array
-    return createPublicKey(uniqueKeys[0].key);
+    return createPublicKey(match.key);
   };
 
-  // For kid-agnostic fallback when no kid present, pass array of keys
-  const keyObjects = uniqueKeys.map((e) => createPublicKey(e.key));
+  const verifyOptions = {
+    issuer: options.issuer,
+    audience: options.audience,
+    algorithms: options.algorithms,
+  };
 
+  // Decode the header once to choose between kid-keyed lookup and the kid-less
+  // multi-key path. A malformed header falls through and fails verification.
+  let kid: string | undefined;
   try {
-    // Decode header to check for kid
-    let hasKid = false;
-    try {
-      const [headerPart] = token.split('.');
-      if (headerPart) {
-        const header = JSON.parse(Buffer.from(headerPart, 'base64url').toString());
-        hasKid = Boolean(header.kid);
-      }
-    } catch {
-      // ignore
+    const [headerPart] = token.split('.');
+    if (headerPart) {
+      const header = JSON.parse(Buffer.from(headerPart, 'base64url').toString());
+      if (typeof header.kid === 'string') kid = header.kid;
     }
-
-    if (hasKid) {
-      const { payload } = await jose.jwtVerify(token, keyResolver, {
-        issuer: options.issuer,
-        audience: options.audience,
-        algorithms: options.algorithms,
-      });
-      return payload as Record<string, unknown>;
-    } else {
-      const { payload } = await jose.jwtVerify(token, keyObjects, {
-        issuer: options.issuer,
-        audience: options.audience,
-        algorithms: options.algorithms,
-      });
-      return payload as Record<string, unknown>;
-    }
-  } catch (err) {
-    throw err;
+  } catch {
+    // ignore — verification will reject the token
   }
-}
+
+  if (kid) {
+    const { payload } = await jose.jwtVerify(token, keyResolver, verifyOptions);
+    return payload as Record<string, unknown>;
+  }
+
+  // No `kid`: jose does not accept an array of keys, so try each candidate in
+  // turn. This preserves the key-rotation window (LNK-12) — an older token may
+  // have been signed by a previous key — without accepting unknown-kid tokens.
+  let lastError: unknown;
+  for (const entry of uniqueKeys) {
+    try {
+      const { payload } = await jose.jwtVerify(
+        token,
+        createPublicKey(entry.key),
+        verifyOptions,
+      );
+      return payload as Record<string, unknown>;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError ?? new jose.errors.JWSSignatureVerificationFailed();
 }

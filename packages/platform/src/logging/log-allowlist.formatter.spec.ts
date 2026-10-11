@@ -26,7 +26,11 @@ const serialise = (record: Record<string, unknown>): string =>
   JSON.stringify(log(record));
 
 describe('LOG_FIELD_ALLOWLIST (D-16)', () => {
-  it('is exactly the twenty-one fields D-16 names, in that order', () => {
+  it('is exactly the twenty-four fields D-16 and D-43 name, in that order', () => {
+    // D-16 names the first twenty-one. D-43 (LNK-09) deliberately adds three
+    // more — `real_user_id`, and the actor context `ip` (truncated to /24 or
+    // /48 at the call site) and `user_agent` — each carrying its written
+    // justification in the same commit, which is the friction D-16 requires.
     expect(LOG_FIELD_ALLOWLIST).toEqual([
       'ts',
       'level',
@@ -49,8 +53,11 @@ describe('LOG_FIELD_ALLOWLIST (D-16)', () => {
       'attempt',
       'count',
       'reason',
+      'real_user_id',
+      'ip',
+      'user_agent',
     ]);
-    expect(LOG_FIELD_ALLOWLIST).toHaveLength(21);
+    expect(LOG_FIELD_ALLOWLIST).toHaveLength(24);
   });
 
   it('is frozen, so a runtime mutation cannot widen the gate', () => {
