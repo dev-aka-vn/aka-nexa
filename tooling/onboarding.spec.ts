@@ -65,7 +65,7 @@
  * the documented URL and "fixing" it, breaks every boot in this file.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import os from 'node:os';
@@ -169,6 +169,35 @@ const KEY_DIR = mkdtempSync(path.join(os.tmpdir(), 'akane-onboarding-'));
 const KEY_FILE = path.join(KEY_DIR, 'dev-local-key');
 writeFileSync(KEY_FILE, randomBytes(32));
 
+/**
+ * The read-link verification environment the api requires at boot (LNK-05).
+ *
+ * These four are read straight from `process.env` by `readReadLinkConfig` in
+ * `apps/api/src/read/read.module.ts`, which refuses to start with
+ * `READ_LINK_CONFIG_INVALID: must set …` if any is absent. They are deliberately
+ * not `AppConfigSchema` fields, so `exampleActiveEnv()` does not carry them and
+ * the harness supplies them the way it supplies the container URLs.
+ *
+ * `JWT_READ_PUBLIC_KEY` is generated per run rather than committed: the
+ * verifier's algorithm allowlist is ES256, so the value has to be a real EC
+ * P-256 key, and a generated one is correct by construction. A PEM carries real
+ * newlines here — an environment variable can, and `readReadLinkConfig` expands
+ * `\n` escapes as well — so this exercises the multi-line path rather than a
+ * single-line shortcut.
+ *
+ * README.md's "Read-link verification" section documents exactly these four
+ * names, and the README test block below asserts it still does, so the docs and
+ * the harness cannot drift apart silently.
+ */
+const READ_LINK_ENV: Record<string, string> = {
+  JWT_ISSUER: 'akane-local',
+  JWT_AUDIENCE: 'http://localhost:5173',
+  JWT_READ_PUBLIC_KEY: generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    .publicKey.export({ type: 'spki', format: 'pem' })
+    .toString(),
+  RENDERER_ORIGIN: 'http://localhost:5173',
+};
+
 afterAll(() => {
   rmSync(KEY_DIR, { recursive: true, force: true });
 });
@@ -235,7 +264,8 @@ function exampleActiveEnv(): Record<string, string> {
 }
 
 /**
- * The documented boot environment with the three URLs pointed at the harness.
+ * The documented boot environment with the three URLs pointed at the harness and
+ * the read-link verification keys supplied from {@link READ_LINK_ENV}.
  *
  * The container URLs are taken **verbatim**, in particular `urls.mongo`, which
  * already carries `?directConnection=true` because `containers.ts` starts
@@ -245,6 +275,7 @@ function exampleActiveEnv(): Record<string, string> {
 function containerEnv(containers: ThreeContainers): Record<string, string> {
   return childEnv({
     ...exampleActiveEnv(),
+    ...READ_LINK_ENV,
     MONGO_URL: containers.urls.mongo,
     REDIS_CACHE_URL: containers.urls.cache,
     REDIS_QUEUE_URL: containers.urls.queue,
@@ -814,6 +845,18 @@ describe('README.md — token agreement with code-derived values', () => {
         (line) => line.includes(name) && line.includes(String(port)),
       );
       expect(match.length, `no README line pairs ${name} with its default port ${port}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('documents every read-link verification key the api requires at boot', () => {
+    // The read-link keys are deliberately not in `.env.example` — a PEM cannot
+    // be one of its whitespace-free active lines — so README.md is the only
+    // place they are written down. This list and the harness's `READ_LINK_ENV`
+    // are both literals; the assertion is that the prose still carries every
+    // name, so dropping one turns red here instead of leaving an operator to
+    // discover it as `READ_LINK_CONFIG_INVALID: must set …` at boot.
+    for (const key of Object.keys(READ_LINK_ENV)) {
+      expect(readme, `README.md must document the read-link key ${key}`).toContain(key);
     }
   });
 

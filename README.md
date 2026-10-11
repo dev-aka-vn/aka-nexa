@@ -96,6 +96,7 @@ Every failure is greppable and names the offending key:
 | `KMS_PROVIDER_BLOCKED:` | The KMS provider is selected and has no adapter yet. Named failure, on purpose. |
 | `LOCAL_KEY_FILE_MISSING:` | The **variable** `CRYPTO_LOCAL_KEY_FILE` is unset or empty. This is about the variable, never about the file. |
 | `ENOENT: no such file or directory, open '<path>'` | The variable is set and the **file** it names is not there — the normal state of a fresh checkout. A raw filesystem error from the key read, with nothing caught in front of it. Run the `head -c 32 /dev/urandom > .dev-local-key` recipe above; grepping for `LOCAL_KEY_FILE_MISSING:` after an `ENOENT` finds nothing, because the system never printed it. |
+| `READ_LINK_CONFIG_INVALID: must set <KEYS>` | The api's read-link verification config is incomplete; `<KEYS>` names the absent ones. Not carried by `.env.example` — see [Read-link verification](#read-link-verification-the-apis-second-key) below for why. |
 
 ### Two Redis deployments, not one
 
@@ -125,6 +126,54 @@ line: a plaintext local key is permitted only while the environment reads
 above a warning rather than a convenience — it is the line that sets the switch.
 `CRYPTO_KEY_PROVIDER=kms` is refused with `KMS_PROVIDER_BLOCKED:` until a deployment cloud is named.
 Both are the guards working.
+
+### Read-link verification (the api's second key)
+
+The `api` verifies the signed read link a user is handed from chat, and that verification needs its
+own key — separate from the envelope key above, because it is a **public** key that checks a signature
+rather than a secret key that decrypts. Four variables are required at boot:
+
+| Variable | What it is |
+|---|---|
+| `JWT_ISSUER` | The deployment id the link was minted under (D-21). |
+| `JWT_AUDIENCE` | The form-renderer origin. The renderer is a static web app, so a link's audience is an origin rather than an API. |
+| `JWT_READ_PUBLIC_KEY` | The P-256 public key a link's signature is verified against. |
+| `RENDERER_ORIGIN` | The renderer's origin, used to build links and check that the audience matches. |
+
+These are **not** in `.env.example`, and that is deliberate rather than an oversight: every active
+line there is a shell assignment of the form `KEY=value` with no whitespace in the value, and a PEM
+cannot satisfy that — its header line contains a space, and the key is multi-line even when its
+newlines are written escaped. So the file a reader can `source` and the file that can carry a public
+key are not the same file, and this section is the one that carries it.
+
+Generate a development pair once per checkout. Signing is a tracer stand-in today — the issuer
+returns a deterministic path and does not sign yet — so only the public half is read; generating the
+pair now means the real issuer can adopt it without a config change.
+
+```sh
+# A P-256 pair — the verifier's algorithm allowlist is ES256.
+openssl ecparam -name prime256v1 -genkey -noout -out read-link.pem
+openssl ec -in read-link.pem -pubout -out read-link.pub.pem
+
+# Export the public half, plus the three non-key values:
+export JWT_READ_PUBLIC_KEY="$(cat read-link.pub.pem)"
+export JWT_ISSUER=akane-local
+export JWT_AUDIENCE=http://localhost:5173
+export RENDERER_ORIGIN=http://localhost:5173
+```
+
+`JWT_READ_PUBLIC_KEY` accepts the PEM either as a real multi-line value or as one line with its
+newlines written `\n` — the module expands the escapes once, before the key is parsed — because an
+orchestrator commonly hands a value to a process as a single line.
+
+A boot missing any of the four is refused with `READ_LINK_CONFIG_INVALID: must set …`, naming the
+ones it is missing, rather than starting cleanly and failing on the first link it tries to verify.
+The keys are read straight from the environment, not declared as schema fields, so a deployment that
+sets a differently-named variable gets that refusal rather than a silent default.
+
+During the 90-day rotation window (LNK-12) a second key, `JWT_READ_PUBLIC_KEY_PREVIOUS`, is accepted
+as well. It is optional: omit it entirely outside a rotation, because an empty value trips the same
+`must set` refusal as an absent one.
 
 ## Local infrastructure
 

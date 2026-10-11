@@ -13,9 +13,7 @@ import {
   DataRouterService,
   type ReadLinkJwtVerifier,
 } from '@akane/domain';
-import { verifyReadLinkJwt } from '@akane/platform/crypto';
-import { MongoModule } from '../../../../packages/platform/src/mongo/mongo.module.js';
-import { redisCacheProvider } from '../../../../packages/platform/src/redis/redis.provider.js';
+import { MongoModule, redisCacheProvider, verifyReadLinkJwt } from '@akane/platform';
 
 import { ReadController } from './read.controller.js';
 import { registerReadDenyMetrics } from '../common/metrics/read-deny.metrics.js';
@@ -37,12 +35,38 @@ export interface ReadLinkConfig {
   readonly rendererOrigin: string;
 }
 
-const READ_LINK_CONFIG_KEYS = [
+/**
+ * The keys {@link readReadLinkConfig} requires.
+ *
+ * Exported so the required set has one source: README.md's "Read-link
+ * verification" section documents exactly these, and a deployment that sets a
+ * different four fails the `missing` check below by name.
+ *
+ * These are **required** at boot. `JWT_READ_PUBLIC_KEY_PREVIOUS` is deliberately
+ * absent: the rotation window is optional (LNK-12), and a key that is
+ * present-but-empty would fail the `!process.env[k]` check below rather than
+ * mean "no previous key".
+ */
+export const READ_LINK_CONFIG_KEYS = [
   'JWT_ISSUER',
   'JWT_AUDIENCE',
   'JWT_READ_PUBLIC_KEY',
   'RENDERER_ORIGIN',
 ] as const;
+
+/**
+ * Expand the two characters `\` `n` back into a newline.
+ *
+ * `.env.example` is a single-line-per-assignment shell file, and a shell does
+ * not expand `\n` inside an unquoted assignment — it takes the two characters
+ * literally. A PEM is multi-line, so it is written escaped in the example and
+ * expanded here, once, on the value the verifier actually parses. Without this
+ * `createPublicKey` reads a one-line string that begins `-----BEGIN` and fails
+ * at boot with an OpenSSL decode error rather than a named config error.
+ */
+function expandPem(value: string): string {
+  return value.replace(/\\n/g, '\n');
+}
 
 export function readReadLinkConfig(): ReadLinkConfig {
   const missing = READ_LINK_CONFIG_KEYS.filter((k) => !process.env[k]);
@@ -51,11 +75,13 @@ export function readReadLinkConfig(): ReadLinkConfig {
       'READ_LINK_CONFIG_INVALID: must set ' + missing.join(', '),
     );
   }
+  const previous = process.env['JWT_READ_PUBLIC_KEY_PREVIOUS'];
   return {
     issuer: process.env['JWT_ISSUER']!,
     audience: process.env['JWT_AUDIENCE']!,
-    publicKey: process.env['JWT_READ_PUBLIC_KEY']!,
-    previousPublicKey: process.env['JWT_READ_PUBLIC_KEY_PREVIOUS'] ?? null,
+    publicKey: expandPem(process.env['JWT_READ_PUBLIC_KEY']!),
+    previousPublicKey:
+      previous === undefined || previous === '' ? null : expandPem(previous),
     rendererOrigin: process.env['RENDERER_ORIGIN']!,
   };
 }
@@ -103,8 +129,14 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
  * `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_READ_PUBLIC_KEY`, and `RENDERER_ORIGIN`
  * are read by `readReadLinkConfig()` directly from `process.env` at module
  * initialization. They are intentionally **not** added to `AppConfigSchema`
- * (a frozen Phase 1 file); the same pattern the platform crypto module uses
- * for `CRYPTO_LOCAL_KEY_FILE`. The factory fails loudly if any are absent.
+ * (a frozen Phase 1 file — adding fields is a later config plan), so
+ * `APP_CONFIG_KEYS` does not list them, and they are documented in README.md
+ * under "Read-link verification" rather than in `.env.example`: that file is a
+ * shell contract whose active lines are `KEY=value` with no whitespace in the
+ * value, and a PEM is multi-line (its header even contains a space), so the
+ * public key cannot be one. The factory fails loudly with
+ * `READ_LINK_CONFIG_INVALID:` if any are absent, so a misconfigured deployment
+ * cannot verify without a key.
  */
 @Module({
   imports: [MongoModule],
@@ -134,10 +166,6 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     DslService,
     SubmissionRepository,
     SubmissionRevisionsRepository,
-    {
-      provide: 'READ_LINK_CONFIG',
-      useFactory: (): ReadLinkConfig => readReadLinkConfig(),
-    },
     LinkTokenStore,
     DataRouterService,
     {
