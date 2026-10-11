@@ -203,14 +203,25 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
 - [x] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
 - [x] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
-- [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
+- [x] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
 - [ ] **DAT-09**: An internal collection's declared indexes are created at publish time
 - [x] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
 - [x] **DAT-11**: A Query DSL result auto-injects a `real_user_id` filter and a `deleted_at: null` filter unless the user holds `view_all`, and one filter builder emits both so neither can be omitted
 - [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
-- [x] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
+- [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
+  - **(05-07, then 05-09) Partial — the list is unreachable in production (G-11).** The status
+    surface, the projection (`completed | partial | failed | pending_external`) and the
+    renderer all exist, and the `view` verifier path is correct (it resolves a submission and
+    re-checks ownership). But the "My submissions" **list** is served by the `query` action,
+    and `ReadVerifierService.verifyQuery` denies every `query` link with `wrong_version`
+    because `apps/api/src/read/read.module.ts` passes `savedQueries: undefined` and no
+    production `SavedQueryLookup` exists. Two links are missing, not one: the lookup (G-11)
+    **and** a production link issuer (G-13) — nothing mints a signed read link at all, so the
+    `view` and `edit` paths are equally unreachable outside tests, and the issuer is blocked on
+    the deliberately-open FND-10 KMS gate. The box is unticked to match `05-VERIFICATION.md`,
+    which scores SC#1 as failed on this clause.
 
 ### Connectors & Async Execution
 
@@ -482,8 +493,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-04 | Phase 5 | Complete |
 | DAT-05 | Phase 5 | Complete |
 | DAT-06 | Phase 5 | Complete |
-| DAT-07 | Phase 5 | Pending |
-| DAT-14 | Phase 5 | Complete |
+| DAT-07 | Phase 5 | Complete (SC#3) |
+| DAT-14 | Phase 5 | Partial (G-11) |
 | CON-01 | Phase 5 | Complete |
 | CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |

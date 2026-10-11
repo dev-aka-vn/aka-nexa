@@ -236,6 +236,142 @@ fail on them.
 
 ---
 
+### G-11 — the `query` action is denied unconditionally: `SavedQueryLookup` has no production implementation
+
+**Found by:** `05-VERIFICATION.md` (G-9), then confirmed by reading the code.
+**Blocks:** SC#1's second clause (*"the submission shows as `partial` on the user's own
+status page"*), **DAT-14**. Not previously recorded — phase-4 and phase-5 verification both
+missed it.
+
+**Evidence (each step traced in the code, not inferred)**
+
+- `packages/domain/src/links/read-verifier.service.ts:65` declares the D-73 seam
+  `interface SavedQueryLookup { findSavedQuery(queryId, appId) }`. Its fourth constructor
+  parameter is **optional** (`savedQueries?: SavedQueryLookup`).
+- `verifyQuery` (`read-verifier.service.ts:276-290`) is
+  `queryId === undefined || this.savedQueries === undefined ? null : await …` — so with the
+  seam absent, `saved === null`, and the very next branch returns
+  `{ ok: false, reason: wrong_version }`. There is no fall-through that could succeed.
+- `apps/api/src/read/read.module.ts` builds the service as
+  `new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService, revisions, tokenStore)`
+  — the fourth argument is a **hardcoded `undefined`**.
+- The dispatch is unconditional: `verify()` switches on `claims.action` and sends every
+  `'query'` link straight to `verifyQuery` (`read-verifier.service.ts:201-203`), and
+  `ReadController.query` calls `this.verifier.verify(token)` (`read.controller.ts:99`).
+  So **every** `query` read link — including the "My submissions" one the status page uses —
+  is answered `wrong_version` in production.
+- **No production `SavedQueryLookup` exists.** `grep -rn SavedQueryLookup` finds the
+  interface, `apps/api/src/read/read.module.ts`, and four **test doubles**
+  (`TestSavedQueryLookup` / `makeSavedQueries`). There is no saved-query collection, no
+  repository, and no seed anywhere in the repo.
+- **The spec masks it.** `apps/api/src/read/status-surface.integration.spec.ts` is named
+  "integration" but provides `{ provide: ReadVerifierService, useValue: verifier }` with a
+  canned `verify` that already returns `ok: true` **and a populated `savedQuery`** (lines
+  31-47). It never constructs the real verifier, never reaches `verifyQuery`, and would pass
+  with `savedQueries` wired or not. The validation map's DAT-14 row cites this spec's
+  `-t "my submissions"` filter, so that row proves the *projection*, not reachability.
+
+**What a fix needs — a decision, then work that may belong to phase 6**
+
+The read link's `query` action resolves a **saved query** (`SavedQueryRecord`:
+`query_id`, `query_version`, `dsl`, `intents`, `app_id`). Nothing in the platform creates a
+saved query *at runtime* today — the shape is frozen and seeded
+(`packages/domain/src/seeds/saved-queries.seed.json`), but the App Builder that would write
+those records is **phase 6**.
+
+`05-VERIFICATION.md` records this as a `gaps_found` item; no code was changed.
+
+**And the lookup is only half of it — see G-13.** Wiring `savedQueries` alone would change
+nothing observable: no production component mints a signed read link, so no `query` link can
+ever reach the verifier in the first place.
+
+### G-11 addendum — why the lookup was **not** wired, given it is bounded
+
+The seam *is* bounded: `SavedQueryLookup` is declared in `read-verifier.service.ts:65` with a
+docblock that explicitly expects "the API module provides the concrete store", and the record
+shape is frozen and seeded at `packages/domain/src/seeds/saved-queries.seed.json` (asserted by
+`saved-queries.seed.spec.ts`, whose own comment calls it "a *stored contract* — Phase 6's App
+Builder writes the same records"). A seed-backed implementation is therefore ~30 lines using
+only frozen artefacts, and inventing **no** schema.
+
+It was not written, on purpose: with G-13 unfixed, wiring it is *unobservable* in production
+and would let a spec assert "the query action works" against a chain that still mints no
+token — the same false confidence that `status-surface.integration.spec.ts` already provides.
+Half-wiring a chain is how the next reader concludes it is whole.
+
+### G-13 — nothing mints a signed read link, so the whole read path is verification-only
+
+**Found by:** tracing G-11 to its root. **Blocks:** every read-path requirement end-to-end —
+DAT-14's list (`query`), LNK-05/FRM-06 (`view`) and LNK-02 (`edit`). **Not a phase-5 defect to
+patch:** it is a deliberate stand-in that was never re-examined for reachability.
+
+**Evidence**
+
+- `packages/domain/src/links/link-issuer.service.ts` is the only `*issuer*` file in the repo.
+  Its body returns an **unsigned path fragment** (`/l/<appId>?u=<realUserId>`), with a header
+  that says so: *"Trace stand-in for the Phase 2 signed-link issuer (01-CONTEXT D-21 frozen
+  claim set, jose ES256) … Real KMS-backed signing replaces this body without changing the
+  seam."* It is used only by the worker's `inbound-event.processor.ts`.
+- The frozen claim set is **never constructed** anywhere in non-test source. Searching for
+  `target_id:` matches only the Zod schema that *parses* it
+  (`packages/contract/src/links/read-link-claims.ts:117`); `perm_version:` likewise (`:108`).
+  No call site builds a `ReadLinkClaims` value, signs it, and emits a URL.
+- `ReadController` therefore has token-gated routes (`view/:jti`, `query/:jti`, `GET`+`POST
+  edit/:jti`) that **only a test can exercise** — which is exactly how the phase-4 and phase-5
+  suites do exercise them, by hand-crafting tokens in the specs.
+
+**Why this is a deferral and not a bug to fix here**
+
+The stand-in is anchored to **FND-10**, the KMS credential gate this project deliberately keeps
+open with local/test credentials only (W-24). A real issuer is a KMS-backed ES256 signer with a
+`kid` keyring — the same machinery NFR-SEC-9's rotation needs. Building a test-key stand-in to
+"close" DAT-14 would put an unrotated signing key on the critical path of a 90-day-lived token,
+which is a security regression, not a fix. So: **recorded, deliberately not implemented.**
+
+**Consequence for the record:** the phase's observable entry points (`/l/*`) are correct
+subsystems behind a missing door. Any future claim that a read-path requirement is reachable
+end-to-end should first answer "who mints the link?" — for now, nobody.
+
+### G-12 — SC#5(a) and CON-05 state opposite requirements (needs a ruling)
+
+**Found by:** `05-VERIFICATION.md` (G-9). **Blocks:** either SC#5(a) or CON-05, whichever
+wins. **This is an escalation, not a missing mechanic — no code change is safe without a
+ruling.**
+
+The two texts are not reconcilable:
+
+| Source | Says |
+|--------|------|
+| `REQUIREMENTS.md:221` — **CON-05** | "Rate limits are enforced per connector **instance, shared across every app referencing it**" |
+| `ROADMAP.md:193` — **SC#5(a)** | "One app's traffic spike fails **that app and not every app** sharing the connector" |
+| `REQUIREMENTS.md:222` — CON-06 | "`app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and **budgeted separately**" |
+
+CON-06 sides with SC#5(a) ("budgeted separately"), CON-05 says the opposite in as many
+words ("shared across every app"), and the phase's own `05-05-PLAN.md` reflects the same
+split.
+
+**What is implemented today follows CON-05**, deliberately, and the reasoning is recorded in
+`packages/domain/src/connectors/connector-rate-limiter.ts`'s header: the key is
+`ak:rl:connector:<ref>`, carrying no `app_id`, *because* a per-app key would give each app a
+private budget while the downstream system still saw the sum — which the docblock argues is
+the failure CON-05 exists to prevent. The behaviour is pinned by a test,
+`rate-limit.integration.spec.ts > "shared connector budget — two apps, two processes, one
+budget"`, which asserts the **opposite** of SC#5(a) on purpose.
+
+So the suite cannot be made green by a code change alone: whichever way this is ruled, one
+of the two statements is wrong and must be amended first. CON-05 was chosen because a
+requirement ID is the authority the mockup/contract rules point at, and because
+"shared across every app" is the more specific statement — but that is a defensible reading,
+not a resolution.
+
+**Evidence**
+
+- `rate-limit.integration.spec.ts:47` — the test name states the implemented semantics.
+- `connector-rate-limiter.ts` header — the design note arguing keying on the connector.
+- `05-VERIFICATION.md` — scores SC#5 as "(a) FAILED — app-scoped isolation not implemented".
+
+---
+
 ## Bookkeeping gaps (the record disagrees with the repo)
 
 ### G-5 — `STATE.md` is incoherent — ✅ CLOSED 2026-10-11
@@ -282,10 +418,15 @@ the real implementation is commit `CON-05`, which puts the primitive in `platfor
 the policy in `domain`. The SUMMARY's claim is now true of the repo, but it was not true
 when written, and the deviation it omits is the whole reason CON-05 needed redoing.
 
-### G-9 — phase 05 has no verification artifact
+### G-9 — phase 05 has no verification artifact — ✅ CLOSED 2026-10-11
 
-No `05-VERIFICATION.md` and no UAT record. `/gsd-verify-work` (or
-`/gsd-validate-phase`) has not been run for this phase.
+No `05-VERIFICATION.md` and no UAT record; `/gsd-verify-work` (or
+`/gsd-validate-phase`) had not been run for this phase.
+
+**Resolution:** `05-VERIFICATION.md` now exists (`status: gaps_found`), produced by the
+`gsd-verifier` goal-backward pass. It verified 9 of 12 must-have truths and is the source
+of G-11 and G-12 below. `/gsd-verify-work` (conversational UAT, which needs a human) is
+still not run, so there is still no UAT record — recorded, not hidden.
 
 ---
 

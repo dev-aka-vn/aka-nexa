@@ -79,6 +79,24 @@ Total Plans in Phase: 9
   **OBS-04 / CON-06 / CON-07** (the business counters) now have a write seam and a call
   site. `05-VALIDATION.md` is `status: validated` with `nyquist_compliant: true`. What is
   still missing is the phase-level artifact — no `05-VERIFICATION.md` (G-9).
+- **[Phase 05] G-11 — the status page's read link is denied unconditionally.** The
+  "My submissions" list uses the `query` action, and `verifyQuery` denies every `query`
+  link because `apps/api/src/read/read.module.ts` passes `savedQueries: undefined` and no
+  production `SavedQueryLookup` exists (only test doubles). Found by `05-VERIFICATION.md`;
+  **DAT-14** is therefore `Partial`. Fixing it means a `saved_queries` schema, which is
+  App Builder (phase 6) territory — needs a ruling.
+- **[Phase 05] G-13 — nothing mints a signed read link.** The only issuer,
+  `packages/domain/src/links/link-issuer.service.ts`, is a documented Phase-2 stand-in that
+  returns an unsigned `/l/<appId>?u=...`; the frozen claim set is never constructed outside
+  tests. So the whole read path (`view`/`query`/`edit`) is verification-only — **every**
+  `/l/*` route can be reached only by a hand-crafted token. This is deliberately not patched:
+  a real issuer is KMS-backed ES256 and is blocked on the still-open **FND-10** gate, and a
+  test-key stand-in would put an unrotated signing key on a 90-day token's critical path.
+- **[Phase 05] G-12 — SC#5(a) contradicts CON-05.** ROADMAP SC#5(a) says one app's spike
+  fails *that app and not every app sharing the connector*; `REQUIREMENTS.md:221` (CON-05)
+  says limits are *per connector instance, shared across every app*. The code follows
+  CON-05 (key `ak:rl:connector:<ref>`, pinned by a test asserting the opposite of SC#5(a)).
+  **Escalation — needs a ruling before any code change; no other suite change can fix it.**
 - **[Phase 05] Six `apps/api` sources are unreachable from `main.ts`** — the only
   failing test in the suite (`entrypoint-drift`, 1 failed / 892 passed). They are phase-2
   scaffolding: the Slack controllers verify no signing secret and return `{ ok: true }`, so
