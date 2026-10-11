@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CRYPTO_KEY_PROVIDER, KeyProvider } from '@platform/crypto/key-provider.js';
-import { decryptSecret, encryptSecret, SecretEnvelope } from '@platform/crypto/envelope.js';
-import { MongoService } from '@platform/mongo/mongo.service.js';
+import {
+  CRYPTO_KEY_PROVIDER,
+  MongoService,
+  type KeyProvider,
+  type SecretEnvelope,
+  decryptSecret,
+  encryptSecret,
+} from '@akane/platform';
 
 export interface ConnectorCredentialDocument {
   readonly _id: string; // credential_ref

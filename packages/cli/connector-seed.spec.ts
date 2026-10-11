@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { loadConnectorSeed, upsertConnector } from './connector.js';
-import { ConnectorRegistry } from '../domain/src/connectors/connector.registry.js';
-import { ConnectorCredentialsRepository } from '../domain/src/connectors/data-access/connector-credentials.repository.js';
+import { ConnectorCredentialsRepository, ConnectorRegistry } from '@akane/domain';
 
 describe('connector seed', () => {
   it('validates the seed file', async () => {

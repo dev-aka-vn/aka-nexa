@@ -1,13 +1,21 @@
 import { Queue } from 'bullmq';
 import { producerConnectionOptions } from '@akane/platform';
-import { SubmissionRevisionsRepository } from '../domain/src/submissions/data-access/submission-revisions.repository.js';
-import { AuditRepository } from '../domain/src/audit/audit.repository.js';
-import { ConnectorRegistry } from '../domain/src/connectors/connector.registry.js';
-import { ConnectorCredentialsRepository } from '../domain/src/connectors/data-access/connector-credentials.repository.js';
-import { RestCore } from '../domain/src/connectors/rest-core.js';
+import {
+  AuditRepository,
+  ConnectorCredentialsRepository,
+  ConnectorRegistry,
+  SubmissionRevisionsRepository,
+} from '@akane/domain';
 
 const DELIVERY_QUEUE_NAME = 'connector-delivery';
 const BULLMQ_PREFIX = '{akane-q}';
+
+/** The shape `connector-delivery` jobs carry in `job.data`. */
+interface DeliveryJobData {
+  submissionId?: string;
+  revision?: number;
+  connectorRef?: string;
+}
 
 export interface DlqListOptions {
   showPayload?: boolean;
@@ -37,7 +45,7 @@ export async function dlqList(
     }> = [];
 
     for (const job of failed) {
-      const data = job.data as any;
+      const data = job.data as DeliveryJobData;
       const submissionId = data?.submissionId;
       const revision = data?.revision;
       let outbound = 'unknown';
@@ -114,10 +122,9 @@ export async function dlqRetry(
       throw new Error(`Job not found in failed set: ${jobId}`);
     }
 
-    const data = job.data as any;
+    const data = job.data as DeliveryJobData;
     const submissionId = data?.submissionId;
     const revision = data?.revision;
-    const connectorRef = data?.connectorRef;
 
     if (submissionId !== undefined && revision !== undefined) {
       const rev = await revisionsRepo.findBySubmissionAndRevision(submissionId, revision);

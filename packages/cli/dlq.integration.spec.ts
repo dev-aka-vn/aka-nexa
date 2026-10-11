@@ -10,8 +10,8 @@ import {
   QUEUE_MAXMEMORY_POLICY,
 } from '../../tooling/containers.js';
 import { producerConnectionOptions, BULLMQ_PREFIX } from '@akane/platform';
-import { MongoService } from '../platform/src/mongo/mongo.service.js';
-import { SubmissionRevisionsRepository } from '../domain/src/submissions/data-access/submission-revisions.repository.js';
+import { MongoService } from '@akane/platform';
+import { SubmissionRevisionsRepository } from '@akane/domain';
 import { dlqList, dlqRetry } from './dlq.js';
 
 const DELIVERY_QUEUE_NAME = 'connector-delivery';
@@ -76,17 +76,20 @@ describe('dlq CLI', () => {
     const failedBefore = await queue.getFailed();
     expect(failedBefore.length).toBe(1);
 
+    // Stop the consumer before retrying. The processor above always throws, so a
+    // live worker would pick the re-enqueued job up and fail it again within
+    // milliseconds — before this test could observe it leave the failed set.
+    // Closing first makes the re-enqueue (the behaviour under test) observable
+    // and deterministic: the job must land back in `waiting`.
+    await worker.close();
+
     await dlqRetry('job-1', queueContainer.getConnectionUrl(), revisionsRepo);
 
     const failedAfter = await queue.getFailed();
     expect(failedAfter.length).toBe(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
     const waiting = await queue.getJobs(['waiting', 'delayed', 'active', 'failed']);
-    const allJobs = await queue.getJobs(['waiting', 'delayed', 'active', 'failed', 'completed']);
-    console.log('waiting/delayed/active/failed:', waiting.length, 'all:', allJobs.length);
     expect(waiting.length).toBe(1);
-    await worker.close();
   }, 120_000);
 
   it('sent_unconfirmed is refused without --force', async () => {

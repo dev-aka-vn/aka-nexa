@@ -1,12 +1,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { AppRepository } from '../domain/src/registry/app.repository.js';
-import { AuditRepository } from '../domain/src/audit/audit.repository.js';
+import { AppRepository, AuditRepository } from '@akane/domain';
 
 export interface AppSeed {
   readonly app_id: string;
   readonly connector_ref: string;
-  readonly [key: string]: any;
+  readonly [key: string]: unknown;
 }
 
 const DEFAULT_SEED_PATH = resolve(process.cwd(), 'config/apps/app.json');

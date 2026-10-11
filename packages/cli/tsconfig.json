@@ -1,0 +1,14 @@
+{
+  "extends": "../../tooling/tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
+  },
+  "include": ["*.ts", "*.json"],
+  "references": [
+    { "path": "../platform" },
+    { "path": "../domain" },
+    { "path": "../contract" }
+  ]
+}

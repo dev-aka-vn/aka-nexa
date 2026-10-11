@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoDBContainer, type StartedMongoDBContainer } from '@testcontainers/mongodb';
 import { MONGO_IMAGE, mongoUrl } from '../../tooling/containers.js';
-import { MongoService } from '../platform/src/mongo/mongo.service.js';
-import { AppRepository } from '../domain/src/registry/app.repository.js';
-import { AuditRepository } from '../domain/src/audit/audit.repository.js';
+import { MongoService } from '@akane/platform';
+import { AppRepository, AuditRepository } from '@akane/domain';
 import { rebindConnectorRef, loadAppSeed } from './rebind.js';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,9 +1,11 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { ConnectorRegistry } from '../domain/src/connectors/connector.registry.js';
-import { ConnectorCredentialsRepository } from '../domain/src/connectors/data-access/connector-credentials.repository.js';
-import { RedmineAdapter } from '../domain/src/connectors/redmine.adapter.js';
-import { RestCore } from '../domain/src/connectors/rest-core.js';
+import { resolve } from 'node:path';
+import {
+  ConnectorCredentialsRepository,
+  ConnectorRegistry,
+  RedmineAdapter,
+  RestCore,
+} from '@akane/domain';
 
 export interface ConnectorSeed {
   readonly connector_ref: string;
@@ -37,7 +39,6 @@ export async function upsertConnector(
   registry: ConnectorRegistry,
   credsRepo: ConnectorCredentialsRepository,
 ): Promise<{ changed: boolean }> {
-  const existing = (registry as any).entries?.get?.(seed.connector_ref);
   // For idempotence, we need to detect if anything changed.
   // Since registry stores adapter instances, comparing by config is tricky.
   // We'll track by storing a signature; alternatively, for this use case,
@@ -48,7 +49,8 @@ export async function upsertConnector(
   // Simpler approach: compute a hash of the seed and store it.
   const seedHash = Buffer.from(JSON.stringify(seed)).toString('base64');
   const stateKey = `__seed_hash_${seed.connector_ref}`;
-  const previousHash = (registry as any)[stateKey];
+  const stateStore = registry as unknown as Record<string, unknown>;
+  const previousHash = stateStore[stateKey];
   if (previousHash === seedHash) {
     return { changed: false };
   }
@@ -77,14 +79,14 @@ export async function upsertConnector(
   );
   const adapter = new RedmineAdapter(rest, {
     correlationCustomFieldId: seed.mapping?.['correlation_custom_field_id'] as string | undefined,
-    realUserProfile: (seed.mapping?.['defaults'] as any) ?? {},
+    realUserProfile: (seed.mapping?.['defaults'] as Record<string, unknown> | undefined) ?? {},
   });
   registry.register({
     connectorRef: seed.connector_ref,
     adapter,
     credentialRef: seed.credential_ref,
   });
-  (registry as any)[stateKey] = seedHash;
+  stateStore[stateKey] = seedHash;
   return { changed: true };
 }
 

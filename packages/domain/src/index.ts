@@ -88,3 +88,15 @@ export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
 export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
 export { ConnectorRegistry } from './connectors/connector.registry.js';
+// Admin/CLI surface. `@akane/cli` is a workspace package, so it reaches these
+// through this barrel rather than a `../domain/src/**` relative path — the same
+// rule every other package follows (a relative path resolves only under the
+// test runner; it has no `.js` on disk after a build).
+export { AuditRepository, type AuditEntry } from './audit/audit.repository.js';
+export { AppRepository, type AppDocument } from './registry/app.repository.js';
+export {
+  ConnectorCredentialsRepository,
+  type ConnectorCredential,
+} from './connectors/data-access/connector-credentials.repository.js';
+export { RedmineAdapter } from './connectors/redmine.adapter.js';
+export { RestCore } from './connectors/rest-core.js';
