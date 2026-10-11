@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { z } from 'zod';
 
-import { ConnectorRegistry, SubmissionRevisionsRepository } from '@akane/domain';
+import { ConnectorRegistry, ConnectorRateLimiter, ConnectorRateLimitedError, SubmissionRevisionsRepository } from '@akane/domain';
 
 const DeliveryJobSchema = z.object({
   submissionId: z.string().min(1),
@@ -20,6 +20,7 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
   constructor(
     private readonly revisionsRepo: SubmissionRevisionsRepository,
     private readonly connectorRegistry: ConnectorRegistry,
+    private readonly rateLimiter: ConnectorRateLimiter,
   ) {
     super();
   }
@@ -49,6 +50,18 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
     }
 
     const connector = this.connectorRegistry.resolve(data.connectorRef);
+
+    // CON-05: the registry resolves first, so an unknown `connector_ref` is
+    // rejected (fail-closed) before the limiter is consulted. A known connector
+    // with no declared budget gets the conservative default.
+    const limit = this.connectorRegistry.limiterConfig(data.connectorRef);
+    const decision = await this.rateLimiter.consume(data.connectorRef, limit);
+    if (!decision.allowed) {
+      // Transient by construction: the next window admits the call, so BullMQ's
+      // backoff must retry it rather than treating the submission as failed.
+      throw new ConnectorRateLimitedError(data.connectorRef, decision.resetInMs);
+    }
+
     const payload = data.payload as {
       appId?: string;
       formId?: string;

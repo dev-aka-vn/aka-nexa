@@ -88,6 +88,15 @@ export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
 export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
 export { ConnectorRegistry } from './connectors/connector.registry.js';
+export {
+  ConnectorRateLimiter,
+  ConnectorRateLimitedError,
+  DEFAULT_CONNECTOR_LIMIT,
+  CONNECTOR_RATE_LIMIT_PREFIX,
+  parseConnectorLimit,
+  type ConnectorLimitConfig,
+  type ConnectorLimitDecision,
+} from './connectors/connector-rate-limiter.js';
 // Admin/CLI surface. `@akane/cli` is a workspace package, so it reaches these
 // through this barrel rather than a `../domain/src/**` relative path — the same
 // rule every other package follows (a relative path resolves only under the

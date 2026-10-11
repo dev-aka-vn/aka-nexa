@@ -1,6 +1,29 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ConnectorDeliveryProcessor } from './connector-delivery.processor.js';
 
+/**
+ * A limiter that admits every call. The CON-05 limiter has its own integration
+ * suite (`packages/domain/src/connectors/rate-limit.integration.spec.ts`) over
+ * real Redis; these cases are about the pre-call-commit / idempotency ordering,
+ * so a permissive stub keeps the rate limit out of their way.
+ */
+function allowAllLimiter() {
+  return {
+    consume: vi.fn().mockResolvedValue({ allowed: true, count: 1, max: 60, resetInMs: 60000 }),
+  } as any;
+}
+
+/**
+ * A registry stub. `limiterConfig` is part of the surface the processor now
+ * calls (CON-05), so a bare `{ resolve }` mock is no longer sufficient.
+ */
+function registryStub(resolve?: unknown) {
+  return {
+    resolve: resolve === undefined ? vi.fn() : vi.fn().mockReturnValue(resolve),
+    limiterConfig: vi.fn().mockReturnValue({ max: 60, windowMs: 60000 }),
+  } as any;
+}
+
 describe('connector delivery processor - pre-call commit', () => {
   it('commits sent_unconfirmed before transport call', async () => {
     const callOrder: string[] = [];
@@ -23,11 +46,9 @@ describe('connector delivery processor - pre-call commit', () => {
       }),
     } as any;
 
-    const registry = {
-      resolve: vi.fn().mockReturnValue(connector),
-    } as any;
+    const registry = registryStub(connector);
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, allowAllLimiter());
     await processor.process({
       data: {
         submissionId: 'sub-1',
@@ -51,11 +72,9 @@ describe('connector delivery processor - pre-call commit', () => {
       setConfirmed: vi.fn(),
     } as any;
 
-    const registry = {
-      resolve: vi.fn(),
-    } as any;
+    const registry = registryStub();
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, allowAllLimiter());
     await processor.process({
       data: {
         submissionId: 'sub-1',
@@ -82,11 +101,9 @@ describe('connector delivery processor - pre-call commit', () => {
       execute: vi.fn(),
     } as any;
 
-    const registry = {
-      resolve: vi.fn().mockReturnValue(connector),
-    } as any;
+    const registry = registryStub(connector);
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, allowAllLimiter());
     await processor.process({
       data: {
         submissionId: 'sub-1',
@@ -113,11 +130,9 @@ describe('connector delivery processor - pre-call commit', () => {
       execute: vi.fn().mockResolvedValue({ status: 'rejected' }),
     } as any;
 
-    const registry = {
-      resolve: vi.fn().mockReturnValue(connector),
-    } as any;
+    const registry = registryStub(connector);
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, allowAllLimiter());
     await expect(processor.process({
       data: {
         submissionId: 'sub-1',

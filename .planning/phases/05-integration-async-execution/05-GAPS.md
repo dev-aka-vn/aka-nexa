@@ -15,10 +15,26 @@ pre-existing gaps the pass surfaced, several of which the SUMMARYs claim as done
 
 ## Substantive gaps (code does not do what the phase claims)
 
-### G-1 — CON-05: the connector rate limiter does not exist
+### G-1 — CON-05: the connector rate limiter does not exist — ✅ CLOSED 2026-10-11
 
 **Blocks:** success criterion 5 (*"one app's spike fails that app and not every app
 sharing the connector"*), CON-05.
+
+**Resolution (commit `CON-05`):** the primitive moved to
+`packages/platform/src/redis/redis-rate-counter.ts` (`incrementFixedWindow`, one Lua
+`INCR`+`PEXPIRE` script — the same atomicity implementation for both CON-05 and AUD-10,
+since `connectors` and `links` cannot import each other). The policy lives in
+`packages/domain/src/connectors/connector-rate-limiter.ts` (`ConnectorRateLimiter`,
+keyed `ak:rl:connector:<ref>`, 60/min `DEFAULT_CONNECTOR_LIMIT`), reachable by the
+worker. The delivery processor resolves the registry **first** (unknown `connector_ref`
+throws before the limiter — fail-closed), then consults the limiter, then calls out;
+over budget throws `ConnectorRateLimitedError`, a transient condition BullMQ's backoff
+retries. The app-local orphan `apps/api/src/common/throttler/throttler-storage-redis.ts`
+and its spec were deleted. `packages/domain/src/connectors/rate-limit.integration.spec.ts`
+is now 5 real assertions over real Redis, including the `shared connector budget` name
+the validation map cites. The three decisions the gap named are made explicitly (see
+the file headers): budget = the seed's `rate_limit.requests_per_minute`, else 60/min;
+over-budget = transient retry; placement = domain.
 
 **Evidence**
 
@@ -51,7 +67,8 @@ sharing the connector"*), CON-05.
    (status stays `partial`), or fail the submission for that app.
 3. Where the limiter lives — domain (reachable by worker) rather than `apps/api`.
 
-**Interim state:** the vacuous spec no longer reports green.
+**Interim state:** the vacuous spec no longer reports green. *(Superseded — the spec is
+now 5 real assertions and the limiter is wired; see the resolution above.)*
 
 ### G-2 — AUD-10 / LNK: the read path enforces no rate limit
 
@@ -81,10 +98,10 @@ describes the claim as token consumption, which overstates what the token store 
 Not changed — the index is the stronger mechanism (it holds under concurrency, which a
 read-then-consume would not).
 
-### G-4 — seven api source files are unreachable from `main.ts`
+### G-4 — six api source files are unreachable from `main.ts`
 
 **Blocks:** FND-03 (the `entrypoint-drift` spec asserts this and is the suite's only
-failure: 1 failed / 866 passed).
+failure: 1 failed / the rest passed).
 
 ```
 apps/api/src/adapters/slack/slack-commands.controller.ts
@@ -92,9 +109,11 @@ apps/api/src/adapters/slack/slack-webhook.controller.ts
 apps/api/src/adapters/slack/slack.module.ts
 apps/api/src/common/filters/link-error.filter.ts
 apps/api/src/common/guards/permission.guard.ts
-apps/api/src/common/throttler/throttler-storage-redis.ts
 apps/api/src/submissions/submissions.controller.ts
 ```
+
+*(Was seven. `apps/api/src/common/throttler/throttler-storage-redis.ts` was the one file
+fixable in phase-5 scope; it closed with G-1 and was deleted rather than left orphaned.)*
 
 **Root cause:** phase 2 (identity + IM ingress) was never wired. `AppModule` imports
 `ReadModule`, the platform modules and `HealthController`, and nothing else.
@@ -144,8 +163,11 @@ name is phase 5, and phase 4 is the read path); `completed_phases: 3` with
 
 `status: draft`, `nyquist_compliant: false`, `wave_0_complete: false`, and every row of
 its requirement→test map still reads `File Exists? ❌ Wave 0`. Two of its cited commands
-name tests that were never written with those names (`-t "shared connector budget"`,
-`-t "consume replay ttl"`). It is a pre-execution seed, not a record.
+named tests that did not then exist (`-t "shared connector budget"`,
+`-t "consume replay ttl"`); **both names now exist** (`rate-limit.integration.spec.ts`
+and `edit-link.integration.spec.ts` respectively), so those two rows are runnable. It is
+still a pre-execution seed, not a record: the remaining rows have not been executed and
+the status/wave flags are unchanged.
 
 ### G-8 — `05-05-SUMMARY.md` overstates its result
 
@@ -165,9 +187,12 @@ Stated so this file is not read as "nothing works":
 
 - **SC#4 / LNK-02 is now genuinely verified** against real MongoDB and Redis —
   `apps/api/src/read/edit-link.integration.spec.ts`, 5 passed (commit `57d91430`).
+- **CON-05 is now genuinely implemented and verified** — `ConnectorRateLimiter` wired
+  into the worker delivery path, `rate-limit.integration.spec.ts` 5 passed over real
+  Redis including the two-process shared-budget case (commit `CON-05`). G-1 closed.
 - The remaining phase-05 integration suites assert real behaviour:
   `outbox.integration.spec.ts` (transaction atomicity + rollback),
   `connector-delivery.integration.spec.ts`, `reconciliation.integration.spec.ts`,
   `dlq.integration.spec.ts`, `redmine.contract.spec.ts` (A2 live-gated, documented).
 - `npx tsc -b`, `npx eslint .` and `npm run build` are clean.
-- Full suite: **1 failed / 866 passed**, the single failure being G-4.
+- Full suite: the single failure is G-4 (six orphans).

@@ -5,6 +5,7 @@ import {
   ConnectorRegistry,
   RedmineAdapter,
   RestCore,
+  parseConnectorLimit,
 } from '@akane/domain';
 
 export interface ConnectorSeed {
@@ -85,6 +86,9 @@ export async function upsertConnector(
     connectorRef: seed.connector_ref,
     adapter,
     credentialRef: seed.credential_ref,
+    // CON-05: the seed's `rate_limit` becomes the entry's budget. Absent or
+    // invalid → the registry applies the conservative default at resolve time.
+    limit: parseConnectorLimit(seed.rate_limit),
   });
   stateStore[stateKey] = seedHash;
   return { changed: true };

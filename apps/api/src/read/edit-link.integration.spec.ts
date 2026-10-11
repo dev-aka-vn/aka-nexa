@@ -139,7 +139,7 @@ describe('edit-link integration (LNK-02, SC#4)', () => {
     expect(fallback).toMatchObject({ submission_id: submissionId, revision: 6 });
   });
 
-  it('keeps the replay record only for its window', async () => {
+  it('consume replay ttl — the replay record is kept only for its window', async () => {
     const jti = `jti-${randomUUID()}`;
     await tokens.recordOutcome(jti, { submission_id: submissionId, revision: 9 }, 300);
 

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { MongoClient } from 'mongodb';
 import { Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 import { ConnectorDeliveryProcessor } from './connector-delivery.processor.js';
-import { ConnectorRegistry, SubmissionRevisionsRepository } from '@akane/domain';
+import { ConnectorRateLimiter, ConnectorRegistry, SubmissionRevisionsRepository } from '@akane/domain';
 import {
   blockingConnectionOptions,
   BULLMQ_PREFIX,
@@ -15,6 +16,7 @@ describe('connector delivery integration', () => {
   let containers: ThreeContainers;
   let mongoClient: MongoClient;
   let mongoService: MongoService;
+  let limiterRedis: Redis;
 
   beforeAll(async () => {
     containers = await startThreeContainers();
@@ -22,9 +24,11 @@ describe('connector delivery integration', () => {
     await mongoClient.connect();
     mongoService = new MongoService(containers.urls.mongo);
     await mongoService.db().createCollection('submission_revisions');
+    limiterRedis = new Redis(containers.urls.cache);
   });
 
   afterAll(async () => {
+    await limiterRedis?.quit();
     await mongoClient?.close();
     await containers?.stop();
   });
@@ -40,6 +44,8 @@ describe('connector delivery integration', () => {
     });
     const registry = new ConnectorRegistry();
     (registry as any).resolve = () => stubConnector;
+    (registry as any).limiterConfig = () => ({ max: 60, windowMs: 60000 });
+    const limiter = new ConnectorRateLimiter(limiterRedis);
 
     const session = mongoService.client.startSession();
     try {
@@ -57,7 +63,7 @@ describe('connector delivery integration', () => {
       return originalSetSent(...args);
     });
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter);
     await processor.process({
       data: {
         submissionId: 'sub-precommit-1',
@@ -84,6 +90,8 @@ describe('connector delivery integration', () => {
     });
     const registry = new ConnectorRegistry();
     (registry as any).resolve = () => stubConnector;
+    (registry as any).limiterConfig = () => ({ max: 60, windowMs: 60000 });
+    const limiter = new ConnectorRateLimiter(limiterRedis);
 
     const submissionId = 'sub-backoff-1';
     const session = mongoService.client.startSession();
@@ -106,7 +114,7 @@ describe('connector delivery integration', () => {
       },
     });
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter);
     const worker = new Worker('connector-delivery', async (job) => processor.process(job), {
       connection: blockingConnectionOptions(containers.urls.queue),
       prefix: BULLMQ_PREFIX,

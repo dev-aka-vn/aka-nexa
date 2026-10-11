@@ -20,6 +20,7 @@ import {
   type WorkerRunningStatus,
 } from '@akane/platform';
 import {
+  ConnectorRateLimiter,
   ConnectorRegistry,
   OutboxRepository,
   SubmissionRevisionsRepository,
@@ -73,6 +74,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
+    ConnectorRateLimiter,
     {
       provide: WORKER_CONSUMERS,
       inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor],

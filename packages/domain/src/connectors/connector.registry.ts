@@ -1,5 +1,7 @@
 import { Connector } from '@akane/contract';
 
+import { DEFAULT_CONNECTOR_LIMIT, type ConnectorLimitConfig } from './connector-rate-limiter.js';
+
 export class ConnectorNotFoundError extends Error {
   constructor(ref: string) {
     super(`Connector not found: ${ref}`);
@@ -11,6 +13,12 @@ export interface ConnectorRegistryEntry {
   readonly connectorRef: string;
   readonly adapter: Connector;
   readonly credentialRef?: string;
+  /**
+   * The per-instance budget (CON-05). Absent means "use the conservative
+   * default" — never "unlimited". Parsed from the seed's `rate_limit` by
+   * `parseConnectorLimit` at registration time.
+   */
+  readonly limit?: ConnectorLimitConfig;
 }
 
 export class ConnectorRegistry {
@@ -37,6 +45,22 @@ export class ConnectorRegistry {
       throw new ConnectorNotFoundError(ref);
     }
     return entry.adapter.descriptor;
+  }
+
+  /**
+   * The budget for `ref` (CON-05).
+   *
+   * Throws {@link ConnectorNotFoundError} for an unknown ref **before** the
+   * limiter is ever consulted — the fail-closed ruling. A known connector with
+   * no declared limit gets the conservative default, so a missing config is
+   * never read as an absent limit.
+   */
+  limiterConfig(ref: string): ConnectorLimitConfig {
+    const entry = this.entries.get(ref);
+    if (!entry) {
+      throw new ConnectorNotFoundError(ref);
+    }
+    return entry.limit ?? DEFAULT_CONNECTOR_LIMIT;
   }
 
   async testConnection(ref: string) {
