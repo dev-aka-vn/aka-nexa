@@ -236,7 +236,7 @@ fail on them.
 
 ---
 
-### G-11 — the `query` action is denied unconditionally: `SavedQueryLookup` has no production implementation
+### G-11 — the `query` action is denied unconditionally: `SavedQueryLookup` has no production implementation — ✅ CLOSED 2026-10-11
 
 **Found by:** `05-VERIFICATION.md` (G-9), then confirmed by reading the code.
 **Blocks:** SC#1's second clause (*"the submission shows as `partial` on the user's own
@@ -252,9 +252,9 @@ missed it.
   `queryId === undefined || this.savedQueries === undefined ? null : await …` — so with the
   seam absent, `saved === null`, and the very next branch returns
   `{ ok: false, reason: wrong_version }`. There is no fall-through that could succeed.
-- `apps/api/src/read/read.module.ts` builds the service as
+- `apps/api/src/read/read.module.ts` built the service as
   `new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService, revisions, tokenStore)`
-  — the fourth argument is a **hardcoded `undefined`**.
+  — the fourth argument a **hardcoded `undefined`**. *(Fixed 2026-10-11 — see the addendum.)*
 - The dispatch is unconditional: `verify()` switches on `claims.action` and sends every
   `'query'` link straight to `verifyQuery` (`read-verifier.service.ts:201-203`), and
   `ReadController.query` calls `this.verifier.verify(token)` (`read.controller.ts:99`).
@@ -262,8 +262,12 @@ missed it.
   is answered `wrong_version` in production.
 - **No production `SavedQueryLookup` exists.** `grep -rn SavedQueryLookup` finds the
   interface, `apps/api/src/read/read.module.ts`, and four **test doubles**
-  (`TestSavedQueryLookup` / `makeSavedQueries`). There is no saved-query collection, no
-  repository, and no seed anywhere in the repo.
+  (`TestSavedQueryLookup` / `makeSavedQueries`). There is no saved-query collection and no
+  repository; the record shape is frozen and *seeded*
+  (`packages/domain/src/seeds/saved-queries.seed.json`) but nothing read it. *(The "no seed in
+  the repo" claim this bullet originally made was wrong — the seed has existed since 05-04 and
+  is asserted by `saved-queries.seed.spec.ts`; that mistake is what made the fix look like it
+  needed a schema decision when it did not.)*
 - **The spec masks it.** `apps/api/src/read/status-surface.integration.spec.ts` is named
   "integration" but provides `{ provide: ReadVerifierService, useValue: verifier }` with a
   canned `verify` that already returns `ok: true` **and a populated `savedQuery`** (lines
@@ -279,13 +283,15 @@ saved query *at runtime* today — the shape is frozen and seeded
 (`packages/domain/src/seeds/saved-queries.seed.json`), but the App Builder that would write
 those records is **phase 6**.
 
-`05-VERIFICATION.md` records this as a `gaps_found` item; no code was changed.
+`05-VERIFICATION.md` records this as a `gaps_found` item. **It is closed — see the addendum
+below.** No other phase-5 code changed.
 
-**And the lookup is only half of it — see G-13.** Wiring `savedQueries` alone would change
+**And the lookup is only half of it — see G-13.** Wiring `savedQueries` *alone* changes
 nothing observable: no production component mints a signed read link, so no `query` link can
-ever reach the verifier in the first place.
+ever reach the verifier in the first place. That is why the wiring was recorded before it was
+done, not instead of it.
 
-### G-11 addendum — why the lookup was **not** wired, given it is bounded
+### G-11 addendum — the seam was bounded, and it is now wired
 
 The seam *is* bounded: `SavedQueryLookup` is declared in `read-verifier.service.ts:65` with a
 docblock that explicitly expects "the API module provides the concrete store", and the record
@@ -294,10 +300,23 @@ shape is frozen and seeded at `packages/domain/src/seeds/saved-queries.seed.json
 Builder writes the same records"). A seed-backed implementation is therefore ~30 lines using
 only frozen artefacts, and inventing **no** schema.
 
-It was not written, on purpose: with G-13 unfixed, wiring it is *unobservable* in production
-and would let a spec assert "the query action works" against a chain that still mints no
-token — the same false confidence that `status-surface.integration.spec.ts` already provides.
-Half-wiring a chain is how the next reader concludes it is whole.
+It was therefore held back deliberately until G-13 was on the record: wiring it first would be
+*unobservable* in production while letting a spec assert "the query action works" against a
+chain that still mints no token — the same false confidence `status-surface.integration.spec.ts`
+already provides. Half-wiring a chain is how the next reader concludes it is whole.
+
+**Closed 2026-10-11**, once G-13 was recorded: `SeedSavedQueryLookup` (`packages/domain/src/links/seed-saved-query.lookup.ts`) reads
+the frozen seed and keys on `(app_id, query_id)`; `read.module.ts` declares it and binds it
+into the verifier factory's inject list. Three tests now drive the **real** store through the
+**real** verifier against a real ES256 token (`read-verifier.service.spec.ts` >
+`describe('with the production seed store (G-11 reachability)')`), the store has its own
+contract spec (`seed-saved-query.lookup.spec.ts`), and a wiring guard asserts the DI graph
+itself (`apps/api/src/read/read.module.spec.ts`) — the failure that caused all of this was
+composition, so composition is what the guard pins. Verified outside vitest as well: the
+built ESM `dist` resolves the seed JSON at runtime.
+
+**DAT-14 does not close with it.** G-13 still leaves the whole read path without a mint, so
+the requirement stays `Partial (G-13)`.
 
 ### G-13 — nothing mints a signed read link, so the whole read path is verification-only
 
@@ -332,7 +351,7 @@ which is a security regression, not a fix. So: **recorded, deliberately not impl
 subsystems behind a missing door. Any future claim that a read-path requirement is reachable
 end-to-end should first answer "who mints the link?" — for now, nobody.
 
-### G-12 — SC#5(a) and CON-05 state opposite requirements (needs a ruling)
+### G-12 — SC#5(a) and CON-05 state opposite requirements — ✅ RESOLVED 2026-10-11 (CON-05 stands)
 
 **Found by:** `05-VERIFICATION.md` (G-9). **Blocks:** either SC#5(a) or CON-05, whichever
 wins. **This is an escalation, not a missing mechanic — no code change is safe without a
@@ -369,6 +388,22 @@ not a resolution.
 - `rate-limit.integration.spec.ts:47` — the test name states the implemented semantics.
 - `connector-rate-limiter.ts` header — the design note arguing keying on the connector.
 - `05-VERIFICATION.md` — scores SC#5 as "(a) FAILED — app-scoped isolation not implemented".
+
+**Resolution (2026-10-11) — the user ruled that CON-05 stands.** The connector instance is
+the budgeted resource; the app is an attribution label, not a private allowance. This is the
+reading the code already implements, so **no code changed** — the two contradicting
+statements were amended to match what is built and pinned:
+
+| Was | Now |
+|-----|-----|
+| `ROADMAP.md:193` — "One app's traffic spike fails **that app and not every app** sharing the connector" | SC#5(a) reworded: the limit is per connector instance and shared across every app referencing it, so one app's spike cannot starve the others by exhausting a private budget; the app is the attribution label (`CON-06`), not a budget |
+| `REQUIREMENTS.md:233` — CON-06 "…attributed and **budgeted separately**" | CON-06 reworded: `app_id` exists so a spike is **attributable**; separate budgeting is explicitly *not* the model (a private per-app budget would leave the downstream seeing the sum, which is the failure CON-05 exists to prevent) |
+
+`CON-05` itself is unchanged and remains the authority. The integration test that names the
+implemented semantics — `rate-limit.integration.spec.ts > "shared connector budget — two
+apps, two processes, one budget"` — is now consistent with every requirement text rather than
+asserting the opposite of one. `05-VERIFICATION.md`'s "SC#5(a) FAILED" line is a
+point-in-time verdict against the *old* wording and is superseded by this ruling.
 
 ---
 
@@ -451,8 +486,16 @@ Stated so this file is not read as "nothing works":
   `connector-delivery.integration.spec.ts`, `reconciliation.integration.spec.ts`,
   `dlq.integration.spec.ts`, `redmine.contract.spec.ts` (A2 live-gated, documented).
 - `npx tsc -b`, `npx eslint .` and `npm run build` are clean.
-- Full suite (2026-10-11): **892 passed / 1 failed / 0 skipped, 84 files**. The single
-  failure is G-4 (six orphans). The three formerly-skipped CON-05 placeholders are now
-  real tests, and the +8 over the previous 884 is this pass's OBS-04 work (5 recorder
-  assertions in `business-metrics.spec.ts`, 3 emission assertions in
-  `connector-delivery.spec.ts`).
+- **G-11 closed 2026-10-11** — the `query` action's `SavedQueryLookup` seam now has a
+  production implementation (`SeedSavedQueryLookup`, seed-backed, keyed on
+  `(app_id, query_id)`), wired through `read.module.ts` and guarded by a DI-graph assertion.
+  Proven with the **real** store through the **real** verifier against a real ES256 token,
+  where every prior test injected a double. **DAT-14 does not close with it** — G-13 still
+  leaves the whole read path without a mint, so the requirement reads `Partial (G-13)`.
+- **G-12 resolved 2026-10-11 with no code change** — the user ruled CON-05 authoritative, and
+  SC#5(a)/CON-06 were amended to match the implemented, test-pinned behaviour.
+- Full suite (2026-10-11, after the G-11 fix): **904 passed / 1 failed / 0 skipped, 86 files**.
+  The single failure is G-4 (six orphans). The +12 over the previous 892 is the G-11 work
+  (6 store-contract assertions in `seed-saved-query.lookup.spec.ts`, 3 real-store reachability
+  tests in `read-verifier.service.spec.ts`, 3 DI-wiring assertions in `read.module.spec.ts`),
+  and the +2 files are the two new specs.

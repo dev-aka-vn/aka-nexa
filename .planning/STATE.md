@@ -72,33 +72,39 @@ Total Plans in Phase: 9
 
 ## Blockers/Concerns
 
-- **[Phase 05] Phase 5 is executed and validated, not yet verified.** `05-GAPS.md` records
-  the findings of a verification pass. The two substantive gaps it found are **closed**:
-  **CON-05** (the connector rate limiter) and **AUD-10** (read-link rate limiting, per
-  user/jti, never per IP) are both implemented and verified over real Redis, and
-  **OBS-04 / CON-06 / CON-07** (the business counters) now have a write seam and a call
-  site. `05-VALIDATION.md` is `status: validated` with `nyquist_compliant: true`. What is
-  still missing is the phase-level artifact — no `05-VERIFICATION.md` (G-9).
-- **[Phase 05] G-11 — the status page's read link is denied unconditionally.** The
-  "My submissions" list uses the `query` action, and `verifyQuery` denies every `query`
-  link because `apps/api/src/read/read.module.ts` passes `savedQueries: undefined` and no
-  production `SavedQueryLookup` exists (only test doubles). Found by `05-VERIFICATION.md`;
-  **DAT-14** is therefore `Partial`. Fixing it means a `saved_queries` schema, which is
-  App Builder (phase 6) territory — needs a ruling.
+- **[Phase 05] Phase 5 is executed, validated and verified.** `05-GAPS.md` records the findings
+  of the verification pass, and `05-VERIFICATION.md` (G-9, closed 2026-10-11) is the
+  goal-backward artifact: 9/12 must-have truths confirmed, verdict `gaps_found`. The
+  substantive gaps are **closed**: **CON-05** (the connector rate limiter), **AUD-10**
+  (read-link rate limiting, per user/jti, never per IP) and **OBS-04 / CON-06 / CON-07** (the
+  business counters, which now have a write seam and a call site) are all implemented and
+  tested over real Redis/Mongo/containers. `05-VALIDATION.md` is `status: validated` with
+  `nyquist_compliant: true`. What remains open is recorded below, not silently absorbed.
+- **[Phase 05] G-11 — ✅ CLOSED 2026-10-11.** The status page's "My submissions" list uses the
+  `query` action, and `verifyQuery` fails closed when the D-73 `savedQueries` seam is absent —
+  `read.module.ts` passed `undefined`, so every `query` link was denied while the verifier's own
+  suite stayed green against in-memory doubles. Fixed by `SeedSavedQueryLookup`
+  (`packages/domain/src/links/seed-saved-query.lookup.ts`), which reads the frozen seed and keys
+  on `(app_id, query_id)`, wired through `read.module.ts`, with a module-wiring guard asserting
+  the DI graph. **DAT-14** nevertheless stays `Partial` — see G-13.
 - **[Phase 05] G-13 — nothing mints a signed read link.** The only issuer,
   `packages/domain/src/links/link-issuer.service.ts`, is a documented Phase-2 stand-in that
   returns an unsigned `/l/<appId>?u=...`; the frozen claim set is never constructed outside
   tests. So the whole read path (`view`/`query`/`edit`) is verification-only — **every**
   `/l/*` route can be reached only by a hand-crafted token. This is deliberately not patched:
   a real issuer is KMS-backed ES256 and is blocked on the still-open **FND-10** gate, and a
-  test-key stand-in would put an unrotated signing key on a 90-day token's critical path.
-- **[Phase 05] G-12 — SC#5(a) contradicts CON-05.** ROADMAP SC#5(a) says one app's spike
-  fails *that app and not every app sharing the connector*; `REQUIREMENTS.md:221` (CON-05)
-  says limits are *per connector instance, shared across every app*. The code follows
-  CON-05 (key `ak:rl:connector:<ref>`, pinned by a test asserting the opposite of SC#5(a)).
-  **Escalation — needs a ruling before any code change; no other suite change can fix it.**
+  test-key stand-in would put an unrotated signing key on a 90-day token's critical path. The
+  full remediation plan — claim set, token classes, `kid` keyring, rotation, the fail-closed
+  production guard, and testable acceptance criteria — is written up in
+  `phases/05-integration-async-execution/deferred-items.md` **D-3**.
+- **[Phase 05] G-12 — ✅ RESOLVED 2026-10-11, no code change.** ROADMAP SC#5(a) and
+  `REQUIREMENTS.md` CON-06 both said an app's spike should be *budgeted* separately, while
+  CON-05 says limits are *per connector instance, shared across every app*. The user ruled that
+  **CON-05 stands** — the connector instance is the budgeted resource and `app_id` is the
+  attribution label — so SC#5(a) and CON-06 were amended to match the implemented,
+  test-pinned behaviour.
 - **[Phase 05] Six `apps/api` sources are unreachable from `main.ts`** — the only
-  failing test in the suite (`entrypoint-drift`, 1 failed / 892 passed). They are phase-2
+  failing test in the suite (`entrypoint-drift`, 1 failed / 904 passed). They are phase-2
   scaffolding: the Slack controllers verify no signing secret and return `{ ok: true }`, so
   wiring them as-is would be a security regression. This needs phase 2, not a bolt-on.
 - **[Phase 02/03] Their ROADMAP boxes are unticked while every plan is ticked**, and their

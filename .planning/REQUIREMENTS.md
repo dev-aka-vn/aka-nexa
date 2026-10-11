@@ -211,17 +211,17 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
 - [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
-  - **(05-07, then 05-09) Partial — the list is unreachable in production (G-11).** The status
-    surface, the projection (`completed | partial | failed | pending_external`) and the
-    renderer all exist, and the `view` verifier path is correct (it resolves a submission and
-    re-checks ownership). But the "My submissions" **list** is served by the `query` action,
-    and `ReadVerifierService.verifyQuery` denies every `query` link with `wrong_version`
-    because `apps/api/src/read/read.module.ts` passes `savedQueries: undefined` and no
-    production `SavedQueryLookup` exists. Two links are missing, not one: the lookup (G-11)
-    **and** a production link issuer (G-13) — nothing mints a signed read link at all, so the
-    `view` and `edit` paths are equally unreachable outside tests, and the issuer is blocked on
-    the deliberately-open FND-10 KMS gate. The box is unticked to match `05-VERIFICATION.md`,
-    which scores SC#1 as failed on this clause.
+  - **(05-07, then 05-09) Partial — the read path has no production entry point (G-13).** The status
+    surface, the projection (`completed | partial | failed | pending_external`), the renderer and
+    the `view` verifier path all exist and are correct, and the "My submissions" **list** (the
+    `query` action) is now resolvable: `SeedSavedQueryLookup`
+    (`packages/domain/src/links/seed-saved-query.lookup.ts`) reads the frozen D-73 seed and
+    `read.module.ts` binds it into `ReadVerifierService`, closing **G-11** on 2026-10-11. What
+    still blocks the requirement is **G-13**: nothing mints a signed read link, so no `/l/*` route
+    can be reached outside a test — the only issuer is a Phase-2 stand-in returning an unsigned
+    path, and a real one is KMS-backed and blocked on the deliberately-open **FND-10** gate. So the
+    `view`, `query` and `edit` paths are all equally unreachable in production. The box stays
+    unticked to match `05-VERIFICATION.md`, which scores SC#1 as failed on this clause.
 
 ### Connectors & Async Execution
 
@@ -230,7 +230,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
 - [x] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
 - [x] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
-- [x] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
+- [x] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be **attributed** separately. Separate *budgeting* is deliberately not the model — the connector instance is the budgeted resource (CON-05); the label exists so the noisy app is identifiable, not so it gets a private allowance (amended 2026-10-11 by G-12)
 - [x] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
 - [x] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
 - [ ] **CON-09**: A Redmine connector ships as the first and only v1 external integration, including field mapping and its error taxonomy
@@ -494,7 +494,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-05 | Phase 5 | Complete |
 | DAT-06 | Phase 5 | Complete |
 | DAT-07 | Phase 5 | Complete (SC#3) |
-| DAT-14 | Phase 5 | Partial (G-11) |
+| DAT-14 | Phase 5 | Partial (G-13) |
 | CON-01 | Phase 5 | Complete |
 | CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |

@@ -230,3 +230,42 @@ The phase's asynchronous core is genuinely built and, for the most part, genuine
 
 _Verified: 2026-10-11T07:13:39Z_
 _Verifier: the agent (gsd-verifier)_
+
+---
+
+## Post-verification addendum — 2026-10-11 (record corrections, not a re-verification)
+
+The body above is the verifier's point-in-time verdict and is left unedited. Three things
+changed after it was written; none of them required re-running verification, and the verdict
+(`gaps_found`) still stands.
+
+1. **Gap #1's lookup half is fixed — G-11 closed.** `SeedSavedQueryLookup`
+   (`packages/domain/src/links/seed-saved-query.lookup.ts`) reads the frozen D-73 seed and keys
+   on `(app_id, query_id)`; `read.module.ts` now declares it and injects it into
+   `ReadVerifierService` where `undefined` used to be. Proven three ways: tests driving the
+   **real** store through the **real** verifier against a real ES256 token
+   (`read-verifier.service.spec.ts`), a store contract spec (`seed-saved-query.lookup.spec.ts`),
+   and a DI wiring guard (`apps/api/src/read/read.module.spec.ts`). The built ESM `dist` was
+   exercised directly as well. Full suite after the fix: **904 passed / 1 failed / 0 skipped,
+   86 files** (+12 tests, +2 files; the one failure is still G-4), so the table row above that
+   reads 892/84 is the pre-fix snapshot this addendum supersedes.
+   **Gap #1's headline conclusion is unchanged** — the status page is still unreachable, for the
+   larger reason below.
+
+2. **New gap recorded — G-13: nothing mints a signed read link.** Tracing gap #1 to its root
+   showed the `query` action was never the only unreachable route: `link-issuer.service.ts` is a
+   documented Phase-2 stand-in returning an unsigned `/l/<appId>?u=...`, and the frozen claim set
+   is never constructed outside tests. So **every** `/l/*` route (`view`, `query`, `edit`) is
+   verification-only. A real issuer is KMS-backed ES256 and is blocked on the deliberately-open
+   **FND-10** gate, so this was recorded rather than patched with a test key. DAT-14 is therefore
+   `Partial (G-13)`: the wording of the reason changed, the failure did not.
+
+3. **Gap #2 / the SC#5(a) escalation is resolved — no code changed.** The user ruled that
+   **CON-05 stands**: the connector instance is the budgeted resource and `app_id` is the
+   attribution label. SC#5(a) (`ROADMAP.md`) and CON-06 (`REQUIREMENTS.md`) were amended to match
+   the implemented, test-pinned behaviour. The body's "SC#5(a) FAILED" line is a verdict against
+   the *old* wording and is superseded. Full record: `05-GAPS.md` G-12.
+
+Closed since the body: **G-9** (this artifact exists) and **G-11**. Still open and unchanged:
+**G-4** (phase-2 entrypoint orphans — the suite's only failure), **G-13**, and the two human
+items above (edit-link replay over HTTP, live Redmine delivery).

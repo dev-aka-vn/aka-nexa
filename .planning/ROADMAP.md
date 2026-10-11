@@ -190,7 +190,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   2. A failed connector call retries with exponential backoff, then lands in a dead-letter queue a platform admin can view and retry by hand; the outbound request is never sent for an internal write that did not commit.
   3. Nothing in `sent_unconfirmed` is ever auto-resent — the reconciliation job retries only `not_sent`, because an unconfirmed send may already have reached Redmine.
   4. An edit link can be reopened repeatedly but consumes on submit, and a second submit returns the original confirmation rather than creating a duplicate record.
-  5. One app's traffic spike fails that app and not every app sharing the connector; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation.
+  5. A connector's rate limit is enforced **per connector instance and shared across every app referencing it** (CON-05), so one app's traffic spike cannot starve the other apps by exhausting a private budget — `app_id` is the *attribution* label on those metrics (CON-06), not a separate allowance; a rejected credential alerts separately from an unreachable endpoint; and changing an app's connector reference is a separately audited mutation. *(Amended 2026-10-11 — see `05-GAPS.md` G-12: the original clause read "one app's traffic spike fails that app and not every app sharing the connector", which contradicted CON-05; CON-05 was ruled authoritative and no code changed.)*
 
 **Plans**: 9/9 plans executed
 **Wave 1**
