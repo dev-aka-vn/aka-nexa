@@ -169,7 +169,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] 04-03-PLAN.md
 - [x] 04-04-PLAN.md
 - [x] 04-05-PLAN.md
-- [ ] 04-06-PLAN.md
+- [x] 04-06-PLAN.md
 - [x] 04-07-PLAN.md
 - [x] 04-08-PLAN.md
 - [x] 04-09-PLAN.md
