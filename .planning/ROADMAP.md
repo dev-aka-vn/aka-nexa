@@ -232,13 +232,28 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Plans**: 8 plans
 
 Plans:
+**Wave 1**
 - [ ] 06-01-PLAN.md — Spike S1: FormIO 5.6.1 builder mount, snapshot undo/redo, 5.x shape verification, SPA shell, boundary extension (package-legitimacy gate)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 06-02-PLAN.md — Builder auth: OIDC authorization-code + PKCE login, Redis session with __Host- cookie, MFA claim gate, auto-provision, IDN-08 SSO mapping
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 06-03-PLAN.md — IDN-05 OTP self-onboarding: Redis state machine (10-min / 3-attempt / 30-min lockout) wired into the chat pipeline
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 06-04-PLAN.md — App definitions: draft CRUD, 20-version retention + rollback, lifecycle state machine, D-31 template gallery with snapshot forks, G-11 saved-query store replacement
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 06-05-PLAN.md — Publish gate: APP-07 routing dry-run through the real orchestrator (>5-point share drop blocks), APP-08 description collision, BLD-06 change summary, OBS-05 routing_share{app_id} metric
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 06-06-PLAN.md — Connector requests (BLD-10, D-97..D-100: definition minus secret, operator-provisioned terminal state), submissions viewer + visible-column CSV export (BLD-08/D-111), field-mapping endpoint (BLD-05)
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 06-07-PLAN.md — SPA core: 5-step wizard (BLD-01), tabbed editor (BLD-02), FormIO designer with undo/redo + conditional/validate + sandbox preview (BLD-04/FRM-05/FRM-09), roles + autocomplete + @casl/ability (BLD-03/ACL-10/BLD-11), skeletons + inline errors (BLD-07/BLD-09)
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
 
 **UI hint**: yes
