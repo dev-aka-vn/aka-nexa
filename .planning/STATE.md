@@ -72,15 +72,16 @@ Total Plans in Phase: 9
 
 ## Blockers/Concerns
 
-- **[Phase 05] Phase 5 is executed, not verified.** `05-GAPS.md` records the findings of
-  a verification pass: **CON-05** (the connector rate limiter) has no implementation —
-  the storage primitive exists but nothing consults it, and the plan assumed a throttler
-  wiring that has never existed; **AUD-10** (read-link rate limiting, per user/jti, never
-  per IP) is likewise unimplemented, and both need a **product decision** (budget,
-  window, and what an over-budget call does) before they can be built.
-- **[Phase 05] Seven `apps/api` sources are unreachable from `main.ts`** — the only
-  failing test in the suite (`entrypoint-drift`, 1 failed / 866 passed). They are phase-2
-  scaffolding: `slack-handlers` verify no signing secret and return `{ ok: true }`, so
+- **[Phase 05] Phase 5 is executed and validated, not yet verified.** `05-GAPS.md` records
+  the findings of a verification pass. The two substantive gaps it found are **closed**:
+  **CON-05** (the connector rate limiter) and **AUD-10** (read-link rate limiting, per
+  user/jti, never per IP) are both implemented and verified over real Redis, and
+  **OBS-04 / CON-06 / CON-07** (the business counters) now have a write seam and a call
+  site. `05-VALIDATION.md` is `status: validated` with `nyquist_compliant: true`. What is
+  still missing is the phase-level artifact — no `05-VERIFICATION.md` (G-9).
+- **[Phase 05] Six `apps/api` sources are unreachable from `main.ts`** — the only
+  failing test in the suite (`entrypoint-drift`, 1 failed / 892 passed). They are phase-2
+  scaffolding: the Slack controllers verify no signing secret and return `{ ok: true }`, so
   wiring them as-is would be a security regression. This needs phase 2, not a bolt-on.
 - **[Phase 02/03] Their ROADMAP boxes are unticked while every plan is ticked**, and their
   code is unwired. `gsd-tools progress` reports them "Complete" on plans+summaries alone,

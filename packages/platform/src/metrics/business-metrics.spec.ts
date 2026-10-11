@@ -33,6 +33,12 @@ class RecordingMeterProvider implements MeterProvider {
   readonly meters: Array<{ name: string; version?: string }> = [];
   readonly counters = new Map<string, number>();
   readonly observations: number[] = [];
+  /**
+   * Every `add()` with its attributes. A counter with no `add()` and no label
+   * combination exports nothing, so the assertions that matter for OBS-04 /
+   * CON-06 / CON-07 are on this array, not on `counters`.
+   */
+  readonly adds: Array<{ name: string; amount: number; attributes?: unknown }> = [];
 
   // An arrow-bodied method, so the inner `createCounter` closes over the provider
 // instance lexically rather than needing `const self = this` — which
@@ -42,7 +48,12 @@ getMeter = (name: string, version?: string) => {
     return {
       createCounter: (metricName: string) => {
         this.counters.set(metricName, (this.counters.get(metricName) ?? 0) + 1);
-        return { add: (amount: number) => this.observations.push(amount) };
+        return {
+          add: (amount: number, attributes?: unknown) => {
+            this.observations.push(amount);
+            this.adds.push({ name: metricName, amount, attributes });
+          },
+        };
       },
     } as unknown as ReturnType<MeterProvider['getMeter']>;
   };
@@ -143,6 +154,121 @@ describe('registerBusinessMetrics (OBS-01)', () => {
     // telling an operator the queue is empty.
     expect(gauge).toBe('queue.oldest.item.age');
     expect(recorder.counters.has(gauge)).toBe(false);
+  });
+});
+
+/**
+ * The recording seam (OBS-04, CON-06, CON-07).
+ *
+ * Registering an instrument is not the same as emitting a series: a counter with
+ * no `add()` exports nothing. Phase 1 declared these two instruments and Phase 5
+ * still had no `submission_status{status="partial"}` because no call site wrote
+ * one. These tests pin the write, and the labels it carries.
+ */
+describe('createBusinessMetricsRecorder (OBS-04, CON-06, CON-07)', () => {
+  let recorder: RecordingMeterProvider;
+
+  async function freshModule(): Promise<typeof import('./business-metrics.js')> {
+    vi.resetModules();
+    return import('./business-metrics.js');
+  }
+
+  beforeEach(() => {
+    recorder = new RecordingMeterProvider();
+    metrics.disable();
+    metrics.setGlobalMeterProvider(recorder);
+  });
+
+  afterEach(() => {
+    metrics.disable();
+  });
+
+  it('submission_status app_id — every transition carries the app that caused it', async () => {
+    const { createBusinessMetricsRecorder: create } = await freshModule();
+    const seam = create();
+
+    seam.recordSubmissionStatus({ appId: 'app-leave', status: 'partial' });
+
+    expect(recorder.adds).toEqual([
+      {
+        name: SUBMISSION_STATUS_METRIC,
+        amount: 1,
+        attributes: { app_id: 'app-leave', status: 'partial' },
+      },
+    ]);
+  });
+
+  it('exports the partial series OBS-04 exists for', async () => {
+    const { createBusinessMetricsRecorder: create } = await freshModule();
+    const seam = create();
+
+    // A hybrid submission whose internal write committed and whose external leg
+    // is still trying. Without this emission the state is invisible to alerting.
+    seam.recordSubmissionStatus({ appId: 'app-hr', status: 'partial' });
+
+    const partial = recorder.adds.filter(
+      (entry) => (entry.attributes as { status?: string }).status === 'partial',
+    );
+    expect(partial).toHaveLength(1);
+    expect(partial[0]!.name).toBe(SUBMISSION_STATUS_METRIC);
+  });
+
+  it('connector.outcome always names the app, so one app is attributable (CON-06)', async () => {
+    const { createBusinessMetricsRecorder: create } = await freshModule();
+    const seam = create();
+
+    seam.recordConnectorOutcome({
+      appId: 'app-procurement',
+      outcome: 'succeeded',
+      taxonomyCode: 'none',
+    });
+
+    expect(recorder.adds).toEqual([
+      {
+        name: CONNECTOR_OUTCOME_METRIC,
+        amount: 1,
+        attributes: {
+          app_id: 'app-procurement',
+          outcome: 'succeeded',
+          taxonomy_code: 'none',
+        },
+      },
+    ]);
+  });
+
+  it('separates credential_rejected from endpoint_unreachable at the metric layer (CON-07)', async () => {
+    const { createBusinessMetricsRecorder: create } = await freshModule();
+    const seam = create();
+
+    seam.recordConnectorOutcome({
+      appId: 'app-hr',
+      outcome: 'rejected',
+      taxonomyCode: 'credential_rejected',
+    });
+    seam.recordConnectorOutcome({
+      appId: 'app-hr',
+      outcome: 'failed_transient',
+      taxonomyCode: 'endpoint_unreachable',
+    });
+
+    const codes = recorder.adds.map(
+      (entry) => (entry.attributes as { taxonomy_code?: string }).taxonomy_code,
+    );
+    // The two series an alert rule distinguishes, without parsing a message.
+    expect(codes).toEqual(['credential_rejected', 'endpoint_unreachable']);
+    expect(recorder.adds.every((entry) => entry.name === CONNECTOR_OUTCOME_METRIC)).toBe(true);
+  });
+
+  it('writes through the memoised instruments, so two seams do not double the series', async () => {
+    const { createBusinessMetricsRecorder: create } = await freshModule();
+
+    create().recordSubmissionStatus({ appId: 'a', status: 'sent' });
+    create().recordSubmissionStatus({ appId: 'b', status: 'sent' });
+
+    // The second seam must not create a second instrument of the same name —
+    // that is the double-emission `registerBusinessMetrics` memoises to avoid.
+    expect(recorder.counters.get(SUBMISSION_STATUS_METRIC)).toBe(1);
+    expect(recorder.adds).toHaveLength(2);
   });
 });
 

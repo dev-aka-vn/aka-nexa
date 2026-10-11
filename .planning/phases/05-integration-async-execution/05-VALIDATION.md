@@ -4,7 +4,7 @@ slug: "integration-async-execution"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
 status: validated
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: true
 created: "2026-10-09"
 validated: "2026-10-11"
@@ -59,18 +59,17 @@ validated: "2026-10-11"
 | CON-09 / A2 | Redmine create maps fields correctly; create-time 404 → permanent; `cf_` pre-check | integration (needs live instance for A2) | `npx vitest run packages/domain/src/connectors/redmine.contract.spec.ts` | ✅ (A2 gated — manual row below) |
 | CON-08 / D-86 | `connector_ref` rebind writes an AUD-01 before→after transition | integration | `npx vitest run packages/cli/rebind.integration.spec.ts -t "audited rebind"` | ✅ |
 | CON-04 / D-84 | `dlq retry` re-enqueues via the same path; `sent_unconfirmed` requires `--force` + pre-check | integration | `npx vitest run packages/cli/dlq.integration.spec.ts -t "retry path"` | ✅ |
-| OBS-04 / CON-06 | `submission_status{status="partial"}` and connector counter carry `app_id` | unit | `npx vitest run packages/platform/src/metrics/business-metrics.spec.ts -t "submission_status app_id"` | ❌ **no such test — G-10** |
+| OBS-04 / CON-06 | `submission_status{status="partial"}` and connector counter carry `app_id` | unit | `npx vitest run packages/platform/src/metrics/business-metrics.spec.ts -t "submission_status app_id"` | ✅ (commit `OBS-04`) |
 | LNK-02 / D-93 / D-95 | Edit link consume-on-submit; replay returns original confirmation; expires at 4 h | integration | `npx vitest run apps/api/src/read/edit-link.integration.spec.ts -t "consume replay ttl"` | ✅ (commit `57d91430`) |
 | DAT-14 / D-80 | Per-app "My submissions" list via frozen `query` action (no new claim) | integration | `npx vitest run apps/api/src/read/status-surface.integration.spec.ts -t "my submissions"` | ✅ |
 | DAT-01/03/05 | Data-mode routing; `{{form.field}}`/`{{real_user.attribute}}` resolution; `partial` on external failure | unit | `npx vitest run packages/domain/src/datarouter/data-router.spec.ts` | ✅ |
 
 **Execution evidence:** every row above was executed as part of the full suite
-(`npx vitest run`, 2026-10-11: 884 passed / 1 failed / 0 skipped over 84 files), which is
-green except `tooling/entrypoint-drift.spec.ts` (Phase-2 wiring — `05-GAPS.md` G-4). The
-`-t` filters were each confirmed to match at least one test, so no row passes vacuously
-for want of a name. **Row 11 is the one exception**: `-t "submission_status app_id"`
-matches no test, because the assertion was never written and no call site emits either
-counter (`05-GAPS.md` G-10). It is left ❌ rather than relabelled.
+(`npx vitest run`, 2026-10-11), which is green except `tooling/entrypoint-drift.spec.ts`
+(Phase-2 wiring — `05-GAPS.md` G-4). The `-t` filters were each confirmed to match at
+least one test, so no row passes vacuously for want of a name. Row 11 was the last one
+whose filter matched nothing; it was closed by commit `OBS-04`, which added the emitter
+and the assertion, and `-t "submission_status app_id"` now resolves to exactly one test.
 
 ---
 
@@ -88,7 +87,7 @@ ticked on that basis, not on the plan's intent.
 - [x] `packages/domain/src/connectors/rate-limit.integration.spec.ts` — CON-05.
 - [x] `packages/cli/{dlq,rebind}.integration.spec.ts` — CON-04/CON-08.
 - [x] `apps/api/src/read/{edit-link,status-surface}.integration.spec.ts` — LNK-02/DAT-14.
-- [ ] Metrics spec extension — `packages/platform/src/metrics/business-metrics.spec.ts` for OBS-04/CON-06. **Still open — G-10.** The file exists and passes, but the `submission_status app_id` assertion the row cites was never written, and no call site emits either counter.
+- [x] Metrics spec extension — `packages/platform/src/metrics/business-metrics.spec.ts` for OBS-04/CON-06. **Closed by commit `OBS-04`:** the recorder seam and its assertions exist (`submission_status app_id`, the `partial` series, `connector.outcome`'s three labels, the CON-07 split), and the delivery processor writes to the seam.
 - [x] Framework install: **none** — Vitest + Testcontainers already present.
 
 ---
@@ -107,12 +106,14 @@ ticked on that basis, not on the plan's intent.
 
 - [x] All tasks have `<automated>` verify or Wave 0 dependencies
 - [x] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references — **one exception:** the OBS-04/CON-06 metrics spec extension is still missing (G-10)
+- [x] Wave 0 covers all MISSING references — the OBS-04/CON-06 metrics spec extension landed in commit `OBS-04`
 - [x] No watch-mode flags
 - [x] Feedback latency < 120s (per-touched-spec quick runs; the containerised integration suites are the slow end at ~35–120 s cold start)
-- [ ] `nyquist_compliant: true` set in frontmatter — **cannot be set:** row 11 has no test
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** PARTIAL (2026-10-11) — validated, `nyquist_compliant: false`. Every row
-except OBS-04/CON-06 was executed and is green; that row is left ❌ and tracked as
-`05-GAPS.md` G-10. Distinguishing this from `draft` matters: the map has been *run*, so
-the ❌ is a known gap rather than an unstarted plan.
+**Approval:** APPROVED (2026-10-11) — validated, `nyquist_compliant: true`. Every row of
+the map is executed and green, and every cited `-t` filter resolves to at least one test.
+Scope note: this approves the *validation map*, not the phase. Phase-level verification
+still has `05-GAPS.md` G-4 open (six Phase-2 files unreachable from `main.ts`, which is
+what `tooling/entrypoint-drift.spec.ts` fails on) and no `05-VERIFICATION.md` (G-9) — both
+recorded, neither a row of this map.

@@ -12,6 +12,16 @@ import {
 import { startThreeContainers, ThreeContainers } from '../../../../tooling/containers.js';
 import { RedmineStubConnector } from '../../../../tooling/redmine-stub.js';
 
+/**
+ * The OBS-04/CON-06 metrics seam. This suite is about the pre-call-commit
+ * ordering and the DLQ budget over real Mongo + Redis, so the recorder is a
+ * permissive stub; the counter semantics have their own suite in
+ * `packages/platform/src/metrics/business-metrics.spec.ts`.
+ */
+function recorderStub() {
+  return { recordSubmissionStatus: vi.fn(), recordConnectorOutcome: vi.fn() } as any;
+}
+
 describe('connector delivery integration', () => {
   let containers: ThreeContainers;
   let mongoClient: MongoClient;
@@ -63,7 +73,7 @@ describe('connector delivery integration', () => {
       return originalSetSent(...args);
     });
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter, recorderStub());
     await processor.process({
       data: {
         submissionId: 'sub-precommit-1',
@@ -114,7 +124,7 @@ describe('connector delivery integration', () => {
       },
     });
 
-    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter);
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry, limiter, recorderStub());
     const worker = new Worker('connector-delivery', async (job) => processor.process(job), {
       connection: blockingConnectionOptions(containers.urls.queue),
       prefix: BULLMQ_PREFIX,

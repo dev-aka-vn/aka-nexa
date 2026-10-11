@@ -117,58 +117,70 @@ when the budget is exhausted; `packages/domain/src/links/signature-failure-limit
 blocks, an invalid/empty key throws rather than coalescing callers);
 `read-deny.metrics.spec.ts` — block counter naming, scope label, independent memoisation.
 
-### G-10 — OBS-04 / CON-06: the metric instruments exist but nothing emits them
+### G-10 — OBS-04 / CON-06: the metric instruments exist but nothing emits them — ✅ CLOSED 2026-10-11
 
 **Blocks:** OBS-04 (*"`submission_status{status="partial"}` is exported"*), CON-06
-(*"`app_id` is a first-class label on connector metrics"*).
+(*"`app_id` is a first-class label on connector metrics"*), CON-07 (the alert split).
 
-**Evidence**
+**Evidence (as found)**
 
 - `packages/platform/src/metrics/business-metrics.ts` registers
   `submission.status` (`SUBMISSION_STATUS_METRIC`) and `connector.outcome`
   (`CONNECTOR_OUTCOME_METRIC`) as counters on the one `akane` meter, memoised and
   obtained per call — the *registry* half of plan 05-05 task 2 is done.
-- **No call site calls `.add()` on either.** `grep -rn "submissionStatus\.add|connectorOutcome\.add"`
-  returns nothing; the only instrument ever incremented is `platformHeartbeat`
+- **No call site called `.add()` on either.** The only instrument ever
+  incremented was `platformHeartbeat`
   (`packages/platform/src/queue/platform-heartbeat.job.ts`). An OTel/Prometheus
   counter with no `add()` and no label combination emits **no series at all**, so
-  `submission_status{status="partial"}` is not exported and the `app_id` label is
-  not carried by anything. The requirement is stated as *"is exported"*, not
-  *"an instrument of that name exists"*, and it is the second half that fails.
+  `submission_status{status="partial"}` was not exported and the `app_id` label
+  was carried by nothing. The requirement is stated as *"is exported"*, not
+  *"an instrument of that name exists"*, and it is the second half that failed.
 - Plan 05-05 task 2 also required extending `business-metrics.spec.ts` to assert
   `submission_status{status="partial"}` and the `app_id`/taxonomy labels. That
-  assertion was never written: `-t "submission_status app_id"` — the command cited
-  by `05-VALIDATION.md` row 11 — matches **no test**.
+  assertion was never written: `-t "submission_status app_id"` matched **no test**.
 
-**What a fix needs — and why it is a decision, not just a missing mechanic**
+**Resolution (commit `OBS-04`).** The plan's open assumption — *"emitted at
+status transition points only (not polled) … flagged, pending confirmation"* — is
+decided here as **emit at the transition**, and the transition the phase already
+has is in the worker's `ConnectorDeliveryProcessor`, which is the only place a
+`submission_revisions` row moves through `not_sent → sent_unconfirmed →
+confirmed`. No new state machine was invented; the emit points are the existing
+writes.
 
-The instruments and the vocabulary exist; what is undecided is *where a transition
-is emitted*, which plan 05-05 itself flagged as an open assumption
-(*"`submission_status` is emitted at status transition points only (not polled) …
-flagged, pending confirmation"*).
+- `createBusinessMetricsRecorder()` in `packages/platform/src/metrics/business-metrics.ts`
+  is the write seam: `recordSubmissionStatus({appId, status})` and
+  `recordConnectorOutcome({appId, outcome, taxonomyCode})`. It holds no state and
+  calls `registerBusinessMetrics()` per write, so it always targets the current
+  provider rather than a closure-captured instrument (the same reason the meter
+  is obtained per call).
+- **Why the label vocabulary lives in `platform`:** `platform` may import
+  `kernel` and nothing else (`tooling/boundaries.config.mjs`), so it cannot see
+  `@akane/contract`. The label unions are declared locally and are structurally
+  identical to the contract's `ConnectorErrorCode` / execute `status`, so the
+  worker passes its own values with no cast and no new boundary edge.
+- **`connector.outcome` carries three labels, not one.** `app_id` (CON-06),
+  `outcome` (so a spike of *successful* calls is attributable — CON-06 says
+  "traffic spike", not "failure spike"), and `taxonomy_code` (CON-07's split).
+  `taxonomy_code` is always present, `none` on a non-failure, so an alert rule
+  never has to be written against an absent label. The instrument's own docblock
+  previously named only `app_id`/`taxonomy_code` and was updated.
+- **`app_id="unknown"` rather than dropping the series** on an attempt with no
+  resolvable app — plan 05-05's other flagged assumption, resolved in favour of
+  emitting.
+- The worker emits `partial` on the two retrying paths and `none` of a connector
+  outcome on the rate-limited path: a rate-limited attempt made **no call**, so
+  recording a connector outcome would attribute a failure to a connector that
+  never ran.
 
-- The states are known (`completed | partial | failed | pending_external`, in
-  `apps/api/src/read/status-projection.ts`) and the taxonomy codes are known
-  (`packages/domain/src/connectors/error-taxonomy.ts`, `classifyError` — usable
-  from the worker). So the *mechanic* is reachable: inject the business-metrics
-  handle into the worker's `ConnectorDeliveryProcessor` and emit
-  `connector.outcome{app_id, taxonomy_code}` where the connector result is
-  classified.
-- The `partial` series is harder: `partial` is the state of a submission whose
-  **internal** write succeeded but whose external leg has not confirmed. That
-  transition happens in `DataRouterService` (domain), not in the worker, so
-  emitting it needs a recorder seam threaded into domain code — the same shape as
-  `LinkTokenStore`'s Redis seam, but for metrics, and the domain package
-  deliberately holds no OTel handle today.
-- Choosing the emit point *is* the design decision the plan deferred: emit-on-write
-  in the data router vs. emit-on-projection vs. a status-change event. Each gives a
-  different count semantics (per transition, per read, per record), and OBS-04's
-  "otherwise invisible" rationale only holds for the first.
-
-**Interim state:** recorded, not silently closed. CON-06 is satisfiable with the
-existing instruments; OBS-04 is not, and `05-VALIDATION.md` row 11 must not be
-marked green until either the emitter or an explicit decision to drop the series
-exists.
+**Verified:** `business-metrics.spec.ts` — the recorder writes
+`submission_status{app_id,status}` (the row-11 command now matches exactly one
+test), the `partial` series exists, `connector.outcome` carries all three labels,
+`credential_rejected` and `endpoint_unreachable` are separable at the metric
+layer, and two seams do not double-register the instrument.
+`connector-delivery.spec.ts` — the processor writes `sent → partial` on a
+transient failure (with `taxonomy_code="none"`), carries a terminal
+`credential_rejected` code, and records `app_id="unknown"` rather than nothing.
+`connector-delivery.integration.spec.ts` — 2 passed over real MongoDB + Redis.
 
 ### G-3 — `LinkTokenStore.consume()` has no caller (recorded, not a defect)
 
@@ -245,15 +257,21 @@ name is phase 5, and phase 4 is the read path); `completed_phases: 3` with
   substantive gaps) are closed; what remains is the missing verification artifact (G-9)
   and the six phase-2 orphans (G-4), neither of which is phase-5 work.
 
-### G-7 — `05-VALIDATION.md` was never completed
+### G-7 — `05-VALIDATION.md` was never completed — ✅ CLOSED 2026-10-11
 
 `status: draft`, `nyquist_compliant: false`, `wave_0_complete: false`, and every row of
-its requirement→test map still reads `File Exists? ❌ Wave 0`. Two of its cited commands
+its requirement→test map still read `File Exists? ❌ Wave 0`. Two of its cited commands
 named tests that did not then exist (`-t "shared connector budget"`,
 `-t "consume replay ttl"`); **both names now exist** (`rate-limit.integration.spec.ts`
-and `edit-link.integration.spec.ts` respectively), so those two rows are runnable. It is
-still a pre-execution seed, not a record: the remaining rows have not been executed and
-the status/wave flags are unchanged.
+and `edit-link.integration.spec.ts` respectively), so those two rows are runnable. It was
+a pre-execution seed, not a record.
+
+**Resolution:** the map was executed end to end and the file flipped to
+`status: validated`, `wave_0_complete: true`, `nyquist_compliant: true`, with every row's
+`File Exists?` ✅ and the cited `-t` filters each confirmed to resolve to at least one
+test. Row 11 (`OBS-04 / CON-06`) was the last ❌; it closed with commit `OBS-04` (G-10).
+Sign-off is APPROVED and is scoped to the *validation map* — see the approval note in the
+file, which names G-4 and G-9 as still-open phase-level items.
 
 ### G-8 — `05-05-SUMMARY.md` overstates its result
 
@@ -283,11 +301,17 @@ Stated so this file is not read as "nothing works":
 - **AUD-10 is now genuinely implemented and verified** — the signature-failure limiter
   is wired into the read controller, benign outcomes are never counted, and a block is
   observable as `read_link_signature_blocks_total` (commit `AUD-10`). G-2 closed.
+- **OBS-04 / CON-06 / CON-07 are now genuinely delivered** — the business counters have a
+  write seam (`createBusinessMetricsRecorder`) and the worker's delivery processor writes
+  `submission_status{app_id,status}` and `connector.outcome{app_id,outcome,taxonomy_code}`
+  at the transitions it already performs (commit `OBS-04`). G-10 closed.
 - The remaining phase-05 integration suites assert real behaviour:
   `outbox.integration.spec.ts` (transaction atomicity + rollback),
   `connector-delivery.integration.spec.ts`, `reconciliation.integration.spec.ts`,
   `dlq.integration.spec.ts`, `redmine.contract.spec.ts` (A2 live-gated, documented).
 - `npx tsc -b`, `npx eslint .` and `npm run build` are clean.
-- Full suite (2026-10-11): **884 passed / 1 failed / 0 skipped, 84 files**. The single
+- Full suite (2026-10-11): **892 passed / 1 failed / 0 skipped, 84 files**. The single
   failure is G-4 (six orphans). The three formerly-skipped CON-05 placeholders are now
-  real tests.
+  real tests, and the +8 over the previous 884 is this pass's OBS-04 work (5 recorder
+  assertions in `business-metrics.spec.ts`, 3 emission assertions in
+  `connector-delivery.spec.ts`).

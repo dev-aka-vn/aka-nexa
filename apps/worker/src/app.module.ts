@@ -3,7 +3,9 @@ import { HealthIndicatorService, TerminusModule } from '@nestjs/terminus';
 
 import {
   BOUNDARY_MANIFEST,
+  BUSINESS_METRICS_RECORDER,
   ConfigModule,
+  createBusinessMetricsRecorder,
   CryptoModule,
   EXTRA_HEALTH_INDICATORS,
   HealthController,
@@ -75,6 +77,12 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     SubmissionRevisionsRepository,
     ConnectorRegistry,
     ConnectorRateLimiter,
+    {
+      // OBS-04 / CON-06: the delivery processor writes the two business
+      // counters through this seam rather than importing the OTel API itself.
+      provide: BUSINESS_METRICS_RECORDER,
+      useFactory: () => createBusinessMetricsRecorder(),
+    },
     {
       provide: WORKER_CONSUMERS,
       inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor],

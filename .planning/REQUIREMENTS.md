@@ -219,8 +219,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
 - [x] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
 - [x] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
-- [ ] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
-- [ ] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
+- [x] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
+- [x] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
 - [x] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
 - [ ] **CON-09**: A Redmine connector ships as the first and only v1 external integration, including field mapping and its error taxonomy
 - [x] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
@@ -260,7 +260,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     moving in a booted worker: `platform_heartbeat_total{otel_scope_name="akane"} 2`.
 - [x] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
-- [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
+- [x] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
 - [ ] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
 - [ ] **OBS-06**: Alerts fire on connector failure >5% over 5 min, token consume failure >10/min, average decision confidence <0.6 over 10 min, DLQ depth >50, Redis memory >80%, MongoDB replication lag >5 s, and all decision providers unhealthy
 - [ ] **OBS-07**: Logs are retained 30 days hot (searchable) and 1 year cold
@@ -489,13 +489,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-03 | Phase 5 | Pending |
 | CON-04 | Phase 5 | Complete |
 | CON-05 | Phase 5 | Complete (CON-05) |
-| CON-06 | Phase 5 | Pending |
-| CON-07 | Phase 5 | Pending |
+| CON-06 | Phase 5 | Complete (OBS-04) |
+| CON-07 | Phase 5 | Complete (OBS-04) |
 | CON-08 | Phase 5 | Complete |
 | CON-09 | Phase 5 | Pending |
 | CON-10 | Phase 5 | Complete |
 | LNK-02 | Phase 5 | Complete |
-| OBS-04 | Phase 5 | Pending |
+| OBS-04 | Phase 5 | Complete (OBS-04) |
 | BLD-01 | Phase 6 | Pending |
 | BLD-02 | Phase 6 | Pending |
 | BLD-03 | Phase 6 | Pending |

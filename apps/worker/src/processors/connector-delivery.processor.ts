@@ -1,8 +1,12 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { z } from 'zod';
 
+import {
+  BUSINESS_METRICS_RECORDER,
+  type BusinessMetricsRecorder,
+} from '@akane/platform';
 import { ConnectorRegistry, ConnectorRateLimiter, ConnectorRateLimitedError, SubmissionRevisionsRepository } from '@akane/domain';
 
 const DeliveryJobSchema = z.object({
@@ -21,6 +25,8 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
     private readonly revisionsRepo: SubmissionRevisionsRepository,
     private readonly connectorRegistry: ConnectorRegistry,
     private readonly rateLimiter: ConnectorRateLimiter,
+    @Inject(BUSINESS_METRICS_RECORDER)
+    private readonly metrics: BusinessMetricsRecorder,
   ) {
     super();
   }
@@ -49,6 +55,23 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
       return;
     }
 
+    const payload = data.payload as {
+      appId?: string;
+      formId?: string;
+      data?: Record<string, unknown>;
+    };
+
+    // OBS-04 / CON-06: `app_id` is a first-class label on both business
+    // counters. An attempt with no resolvable app records `unknown` rather than
+    // dropping the series — a spike must not be able to hide by being
+    // unattributable (plan 05-05's flagged assumption, resolved here).
+    const appId = payload.appId ?? 'unknown';
+
+    // The pre-call commit above is the transition into "saved internally, the
+    // external leg is not confirmed yet". Recorded before the call, so the
+    // series exists even when the call never returns.
+    this.metrics.recordSubmissionStatus({ appId, status: 'sent' });
+
     const connector = this.connectorRegistry.resolve(data.connectorRef);
 
     // CON-05: the registry resolves first, so an unknown `connector_ref` is
@@ -57,31 +80,46 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
     const limit = this.connectorRegistry.limiterConfig(data.connectorRef);
     const decision = await this.rateLimiter.consume(data.connectorRef, limit);
     if (!decision.allowed) {
+      // No call was made, so this is not a connector outcome — emitting one
+      // would attribute a failure to the connector that never ran. The
+      // submission is still `partial` (saved internally, retrying), and
+      // OBS-04's series is the one that makes that visible.
+      this.metrics.recordSubmissionStatus({ appId, status: 'partial' });
       // Transient by construction: the next window admits the call, so BullMQ's
       // backoff must retry it rather than treating the submission as failed.
       throw new ConnectorRateLimitedError(data.connectorRef, decision.resetInMs);
     }
 
-    const payload = data.payload as {
-      appId?: string;
-      formId?: string;
-      data?: Record<string, unknown>;
-    };
     const result = await connector.execute('deliver', {
       submissionId: data.submissionId,
-      appId: payload.appId ?? 'unknown',
+      appId,
       formId: payload.formId ?? 'unknown',
       data: payload.data ?? data.payload,
     }, {
       idempotencyKey: null,
     });
 
+    // CON-06 / CON-07: every attempt is attributed to its app, and a classified
+    // failure carries its taxonomy code so `credential_rejected` alerts apart
+    // from `endpoint_unreachable` without parsing a message.
+    this.metrics.recordConnectorOutcome({
+      appId,
+      outcome: result.status,
+      taxonomyCode: result.code ?? 'none',
+    });
+
     if (result.status === 'succeeded') {
       await this.revisionsRepo.setConfirmed(data.submissionId, data.revision, result.externalId);
+      this.metrics.recordSubmissionStatus({ appId, status: 'confirmed' });
     } else if (result.status === 'failed_transient') {
+      // OBS-04's reason for existing: the internal write committed and the
+      // external leg is still trying. Without this series the submission is
+      // invisible to alerting while it sits in that state.
+      this.metrics.recordSubmissionStatus({ appId, status: 'partial' });
       throw new Error('connector delivery failed transient');
     } else {
       // failed_permanent, credential_rejected, rejected -> terminal, do not throw
+      this.metrics.recordSubmissionStatus({ appId, status: 'failed' });
       return;
     }
   }
