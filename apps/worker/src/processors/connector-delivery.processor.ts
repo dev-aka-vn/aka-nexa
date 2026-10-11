@@ -3,8 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { z } from 'zod';
 
-import { ConnectorRegistry } from '../../../../packages/domain/src/connectors/connector.registry.js';
-import { SubmissionRevisionsRepository } from '../../../../packages/domain/src/submissions/data-access/submission-revisions.repository.js';
+import { ConnectorRegistry, SubmissionRevisionsRepository } from '@akane/domain';
 
 const DeliveryJobSchema = z.object({
   submissionId: z.string().min(1),
@@ -50,11 +49,16 @@ export class ConnectorDeliveryProcessor extends WorkerHost {
     }
 
     const connector = this.connectorRegistry.resolve(data.connectorRef);
+    const payload = data.payload as {
+      appId?: string;
+      formId?: string;
+      data?: Record<string, unknown>;
+    };
     const result = await connector.execute('deliver', {
       submissionId: data.submissionId,
-      appId: (data.payload as any).appId ?? 'unknown',
-      formId: (data.payload as any).formId ?? 'unknown',
-      data: (data.payload as any).data ?? data.payload,
+      appId: payload.appId ?? 'unknown',
+      formId: payload.formId ?? 'unknown',
+      data: payload.data ?? data.payload,
     }, {
       idempotencyKey: null,
     });

@@ -68,4 +68,67 @@ describe('connector delivery processor - pre-call commit', () => {
     expect(revisionsRepo.setSentUnconfirmed).not.toHaveBeenCalled();
     expect(registry.resolve).not.toHaveBeenCalled();
   });
+
+  it('per-revision idempotency - not_sent short-circuit on re-delivery', async () => {
+    const revisionsRepo = {
+      findBySubmissionAndRevision: vi.fn().mockResolvedValue({
+        outbound: 'sent_unconfirmed',
+      }),
+      setSentUnconfirmed: vi.fn(),
+      setConfirmed: vi.fn(),
+    } as any;
+
+    const connector = {
+      execute: vi.fn(),
+    } as any;
+
+    const registry = {
+      resolve: vi.fn().mockReturnValue(connector),
+    } as any;
+
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    await processor.process({
+      data: {
+        submissionId: 'sub-1',
+        revision: 0,
+        connectorRef: 'conn-1',
+        payload: { data: {} },
+      },
+    } as any);
+
+    expect(connector.execute).not.toHaveBeenCalled();
+    expect(revisionsRepo.setSentUnconfirmed).not.toHaveBeenCalled();
+  });
+
+  it('credential_rejected outcome does not consume retry budget', async () => {
+    const revisionsRepo = {
+      findBySubmissionAndRevision: vi.fn().mockResolvedValue({
+        outbound: 'not_sent',
+      }),
+      setSentUnconfirmed: vi.fn(),
+      setConfirmed: vi.fn(),
+    } as any;
+
+    const connector = {
+      execute: vi.fn().mockResolvedValue({ status: 'rejected' }),
+    } as any;
+
+    const registry = {
+      resolve: vi.fn().mockReturnValue(connector),
+    } as any;
+
+    const processor = new ConnectorDeliveryProcessor(revisionsRepo, registry);
+    await expect(processor.process({
+      data: {
+        submissionId: 'sub-1',
+        revision: 0,
+        connectorRef: 'conn-1',
+        payload: { data: {} },
+      },
+    } as any)).resolves.toBeUndefined();
+
+    expect(revisionsRepo.setSentUnconfirmed).toHaveBeenCalled();
+    expect(connector.execute).toHaveBeenCalledTimes(1);
+    expect(revisionsRepo.setConfirmed).not.toHaveBeenCalled();
+  });
 });

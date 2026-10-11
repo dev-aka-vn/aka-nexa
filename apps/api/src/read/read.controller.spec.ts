@@ -15,6 +15,9 @@ import {
   ReadVerifierService,
   type ReadVerifyResult,
   SubmissionRepository,
+  SubmissionRevisionsRepository,
+  LinkTokenStore,
+  DataRouterService,
 } from '@akane/domain';
 
 import { ReadController } from './read.controller.js';
@@ -54,7 +57,7 @@ describe('ReadController (integration)', () => {
           jti: 'jti_abc',
         },
         submission,
-      } as ReadVerifyResult),
+      } as unknown as ReadVerifyResult),
     } as unknown as ReadVerifierService;
 
     const repo = {
@@ -66,6 +69,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -93,6 +99,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -122,6 +131,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -170,6 +182,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -181,10 +196,9 @@ describe('ReadController (integration)', () => {
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalled();
-    expect(repo.queryWithDsl).toHaveBeenCalled();
     const jsonCall = (res.json as any).mock.calls[0][0];
-    expect(jsonCall.result.ok).toBe(true);
-    expect(jsonCall.result.rows).toHaveLength(1);
+    expect(jsonCall.rows).toHaveLength(1);
+    expect(repo.queryWithDsl).toHaveBeenCalled();
   });
 
   it('query endpoint redirects to dead with wrong_version when verifier denies with wrong_version', async () => {
@@ -201,6 +215,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -230,6 +247,9 @@ describe('ReadController (integration)', () => {
       providers: [
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
+        { provide: SubmissionRevisionsRepository, useValue: { findLatest: vi.fn().mockResolvedValue(null), findByEditJti: vi.fn().mockResolvedValue(null) } },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();

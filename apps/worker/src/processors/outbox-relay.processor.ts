@@ -7,7 +7,7 @@ import {
   BULLMQ_PREFIX,
   WORKER_CONSUMERS,
 } from '@akane/platform';
-import { OutboxRepository } from '../../../../packages/domain/src/datarouter/data-access/outbox.repository.js';
+import { OutboxRepository } from '@akane/domain';
 
 const OUTBOX_RELAY_QUEUE = 'outbox-relay';
 const CONNECTOR_DELIVERY_QUEUE = 'connector-delivery';
@@ -39,6 +39,11 @@ export class OutboxRelayProcessor
     this.#deliveryQueue = new Queue(CONNECTOR_DELIVERY_QUEUE, {
       connection: blockingConnectionOptions(this.#queueUrl),
       prefix: BULLMQ_PREFIX,
+      defaultJobOptions: {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnFail: false,
+      },
     });
 
     this.#worker = new Worker(
@@ -46,21 +51,22 @@ export class OutboxRelayProcessor
       async () => {
         const unpublished = await this.outboxRepo.pollUnpublished(10);
         for (const row of unpublished) {
-          if (row._id) {
-            await this.#deliveryQueue?.add(
-              'deliver',
-              {
-                submissionId: row.submissionId,
-                revision: row.revision,
-                connectorRef: row.connectorRef,
-                payload: row.payload,
-              },
-              {
-                jobId: `${row.submissionId}:${row.revision}`,
-              },
-            );
-            await this.outboxRepo.markPublished(row._id);
-          }
+          await this.#deliveryQueue?.add(
+            'deliver',
+            {
+              submissionId: row.submissionId,
+              revision: row.revision,
+              connectorRef: row.connectorRef,
+              payload: row.payload,
+            },
+            {
+              jobId: `${row.submissionId}:${row.revision}`,
+              attempts: 5,
+              backoff: { type: 'exponential', delay: 2000 },
+              removeOnFail: false,
+            },
+          );
+          await this.outboxRepo.markPublished(row.revisionRef);
         }
       },
       outboxRelayWorkerOptions(this.#queueUrl),

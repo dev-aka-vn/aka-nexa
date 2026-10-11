@@ -2,7 +2,14 @@ import { Test } from '@nestjs/testing';
 import type { Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ReadVerifierService, type ReadVerifyResult, SubmissionRepository, SubmissionRevisionsRepository } from '@akane/domain';
+import {
+  ReadVerifierService,
+  type ReadVerifyResult,
+  SubmissionRepository,
+  SubmissionRevisionsRepository,
+  LinkTokenStore,
+  DataRouterService,
+} from '@akane/domain';
 
 import { ReadController } from './read.controller.js';
 
@@ -64,6 +71,8 @@ describe('status surface', () => {
         { provide: ReadVerifierService, useValue: verifier },
         { provide: SubmissionRepository, useValue: repo },
         { provide: SubmissionRevisionsRepository, useValue: revisions },
+        { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
+        { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();

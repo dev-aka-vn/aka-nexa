@@ -118,13 +118,13 @@ export class ReadController {
       const rows = await Promise.all(
         queryResult.rows.map(async (row) => {
           const submissionId =
-            (row as any).submission_id ??
-            (row as any)._id ??
-            (row as any).id ??
+            row.submission_id ??
+            row._id ??
+            row.id ??
             result.claims.sub;
           const latest = await this.revisions.findLatest(String(submissionId));
           return projectSubmissionStatus({
-            queryRow: row as any,
+            queryRow: row,
             latestRevision: latest,
           });
         }),
@@ -214,8 +214,8 @@ export class ReadController {
         appId: result.claims.app_id,
         formId: result.claims.form_id,
         data: body,
-        connectorRef: (body as any)?.connectorRef as string | undefined,
-        revision: (body as any)?.revision as number | undefined,
+        connectorRef: body?.connectorRef as string | undefined,
+        revision: body?.revision as number | undefined,
         editJti: jti,
       });
 
@@ -233,9 +233,10 @@ export class ReadController {
         revision: outcome.revision,
         downstreamRef: outcome.downstreamRef,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string } | null | undefined;
       // Check for duplicate key error (concurrent submit)
-      if (error?.code === 11000 || error?.message?.includes('duplicate')) {
+      if (err?.code === 11000 || err?.message?.includes('duplicate')) {
         // Try to find existing by edit_jti and return replay
         const existing = await this.revisions.findByEditJti(jti);
         if (existing) {

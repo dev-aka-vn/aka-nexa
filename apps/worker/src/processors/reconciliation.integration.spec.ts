@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { MongoClient } from 'mongodb';
 import { ReconciliationProcessor } from './reconciliation.processor.js';
-import { SubmissionRevisionsRepository } from '../../../../packages/domain/src/submissions/data-access/submission-revisions.repository.js';
-import { OutboxRepository } from '../../../../packages/domain/src/datarouter/data-access/outbox.repository.js';
-import { MongoService } from '../../../../packages/platform/src/mongo/mongo.service.js';
+import { OutboxRepository, SubmissionRevisionsRepository } from '@akane/domain';
+import { MongoService } from '@akane/platform';
 import { startThreeContainers, ThreeContainers } from '../../../../tooling/containers.js';
 import { ConfigService } from '@nestjs/config';
 
@@ -29,7 +28,7 @@ describe('reconciliation - not_sent only', () => {
   it('not_sent only - sweep never selects sent_unconfirmed', async () => {
     const revisionsRepo = new SubmissionRevisionsRepository(mongoService);
     const outboxRepo = new OutboxRepository(mongoService);
-    const configService = new ConfigService({ REDIS_QUEUE_URL: containers.urls.redis });
+    const configService = new ConfigService({ REDIS_QUEUE_URL: containers.urls.queue });
     const processor = new ReconciliationProcessor(configService, revisionsRepo, outboxRepo);
 
     // Create revisions with different outbound states

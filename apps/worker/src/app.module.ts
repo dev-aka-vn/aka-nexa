@@ -17,7 +17,13 @@ import {
   shutdownOtel,
   WORKER_CONSUMERS,
   workerListeningIndicator,
+  type WorkerRunningStatus,
 } from '@akane/platform';
+import {
+  ConnectorRegistry,
+  OutboxRepository,
+  SubmissionRevisionsRepository,
+} from '@akane/domain';
 
 import { WORKER_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 import {
@@ -34,9 +40,6 @@ import {
   ReconciliationProcessor,
   reconciliationWorkersProvider,
 } from './processors/reconciliation.processor.js';
-import { OutboxRepository } from '@akane/domain/datarouter/data-access/outbox.repository.js';
-import { SubmissionRevisionsRepository } from '@akane/domain/submissions/data-access/submission-revisions.repository.js';
-import { ConnectorRegistry } from '@akane/domain/connectors/connector.registry.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const WORKER_READINESS_KEY = 'bullmq_workers';
@@ -87,7 +90,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
       inject: [HealthIndicatorService, WORKER_CONSUMERS],
       useFactory: (
         health: HealthIndicatorService,
-        workers: any[],
+        workers: readonly WorkerRunningStatus[],
       ) => [
         async () => {
           const session = health.check(WORKER_READINESS_KEY);

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { REDIS_CACHE } from '../../../../../packages/platform/src/redis/redis.constants.js';
+
+import { REDIS_CACHE } from '@akane/platform';
 
 export interface ThrottlerStorage {
   increment(key: string, ttl: number): Promise<{ totalHits: number; timeToExpire: number }>;
@@ -12,7 +13,6 @@ export class ThrottlerStorageRedis implements ThrottlerStorage {
 
   async increment(key: string, ttl: number): Promise<{ totalHits: number; timeToExpire: number }> {
     const ttlMs = ttl * 1000;
-    const now = Date.now();
 
     const lua = `
       local current = redis.call('INCR', KEYS[1])

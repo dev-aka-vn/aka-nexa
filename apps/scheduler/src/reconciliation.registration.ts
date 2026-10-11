@@ -9,7 +9,7 @@ export const RECONCILE_OUTBOUND_ID = 'reconcile-outbound';
 export const RECONCILE_INTERVAL_MS = 300_000; // 5 minutes
 
 export async function registerReconciliation(
-  queue: JobSchedulerTarget,
+  queue: JobSchedulerTarget & { resume(): Promise<void> },
 ): Promise<RegisteredJob> {
   const result = await registerJobScheduler(
     queue,
@@ -17,6 +17,6 @@ export async function registerReconciliation(
     { every: RECONCILE_INTERVAL_MS },
     { name: RECONCILE_OUTBOUND_ID },
   );
-  await resumeJobScheduler(queue as any);
+  await resumeJobScheduler(queue);
   return result;
 }

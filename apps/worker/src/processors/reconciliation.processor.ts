@@ -7,8 +7,7 @@ import {
   BULLMQ_PREFIX,
   WORKER_CONSUMERS,
 } from '@akane/platform';
-import { SubmissionRevisionsRepository } from '../../../../packages/domain/src/submissions/data-access/submission-revisions.repository.js';
-import { OutboxRepository } from '../../../../packages/domain/src/datarouter/data-access/outbox.repository.js';
+import { OutboxRepository, SubmissionRevisionsRepository } from '@akane/domain';
 
 export const RECONCILE_OUTBOUND_ID = 'reconcile-outbound';
 

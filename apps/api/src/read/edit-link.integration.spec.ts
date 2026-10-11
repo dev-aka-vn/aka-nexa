@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { Redis } from 'ioredis';
-import { startThreeContainers, type ThreeContainers } from '../../../../../tooling/containers.js';
+import { startThreeContainers, type ThreeContainers } from '../../../../tooling/containers.js';
 
 describe('edit-link integration (LNK-02)', () => {
   let containers: ThreeContainers;

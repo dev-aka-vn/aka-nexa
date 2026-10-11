@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { PermissionCheckService } from '../../../../../packages/domain/src/authz/permission-check.service.js';
+
+import { PermissionCheckService } from '@akane/domain';
 
 @Injectable()
 export class PermissionGuard implements CanActivate {

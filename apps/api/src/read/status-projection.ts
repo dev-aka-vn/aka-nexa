@@ -1,8 +1,5 @@
 import type { QueryRow } from '@akane/domain';
-import type {
-  OutboundState,
-  SubmissionRevisionDocument,
-} from '@akane/domain';
+import type { SubmissionRevisionDocument } from '@akane/domain';
 
 export type TaxonomyCode =
   | 'credential_rejected'
@@ -50,18 +47,32 @@ export interface StatusProjectionInput {
   taxonomyCode?: TaxonomyCode;
 }
 
+/**
+ * The superset of fields `base` may carry: a `QueryRow` is a projected
+ * submission document, whose keys vary by projection (D-72), while
+ * `input.submission` restates the same fields explicitly.
+ */
+interface ProjectionSource {
+  app_id?: unknown;
+  form_id?: unknown;
+  submittedAt?: Date | string;
+  submitted_at?: Date | string;
+  created_at?: Date | string;
+  status?: string;
+}
+
 export function projectSubmissionStatus(
   input: StatusProjectionInput,
 ): StatusRow {
-  const base = input.queryRow ?? input.submission ?? {};
+  const base = (input.queryRow ?? input.submission ?? {}) as ProjectionSource;
 
-  const appId = (base as any).app_id ?? (input.submission as any)?.app_id ?? '';
-  const formId = (base as any).form_id ?? (input.submission as any)?.form_id ?? '';
+  const appId = base.app_id ?? input.submission?.app_id ?? '';
+  const formId = base.form_id ?? input.submission?.form_id ?? '';
   const submittedAt =
-    (base as any).submittedAt ??
-    (base as any).submitted_at ??
-    (base as any).created_at ??
-    (input.submission as any)?.created_at ??
+    base.submittedAt ??
+    base.submitted_at ??
+    base.created_at ??
+    input.submission?.created_at ??
     new Date();
 
   const connector = input.connectorName ?? 'Connector';
@@ -69,8 +80,8 @@ export function projectSubmissionStatus(
   const latest = input.latestRevision;
 
   if (!latest) {
-    const status = ((input.submission as any)?.status ??
-      (base as any)?.status ??
+    const status = (input.submission?.status ??
+      base.status ??
       'completed') as StatusRow['status'];
     return {
       app_id: String(appId),

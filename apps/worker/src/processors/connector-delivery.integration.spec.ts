@@ -2,11 +2,13 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { MongoClient } from 'mongodb';
 import { Queue, Worker } from 'bullmq';
 import { ConnectorDeliveryProcessor } from './connector-delivery.processor.js';
-import { SubmissionRevisionsRepository } from '../../../../packages/domain/src/submissions/data-access/submission-revisions.repository.js';
-import { MongoService } from '../../../../packages/platform/src/mongo/mongo.service.js';
+import { ConnectorRegistry, SubmissionRevisionsRepository } from '@akane/domain';
+import {
+  blockingConnectionOptions,
+  BULLMQ_PREFIX,
+  MongoService,
+} from '@akane/platform';
 import { startThreeContainers, ThreeContainers } from '../../../../tooling/containers.js';
-import { blockingConnectionOptions, BULLMQ_PREFIX } from '@akane/platform';
-import { ConnectorRegistry } from '../../../../packages/domain/src/connectors/connector.registry.js';
 import { RedmineStubConnector } from '../../../../tooling/redmine-stub.js';
 
 describe('connector delivery integration', () => {
@@ -50,7 +52,7 @@ describe('connector delivery integration', () => {
 
     // Spy on setSentUnconfirmed
     const originalSetSent = revisionsRepo.setSentUnconfirmed.bind(revisionsRepo);
-    revisionsRepo.setSentUnconfirmed = vi.fn().mockImplementation(async (...args) => {
+    revisionsRepo.setSentUnconfirmed = vi.fn().mockImplementation(async (...args: [string, number]) => {
       callOrder.push('setSentUnconfirmed');
       return originalSetSent(...args);
     });
