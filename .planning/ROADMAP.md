@@ -229,7 +229,18 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: TBD
+**Plans**: 8 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Spike S1: FormIO 5.6.1 builder mount, snapshot undo/redo, 5.x shape verification, SPA shell, boundary extension (package-legitimacy gate)
+- [ ] 06-02-PLAN.md — Builder auth: OIDC authorization-code + PKCE login, Redis session with __Host- cookie, MFA claim gate, auto-provision, IDN-08 SSO mapping
+- [ ] 06-03-PLAN.md — IDN-05 OTP self-onboarding: Redis state machine (10-min / 3-attempt / 30-min lockout) wired into the chat pipeline
+- [ ] 06-04-PLAN.md — App definitions: draft CRUD, 20-version retention + rollback, lifecycle state machine, D-31 template gallery with snapshot forks, G-11 saved-query store replacement
+- [ ] 06-05-PLAN.md — Publish gate: APP-07 routing dry-run through the real orchestrator (>5-point share drop blocks), APP-08 description collision, BLD-06 change summary, OBS-05 routing_share{app_id} metric
+- [ ] 06-06-PLAN.md — Connector requests (BLD-10, D-97..D-100: definition minus secret, operator-provisioned terminal state), submissions viewer + visible-column CSV export (BLD-08/D-111), field-mapping endpoint (BLD-05)
+- [ ] 06-07-PLAN.md — SPA core: 5-step wizard (BLD-01), tabbed editor (BLD-02), FormIO designer with undo/redo + conditional/validate + sandbox preview (BLD-04/FRM-05/FRM-09), roles + autocomplete + @casl/ability (BLD-03/ACL-10/BLD-11), skeletons + inline errors (BLD-07/BLD-09)
+- [ ] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
+
 **UI hint**: yes
 **Notes**: Highest-value, lowest-risk slice: by now the APIs are stable, so this is a CRUD skin rather than a design against moving targets. Research explicitly resolved the DH-2 tension by **not** moving the builder earlier. The pre-builder story is made credible by shipping the **~10-app seed template gallery plus tag filtering** (`APP-09`) — do not drop it. Editing a published form must not disturb an in-flight submission.
 **Spike**: S1 — **FormIO 5.6.1 migration, blocks this phase.** Half-day: render and build a representative form, port one Bootstrap-4-era template, verify `component.errors` and `EditGrid.validateRows` changes. `@formio/js` 5.x has *fewer* weekly downloads (52K) than the 4.x it replaces (57K), so most docs and examples online are still 4.x. Fallback is `formiojs@4.21.7` (MIT, maintenance mode) — acceptable, but it must be a decision, not drift.
