@@ -1,25 +1,28 @@
 ---
 gsd_state_version: "1.0"
-current_plan: 7
-status: shipped
+current_plan: 9
+status: verifying
 stopped_at: Completed 05-09-PLAN.md
-last_updated: "2026-10-10T17:34:56.763Z"
+last_updated: "2026-10-11T04:40:00.000Z"
 state_head: 4eb9bdb9a88022dad90edaa7e60d2b300a83abd9
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 37
   completed_plans: 37
-  percent: 38
-last_activity: 2026-10-08
-current_phase: 04
+  percent: 50
+last_activity: 2026-10-11
+current_phase: 05
 current_phase_name: Integration & Async Execution
-last_activity_desc: "Phase 04 plan 09 complete — UAT checklist expanded with 10 testable checks covering SC#1-4 and all 6 requirements."
+last_activity_desc: "Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md)."
 ---
 
 ## Current Position
 
-Current Plan: 7
+Phase: 5 of 8 (Integration & Async Execution)
+Plan: 9 of 9 in current phase
+Status: Executed — verification pending; findings in 05-GAPS.md
+Current Plan: 9
 Total Plans in Phase: 9
 
 ## Session
@@ -66,3 +69,19 @@ Total Plans in Phase: 9
 - [Phase 05]: Pinned @formio/js@5.6.1 exactly after a blocking package-legitimacy gate (MIT, official Form.io publisher); self-hosted same-origin so CSP script-src 'self' holds and no CDN asset is referenced (FRM-07).
 - [Phase 05]: Renderer modules stay DOM-free at import with a guarded browser entry that dynamically imports FormIO, keeping the pure status/edit logic testable in the node vitest environment.
 - [Phase 05]: A consumed edit link replays its recorded confirmation (D-95) — never the dead-link denial page; no user-facing retry control exists on any status/detail/partial surface (D-81).
+
+## Blockers/Concerns
+
+- **[Phase 05] Phase 5 is executed, not verified.** `05-GAPS.md` records the findings of
+  a verification pass: **CON-05** (the connector rate limiter) has no implementation —
+  the storage primitive exists but nothing consults it, and the plan assumed a throttler
+  wiring that has never existed; **AUD-10** (read-link rate limiting, per user/jti, never
+  per IP) is likewise unimplemented, and both need a **product decision** (budget,
+  window, and what an over-budget call does) before they can be built.
+- **[Phase 05] Seven `apps/api` sources are unreachable from `main.ts`** — the only
+  failing test in the suite (`entrypoint-drift`, 1 failed / 866 passed). They are phase-2
+  scaffolding: `slack-handlers` verify no signing secret and return `{ ok: true }`, so
+  wiring them as-is would be a security regression. This needs phase 2, not a bolt-on.
+- **[Phase 02/03] Their ROADMAP boxes are unticked while every plan is ticked**, and their
+  code is unwired. `gsd-tools progress` reports them "Complete" on plans+summaries alone,
+  which is a plan-execution notion, not a verified one.
