@@ -1,4 +1,4 @@
-import { Connector, ConnectorExecuteOutcome, ConnectorExecutePayload, ConnectorExecuteContext, ConnectorDescriptor, ConnectorTestResult, ConnectorCapability } from '@contract/connector/connector';
+import { Connector, ConnectorExecuteOutcome, ConnectorExecutePayload, ConnectorExecuteContext, ConnectorDescriptor, ConnectorTestResult, ConnectorCapability } from '@akane/contract';
 
 export class RedmineStubConnector implements Connector {
   readonly descriptor: ConnectorDescriptor = {
