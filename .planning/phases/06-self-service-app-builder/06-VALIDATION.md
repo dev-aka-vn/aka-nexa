@@ -45,35 +45,39 @@ created: "2026-10-11"
 > Populated by `/gsd-plan-phase` once PLAN.md task IDs exist. The phase-level requirement → test
 > map below is the seeded contract each task row must cite.
 
-### Phase requirement → test map (seeded from research)
+### Phase requirement → test map (reconciled against the phase plans, 2026-10-11)
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| BLD-01 | 5-step wizard creates a draft at step 1 | E2E | `npx playwright test apps/app-builder/e2e/wizard.spec.ts` | ❌ W0 |
-| BLD-02 | Tabbed editor edits all 12 sections | E2E + unit | `npx vitest run packages/domain/src/builder` + Playwright | ❌ W0 |
-| BLD-03 | Custom roles with arbitrary permission sets; assign by email autocomplete | unit + E2E | `npx vitest run packages/domain/src/builder/role-assignments.spec.ts` | ❌ W0 |
-| BLD-04 | Drag-and-drop design + 50-action undo/redo | E2E (drag) + unit (history) | `npx playwright test form-designer.spec.ts` + `npx vitest run undoHistory.spec.ts` | ❌ W0 |
-| BLD-05 | Visual form-field → connector-field mapping | unit + E2E | `npx vitest run field-mapping.spec.ts` | ❌ W0 |
-| BLD-06 | Publish confirmation summarizes every change; keyboard shortcut saves | E2E | `npx playwright test publish.spec.ts` | ❌ W0 |
-| BLD-07 | Inline, specific, actionable errors | unit + E2E | `npx vitest run error-mapping.spec.ts` | ❌ W0 |
-| BLD-08 | Submission viewer: filters, detail, export | unit + E2E | `npx vitest run apps/api/src/submissions` + Playwright | ❌ W0 |
-| BLD-09 | Tablet usability + loading skeletons | E2E (viewport) | `npx playwright test --project=tablet` | ❌ W0 |
-| BLD-10 | Connector request → operator provision → resume | integration (testcontainers) | `npx vitest run connector-request.flow.spec.ts` | ❌ W0 |
-| BLD-11 | Delegated workflow manager operates without ownership | unit | `npx vitest run delegation.rules.spec.ts` | ❌ W0 |
-| BLD-12 | OIDC SSO + MFA login; owner-scoped management | integration + E2E | `npx vitest run auth.session.spec.ts` + Playwright | ❌ W0 |
-| APP-03 | Versioned definitions; 20 retained; rollback | unit | `npx vitest run app-definition.versions.spec.ts` | ❌ W0 |
-| APP-05 | Deprecated: functional, notice shown, no new triggers | unit | `npx vitest run lifecycle.deprecate.spec.ts` | ❌ W0 |
-| APP-06 | Archived: no new submissions; view links resolve | integration | `npx vitest run lifecycle.archive.spec.ts` | ❌ W0 |
-| APP-07 | Dry-run blocks >5-point routing-share drop | unit + integration | `npx vitest run publish-gate.spec.ts` | ❌ W0 |
-| APP-08 | Description collision rejected at publish | unit | `npx vitest run publish-gate.spec.ts` (same file) | ❌ W0 |
-| APP-09 | ~10 template seeds; tag filter; fork is a snapshot | unit + integration | `npx vitest run templates.seed.spec.ts` | ❌ W0 |
-| FRM-05 | Conditional show/hide + validation rules authorable | E2E (FormIO) | `npx playwright test form-designer.spec.ts` | ❌ W0 |
-| FRM-09 | Draft preview with sandbox submissions | E2E | `npx playwright test form-preview.spec.ts` | ❌ W0 |
-| IDN-05 | OTP: 10-min expiry, 3 attempts, 30-min lockout | integration (Redis) | `npx vitest run otp.state-machine.spec.ts` | ❌ W0 |
-| IDN-08 | SSO identity mapped to real_user_id without OTP | integration | `npx vitest run users/sso-mapping.spec.ts` | ❌ W0 |
-| ACL-05 | Transfer requires global-admin approval; 7-day auto-cancel | integration + scheduler | `npx vitest run transfer-approval.spec.ts` | ❌ W0 |
-| ACL-10 | Owner manages roles except ownership transfer | unit | `npx vitest run role-permissions.spec.ts` | ❌ W0 |
-| OBS-05 | `routing_share{app_id}` exported | unit | `npx vitest run routing-share.metrics.spec.ts` | ❌ W0 |
+> Each row names the spec files the plans actually create and the exact verify
+> command from the plan's `<verify>` block. Source Plan column = the plan that
+> creates the spec.
+
+| Req ID | Behavior | Test Type | Automated Command | Source Plan | File Exists? |
+|--------|----------|-----------|-------------------|-------------|-------------|
+| BLD-01 | 5-step wizard creates a draft at step 1 | E2E | `npx playwright test apps/app-builder/e2e/wizard.spec.ts` | 06-07 | ❌ W0 |
+| BLD-02 | Tabbed editor edits all 12 sections | E2E + unit | `npx playwright test apps/app-builder/e2e/designer.spec.ts` + `npx vitest run packages/domain/src/builder/app-definition.service.spec.ts` | 06-07, 06-04 | ❌ W0 |
+| BLD-03 | Custom roles with arbitrary permission sets; assign by email autocomplete | unit + E2E | `npx vitest run packages/domain/src/authz/builder-ability.spec.ts` + `npx playwright test apps/app-builder/e2e/wizard.spec.ts` (RbacStep) | 06-07 | ❌ W0 |
+| BLD-04 | Drag-and-drop design + 50-action undo/redo | E2E (drag) + unit (history) | `npx playwright test apps/app-builder/e2e/s1-spike.spec.ts` + `npx vitest run apps/app-builder/src/form-designer/undoHistory.spec.ts` | 06-01 | ❌ W0 |
+| BLD-05 | Visual form-field → connector-field mapping | unit + E2E | `npx vitest run apps/api/src/submissions/submissions.integration.spec.ts` (field-mapping round-trip, task 3) + `npx playwright test apps/app-builder/e2e/designer.spec.ts` | 06-06, 06-07 | ❌ W0 |
+| BLD-06 | Publish confirmation summarizes every change; keyboard shortcut saves | integration + E2E | `npx vitest run apps/api/src/app-builder/publish.integration.spec.ts` + Playwright editor specs | 06-05, 06-07 | ❌ W0 |
+| BLD-07 | Inline, specific, actionable errors | E2E | `npx playwright test apps/app-builder/e2e/wizard.spec.ts` (InlineError assertions) | 06-07 | ❌ W0 |
+| BLD-08 | Submission viewer: filters, detail, export | integration + unit | `npx vitest run apps/api/src/submissions/submissions.integration.spec.ts` + `npx vitest run apps/api/src/submissions/submission-export.service.spec.ts` | 06-06, 06-08 | ❌ W0 |
+| BLD-09 | Tablet usability + loading skeletons | E2E (viewport) | `npx playwright test apps/app-builder/e2e/wizard.spec.ts apps/app-builder/e2e/designer.spec.ts --project=tablet` | 06-07 | ❌ W0 |
+| BLD-10 | Connector request → operator provision → resume | integration (testcontainers) | `npx vitest run apps/api/src/app-builder/connector-request.integration.spec.ts` + `npx vitest run packages/cli/provision.connector-requests.spec.ts` | 06-06 | ❌ W0 |
+| BLD-11 | Delegated workflow manager operates without ownership | unit | `npx vitest run packages/domain/src/authz/builder-ability.spec.ts` | 06-07 | ❌ W0 |
+| BLD-12 | OIDC SSO + MFA login; owner-scoped management | integration + unit | `npx vitest run apps/api/src/auth/auth.session.integration.spec.ts` + `npx vitest run apps/api/src/auth/auth.module.spec.ts` | 06-02 | ❌ W0 |
+| APP-03 | Versioned definitions; 20 retained; rollback | unit | `npx vitest run packages/domain/src/builder/app-definition.versions.spec.ts` | 06-04 | ❌ W0 |
+| APP-05 | Deprecated: functional, notice shown, no new triggers | unit | `npx vitest run packages/domain/src/builder/app-lifecycle.spec.ts` | 06-04 | ❌ W0 |
+| APP-06 | Archived: no new submissions; view links resolve | unit | `npx vitest run packages/domain/src/builder/app-lifecycle.spec.ts` | 06-04 | ❌ W0 |
+| APP-07 | Dry-run blocks >5-point routing-share drop | unit + integration | `npx vitest run packages/domain/src/builder/publish-gate.service.spec.ts` + `npx vitest run apps/api/src/app-builder/publish.integration.spec.ts` | 06-05 | ❌ W0 |
+| APP-08 | Description collision rejected at publish | unit | `npx vitest run packages/domain/src/builder/publish-gate.service.spec.ts` | 06-05 | ❌ W0 |
+| APP-09 | ~10 template seeds; tag filter; fork is a snapshot | unit + integration | `npx vitest run packages/domain/src/builder/template` (template.spec.ts) | 06-04, 06-08 | ❌ W0 |
+| FRM-05 | Conditional show/hide + validation rules authorable | E2E (FormIO) | `npx playwright test apps/app-builder/e2e/s1-spike.spec.ts` + `npx playwright test apps/app-builder/e2e/designer.spec.ts` | 06-01, 06-07 | ❌ W0 |
+| FRM-09 | Draft preview with sandbox submissions | E2E | `npx playwright test apps/app-builder/e2e/designer.spec.ts` (PreviewPane + sandbox) | 06-07 | ❌ W0 |
+| IDN-05 | OTP: 10-min expiry, 3 attempts, 30-min lockout | integration (Redis) | `npx vitest run packages/domain/src/identity/otp/otp-state-machine.spec.ts` + `npx vitest run apps/worker/src/processors/otp-onboarding.integration.spec.ts` | 06-03 | ❌ W0 |
+| IDN-08 | SSO identity mapped to real_user_id without OTP | integration | `npx vitest run apps/api/src/users/sso-mapping.integration.spec.ts` + `npx vitest run packages/domain/src/identity/oidc-provision.service.spec.ts` | 06-02, 06-08 | ❌ W0 |
+| ACL-05 | Transfer requires global-admin approval; 7-day auto-cancel | integration + scheduler | `npx vitest run apps/api/src/app-builder/transfer.integration.spec.ts` + `npx vitest run packages/domain/src/acl` + `npx vitest run apps/worker/src/processors/transfer-auto-cancel.processor.spec.ts` | 06-08 | ❌ W0 |
+| ACL-10 | Owner manages roles except ownership transfer | unit | `npx vitest run packages/domain/src/authz/builder-ability.spec.ts` | 06-07 | ❌ W0 |
+| OBS-05 | `routing_share{app_id}` exported | unit | `npx vitest run packages/domain/src/builder/routing-share/routing-share.metrics.spec.ts` + `npx vitest run packages/domain/src/builder/routing-share/routing-share.computer.spec.ts` | 06-05 | ❌ W0 |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

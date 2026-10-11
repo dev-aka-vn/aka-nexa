@@ -170,7 +170,7 @@ npx playwright install chromium
 
 `@formio/js@5.6.1`, `zod`, `ioredis`, `@opentelemetry/api`, `@opentelemetry/semantic-conventions`, `vitest`, `testcontainers` are **already installed** — no action.
 
-**Version verification:** All versions above were resolved against `registry.npmjs.org` on 2026-10-11 via `npm view <pkg> version`: `openid-client` 6.8.8, `@casl/ability` 7.0.1, `csv-parse` 7.0.3, `csv-stringify` 6.9.0, `react`/`react-dom` 19.3.0, `@formio/js` 5.7.0 (repo pins 5.6.1 — keep the pin), `vite` 8.3.4, `@vitejs/plugin-react` 6.1.2, `@playwright/test` 1.64.0. STACK.md's recorded values (vite 8.3.2, plugin-react 6.1.1, playwright 1.63.0) are one patch behind — **pin the registry-current versions explicitly in `package.json`** so the lockfile is reproducible.
+**Version verification:** All versions above were resolved against `registry.npmjs.org` on 2026-10-11 via `npm view <pkg> version`: `openid-client` 6.8.8, `@casl/ability` 7.0.1, `csv-parse` 7.0.3, `csv-stringify` 6.9.0, `react`/`react-dom` 19.3.0, `@formio/js` 5.7.0 (repo pins 5.6.1 — keep the pin), `vite` 8.3.4, `@vitejs/plugin-react` 6.1.2, `@playwright/test` 1.64.0. The STACK.md §14 ledger was updated 2026-10-11 to these same registry-current values (it previously recorded vite 8.3.2, plugin-react 6.1.1, playwright 1.63.0) — **pin the registry-current versions explicitly in `package.json`** so the lockfile is reproducible.
 
 ## Package Legitimacy Audit
 
@@ -548,7 +548,7 @@ The builder domain must import `identity` (D-104 auto-provision), `links` (G-11 
 **Warning signs:** a `package.json` diff touching the TypeScript version.
 
 ### Pitfall 13: Version drift from STACK.md
-**What goes wrong:** STACK.md records vite 8.3.2 / `@vitejs/plugin-react` 6.1.1 / `@playwright/test` 1.63.0; registry-current is 8.3.4 / 6.1.2 / 1.64.0. Copying STACK's numbers leaves the lockfile one patch behind on day one.
+**What goes wrong:** the STACK.md §14 ledger now records vite 8.3.4 / `@vitejs/plugin-react` 6.1.2 / `@playwright/test` 1.64.0 (updated 2026-10-11, superseding the stale 8.3.2 / 6.1.1 / 1.63.0). Copying any older number leaves the lockfile one patch behind on day one.
 **Why it happens:** STACK.md is a point-in-time verification (2026-10-01).
 **How to avoid:** pin the versions in the Installation block above (all `npm view`-verified 2026-10-11); keep `@formio/js` at **5.6.1** (repo pin, installed) even though npm `latest` is 5.7.0 — the spike verifies the pinned version.
 **Warning signs:** an install command without `@version` suffixes.
@@ -784,37 +784,45 @@ builder: Object.freeze([
 | A7 | Root `tsconfig.json` not referencing `apps/renderer` (and therefore `apps/app-builder`) is intentional — SPAs are vitest-transformed only and need their own `tsconfig.json` | Architecture Patterns, Project Structure | LOW — verified by reading `tsconfig.json:3-31`; the SPA tsconfig (DOM lib, jsx) is a Wave-0 gap. |
 | A8 | Playwright 1.64.0 (not STACK's 1.63.0) is the version to pin | Standard Stack | LOW — registry-verified 2026-10-11; STACK.md is one patch stale. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Every question below carries an inline RESOLVED marker citing the plan that adopted its recommendation. The phase plans are the adopting record; this section is closed.
 
 1. **Which corporate IdP, and does it support OIDC with `acr`/`amr`?**
    - What we know: OIDC auth-code+PKCE is locked (D-101); MFA verification is claim-based (D-102). STACK S3 records that whether SAML is a v1 blocker "depends entirely on which IdPs the target enterprise uses."
    - What's unclear: the IdP's `acr` values for MFA, `supportsPKCE()` result, and whether silent token exchange (D-103) is supported (refresh-token lifetime vs IdP session).
    - Recommendation: ask in planning ("Which IdP do you use, and does it support OIDC?"); until then, implement against a Keycloak testcontainer and keep the acceptable-`acr` set in one named constant. SAML stays deferred (STACK §8.6).
+   - RESOLVED: adopted by 06-02-PLAN.md — the acceptable `acr`/`amr` set is frozen in ONE named constant (`ACCEPTABLE_ACR_VALUES` in `apps/api/src/auth/oidc.service.ts`) and every login is gated on it (D-102); tests run against the in-spec OIDC stub issuer (`apps/api/src/auth/oidc-issuer.stub.ts`) with a Keycloak-style `mfa`/`phr` pair as the test default. SAML stays deferred (STACK §8.6); the real IdP inventory remains a Phase-1 discovery item (STACK S3).
 
 2. **Exact curated tag set (D-107)?**
    - What we know: use-case + department axes, shared by templates and user apps, filterable on the Apps page.
    - What's unclear: the specific tags.
    - Recommendation: planner derives the seed list from D-106's six domains + the mockup's tag UI; frozen in a contract file so templates and apps share one vocabulary.
+   - RESOLVED: adopted by 06-04-PLAN.md — the curated platform tag set is frozen as a Zod enum in `packages/domain/src/builder/template/tag-set.ts` (use-case + department axes per D-107), shared by the template seeds and user apps; free-form typing is rejected.
 
 3. **Per-template catalogue contents (D-106)?**
    - What we know: six core domains (absence/leave, travel, procurement, asset, HR request, ticketing) mostly internal-only + 1–2 external/hybrid examples.
    - What's unclear: fields/roles per template.
    - Recommendation: planner drafts the ~10 seed files at plan time from the mockup's app shapes; each is a D-31 seed with an idempotent loader test.
+   - RESOLVED: adopted by 06-04-PLAN.md — ten D-31 seed files land in `packages/domain/src/builder/template/seeds/` covering D-106's domains: leave-request, travel-request, procurement-request, asset-request, hr-request (internal-only), it-helpdesk-ticket, facilities-request, expense-report, plus redmine-issue and crm-contact (the 1–2 external/hybrid examples); the loader is idempotent via a content-hash guard per template_id.
 
 4. **`routing_share` computation window (APP-07/OBS-05)?**
    - What we know: the drop threshold is 5 points over "the labelled intent set"; the mechanism is planner-owned.
    - What's unclear: the time window the share is computed over (rolling 24h? since publish?).
    - Recommendation: planner picks the window that the dry-run can compute deterministically from routing outcome records; document it beside the metric.
+   - RESOLVED: adopted by 06-05-PLAN.md — the share is computed from the app's own routing-outcome records (`packages/domain/src/builder/routing-share/routing-outcome.repository.ts`) over the window the dry-run computes deterministically; the window is documented beside the metric in `routing-share.computer.ts` and exported via `routing-share.metrics.ts` (OBS-05).
 
 5. **D-111's CSV writer — `csv-stringify` or a tested hand-rolled writer?**
    - What we know: D-111 says "CSV via `csv-parse`"; `csv-parse` is a parser.
    - What's unclear: whether the locked decision intends the family or literally that package.
    - Recommendation: `csv-stringify` 6.9.0 (same repo/family, MIT, gated in this research). If the user insists on `csv-parse`-only, plan a hand-rolled writer with escaping tests as a Wave-0 task.
+   - RESOLVED: adopted by 06-06-PLAN.md — `csv-stringify` 6.9.0 is the writer (same `adaltas/node-csv` family and repo as `csv-parse`, MIT, legitimacy-gated); the export service is tested against embedded commas/quotes/newlines (`apps/api/src/submissions/submission-export.service.spec.ts`). D-111's wording (csv-parse named, writer intended) is the recorded, accepted deviation.
 
 6. **`connector_requests` exact schema (D-99 discretion)?**
    - What we know: full connector definition minus the secret; states `pending → provisioned | rejected (+reason)`; AUD-01 per transition.
    - What's unclear: operator-facing extras (e.g., test-connection result, operator notes).
    - Recommendation: Code Example 4's document shape is the starting point; planner extends with the operator fields the CLI seam needs.
+   - RESOLVED: adopted by 06-06-PLAN.md — `packages/domain/src/builder/connector-request/connector-request.document.ts` carries the full connector definition minus the secret (type, base_url, auth mode, operation list, idempotency expectation), states `pending → provisioned | rejected (+reason)`, and appends AUD-01 per transition.
 
 ## Environment Availability
 
