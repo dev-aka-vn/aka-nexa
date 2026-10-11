@@ -92,11 +92,20 @@ export const ConnectorCapabilitySchema = z
 
 export type ConnectorCapability = z.infer<typeof ConnectorCapabilitySchema>;
 
+export type ConnectorErrorCode =
+  | 'credential_rejected'
+  | 'endpoint_unreachable'
+  | 'failed_permanent'
+  | 'mapping_error'
+  | 'unknown';
+
 export interface ConnectorExecuteOutcome {
   /** The downstream's own identifier for the created/updated record, when it returns one. */
   readonly externalId: string | null;
   /** A closed enumeration the platform can map to an ErrorCode and a retry decision. */
   readonly status: 'succeeded' | 'rejected' | 'failed_transient' | 'failed_permanent';
+  /** Distinct taxonomy code for alerting/separation. */
+  readonly code?: ConnectorErrorCode;
 }
 
 export interface Connector {

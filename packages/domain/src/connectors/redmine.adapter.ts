@@ -6,8 +6,14 @@ import {
   ConnectorExecuteOutcome,
   ConnectorExecutePayload,
   ConnectorTestResult,
-} from '@contract/connector/connector';
-import { RestCore, RestCredential } from './rest-core';
+} from '@akane/contract';
+import { RestCore } from './rest-core.js';
+import { FieldMappingResolver } from './field-mapping.js';
+
+export interface RedmineAdapterConfig {
+  readonly correlationCustomFieldId?: string;
+  readonly realUserProfile?: Record<string, unknown>;
+}
 
 export class RedmineAdapter implements Connector {
   readonly descriptor: ConnectorDescriptor = {
@@ -16,7 +22,15 @@ export class RedmineAdapter implements Connector {
     supports_idempotency_key: false,
   };
 
-  constructor(private readonly rest: RestCore) {}
+  private readonly resolver = new FieldMappingResolver();
+  private readonly config: RedmineAdapterConfig;
+
+  constructor(
+    private readonly rest: RestCore,
+    config?: RedmineAdapterConfig,
+  ) {
+    this.config = config ?? {};
+  }
 
   async testConnection(): Promise<ConnectorTestResult> {
     try {
@@ -42,20 +56,43 @@ export class RedmineAdapter implements Connector {
     payload: ConnectorExecutePayload,
     context: ConnectorExecuteContext,
   ): Promise<ConnectorExecuteOutcome> {
+    // Resolve real user profile from metadata or config
+    const realUserProfile =
+      (context.metadata?.realUserProfile as Record<string, unknown>) ??
+      this.config.realUserProfile ??
+      {};
+
+    const revision =
+      (context.metadata?.revision as number | string) ?? 0;
+
+    const correlationCustomFieldId =
+      (context.metadata?.correlationCustomFieldId as string) ??
+      this.config.correlationCustomFieldId;
+
+    // Map FIRST (Pitfall 5) - classify any mapping failure as failed_permanent before transport
+    const mappingResult = this.resolver.resolve({
+      formData: payload.data,
+      realUserProfile,
+      submissionId: payload.submissionId,
+      revision,
+      correlationCustomFieldId,
+    });
+
+    if (!mappingResult.success) {
+      return mappingResult.outcome;
+    }
+
     const result = await this.rest.request({
       method: 'POST',
       path: '/issues.json',
       body: {
-        issue: payload.data,
+        issue: mappingResult.data,
       },
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    // For tracer path - if succeeded, try to set externalId null as per plan
-    // Plan says "201 → {issue:{id}} mapped to the outcome's external reference"
-    // But our rest-core doesn't parse body. For tracer, maybe return as is.
     return result;
   }
 }

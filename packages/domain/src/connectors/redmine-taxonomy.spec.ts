@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyError } from './error-taxonomy';
+import { classifyError } from './error-taxonomy.js';
 
 describe('Redmine error taxonomy (CON-07)', () => {
   describe('401/403/412 → credential_rejected (no retry)', () => {

@@ -1,4 +1,4 @@
-import { MongoService } from '../../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 import { ClientSession, ObjectId } from 'mongodb';
 
 export interface OutboxDocument {
@@ -54,6 +54,17 @@ export class OutboxRepository {
     await this.collection.updateOne(
       { revisionRef, published: false },
       { $set: { published: true, publishedAt: new Date() } },
+    );
+  }
+
+  async findByRevisionRef(revisionRef: string): Promise<OutboxDocument | null> {
+    return this.collection.findOne({ revisionRef });
+  }
+
+  async markUnpublished(revisionRef: string): Promise<void> {
+    await this.collection.updateOne(
+      { revisionRef },
+      { $set: { published: false, publishedAt: undefined } },
     );
   }
 }

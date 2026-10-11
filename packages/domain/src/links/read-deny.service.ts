@@ -2,12 +2,13 @@ import type { ReadDenyReason } from '@akane/contract';
 import type { LoggerPort } from '@akane/platform';
 
 /**
- * The two actions the read path branches on (D-40). A denial is always
- * attributable to one of them; for `invalid_action` — the claim's `action`
- * was neither — the caller reports the action the *route* attempted, because
- * that is the only action context the controller actually has.
+ * The actions the read path branches on. D-40 originally named two (`view`,
+ * `query`); plan 05-08 added `edit` (D-93), so a denial is attributable to one
+ * of the three. For `invalid_action` — the claim's `action` was none of them —
+ * the caller reports the action the *route* attempted, because that is the only
+ * action context the controller actually has.
  */
-export type ReadDenyAction = 'view' | 'query';
+export type ReadDenyAction = 'view' | 'query' | 'edit';
 
 /**
  * The seam the domain uses to count a denial.

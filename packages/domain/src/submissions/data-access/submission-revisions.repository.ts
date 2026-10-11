@@ -1,4 +1,4 @@
-import { MongoService } from '../../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 import { ClientSession } from 'mongodb';
 
 export type OutboundState = 'not_sent' | 'sent_unconfirmed' | 'confirmed';

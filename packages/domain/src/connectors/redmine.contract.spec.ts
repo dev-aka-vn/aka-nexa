@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RedmineAdapter } from './redmine.adapter';
-import { RestCore } from './rest-core';
+import { RedmineAdapter } from './redmine.adapter.js';
+import { RestCore } from './rest-core.js';
 
 describe('Redmine contract spec (CON-09)', () => {
   it('creates issue with correct mapping and Content-Type', async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { MongoClient } from 'mongodb';
 import { DataRouterService } from './data-router.service.js';
 import { OutboxRepository } from './data-access/outbox.repository.js';
-import { MongoService } from '../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 import { startThreeContainers, ThreeContainers } from '../../../../tooling/containers.js';
 
 describe('outbox integration - transaction atomicity', () => {

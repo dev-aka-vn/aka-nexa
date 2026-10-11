@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DataRouterService } from './data-router.service.js';
-import { MongoService } from '../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 
 describe('data router - mode behavior', () => {
   it('hybrid: revision + outbox both committed', async () => {

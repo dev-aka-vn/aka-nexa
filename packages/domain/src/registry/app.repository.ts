@@ -1,4 +1,4 @@
-import { MongoService } from '../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 
 export interface AppDocument {
   readonly app_id: string;

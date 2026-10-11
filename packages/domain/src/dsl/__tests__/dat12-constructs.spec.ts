@@ -7,9 +7,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { FilterExpr, QueryCtx } from "@akane/contract";
+import type { FilterExpr } from "@akane/contract";
 
 import { DslService } from "../dsl.service.js";
+import type { QueryCtx } from "../ast.js";
 
 describe("DAT-12: per-construct auth survival", () => {
   const service = new DslService();

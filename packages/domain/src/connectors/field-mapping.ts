@@ -3,7 +3,7 @@
  * Only supports {{form.<field>}} and {{real_user.<attribute>}} grammar.
  * No eval/new Function - no arbitrary expression evaluation.
  */
-import { ConnectorExecuteOutcome } from '@contract/connector/connector';
+import { ConnectorExecuteOutcome } from '@akane/contract';
 
 export type MappingErrorCode =
   | 'missing_required_field'

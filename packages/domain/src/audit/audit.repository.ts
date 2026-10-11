@@ -7,7 +7,7 @@ export interface AuditEntry {
   new_state?: string;
   ip?: string;
   request_id?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export class AuditRepository {

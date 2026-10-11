@@ -1,4 +1,4 @@
-import { Connector } from '@contract/connector/connector';
+import { Connector } from '@akane/contract';
 
 export class ConnectorNotFoundError extends Error {
   constructor(ref: string) {
@@ -37,5 +37,21 @@ export class ConnectorRegistry {
       throw new ConnectorNotFoundError(ref);
     }
     return entry.adapter.descriptor;
+  }
+
+  async testConnection(ref: string) {
+    const entry = this.entries.get(ref);
+    if (!entry) {
+      throw new ConnectorNotFoundError(ref);
+    }
+    return entry.adapter.testConnection();
+  }
+
+  async getCapabilities(ref: string) {
+    const entry = this.entries.get(ref);
+    if (!entry) {
+      throw new ConnectorNotFoundError(ref);
+    }
+    return entry.adapter.getCapabilities();
   }
 }

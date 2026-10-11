@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { MongoService } from '../../../platform/src/mongo/mongo.service.js';
+import { MongoService } from '@akane/platform';
 
 export type RoutingMode = 'internal' | 'external' | 'hybrid';
 

@@ -1,4 +1,5 @@
-import { ConnectorExecuteOutcome } from '@contract/connector/connector';
+import { ConnectorExecuteOutcome } from '@akane/contract';
+import type { TransportError } from './error-taxonomy.js';
 
 export interface RestCredential {
   readonly headerName: string;
@@ -46,30 +47,37 @@ export class RestCore {
 
       if (res.ok) {
         // Try to extract external id if possible; not strictly required
+        let externalId: string | null = null;
+        try {
+          const body = await res.json();
+          if (body && typeof body === 'object') {
+            // Try common patterns like {issue: {id}}, {id}, etc.
+            if ('issue' in body && body.issue && typeof body.issue === 'object' && 'id' in body.issue) {
+              externalId = String(body.issue.id);
+            } else if ('id' in body) {
+              externalId = String(body.id);
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
         return {
-          externalId: null,
+          externalId,
           status: 'succeeded',
+          code: undefined,
         };
       }
 
-      if (res.status >= 500) {
-        return {
-          externalId: null,
-          status: 'failed_transient',
-        };
-      }
-
-      // 4xx - client errors
-      return {
-        externalId: null,
-        status: 'rejected',
-      };
+      // Use taxonomy to classify errors
+      const { classifyError } = await import('./error-taxonomy.js');
+      const isCreate = req.method === 'POST';
+      const classified = classifyError(res.status, { isCreate });
+      return classified.outcome;
     } catch (err) {
       // Network errors, timeouts etc
-      return {
-        externalId: null,
-        status: 'failed_transient',
-      };
+      const { classifyError } = await import('./error-taxonomy.js');
+      const classified = classifyError(err as TransportError);
+      return classified.outcome;
     } finally {
       clearTimeout(timeoutId);
     }

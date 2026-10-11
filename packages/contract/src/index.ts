@@ -93,12 +93,22 @@ export {
 export { RateLimitKeySchema, RateLimitScopeSchema } from './links/rate-limit-key.js';
 export type { RateLimitKey, RateLimitScope } from './links/rate-limit-key.js';
 
-export { ConnectorDescriptorSchema } from './connector/connector.js';
+export {
+  ConnectorCapabilitySchema,
+  ConnectorDescriptorSchema,
+  ConnectorExecuteContextSchema,
+  ConnectorExecutePayloadSchema,
+  ConnectorTestResultSchema,
+} from './connector/connector.js';
 export type {
   Connector,
+  ConnectorCapability,
   ConnectorDescriptor,
-  ConnectorExecuteInput,
+  ConnectorErrorCode,
+  ConnectorExecuteContext,
   ConnectorExecuteOutcome,
+  ConnectorExecutePayload,
+  ConnectorTestResult,
 } from './connector/connector.js';
 
 export { ImPlatformSchema, InboundActionSchema, InboundEventSchema } from './events/inbound-event.js';

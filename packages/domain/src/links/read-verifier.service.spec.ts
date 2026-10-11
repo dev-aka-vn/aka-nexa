@@ -420,10 +420,12 @@ describe('ReadVerifierService', () => {
       expect(result).toEqual({ ok: false, reason: ReadDenyReason.invalid_action });
     });
 
-    it('returns invalid_action for an unhandled action (edit)', async () => {
+    // Plan 05-08 added the `edit` action to the read path (D-93), so `edit` is
+    // no longer an "unhandled action" — it resolves through `verifyEdit`.
+    it('handles the edit action (added in 05-08; no longer invalid_action)', async () => {
       const token = signTestJwt(makeClaims({ action: 'edit' }));
       const result = await verifier.verify(token);
-      expect(result).toEqual({ ok: false, reason: ReadDenyReason.invalid_action });
+      expect(result.ok).toBe(true);
     });
 
     it('returns invalid_action for an unhandled action (draft)', async () => {

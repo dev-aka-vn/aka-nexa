@@ -1,4 +1,4 @@
-import { ConnectorErrorCode, ConnectorExecuteOutcome } from '@contract/connector/connector';
+import { ConnectorExecuteOutcome } from '@akane/contract';
 
 export type TaxonomyCode =
   | 'credential_rejected'
