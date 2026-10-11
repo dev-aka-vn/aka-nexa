@@ -33,9 +33,7 @@ export type {
 } from './links/read-verifier.service.js';
 export { LinkTokenStore } from './links/link-token.store.js';
 export type {
-  LinkTokenStore as LinkTokenStoreInterface,
   CreateOutcome,
-  EditOutcome as LinkTokenEditOutcome,
   TokenOutcome,
   RedisStructuralSeam,
 } from './links/link-token.store.js';
@@ -88,3 +86,5 @@ export type {
 export { redact, isUncertain, type RedactionResult } from './decision/redaction.js';
 export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
+export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
+export { ConnectorRegistry } from './connectors/connector.registry.js';
