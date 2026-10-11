@@ -44,6 +44,7 @@ export type {
   TokenOutcome,
   RedisStructuralSeam,
 } from './links/link-token.store.js';
+export { SeedSavedQueryLookup } from './links/seed-saved-query.lookup.js';
 export { PermissionCheckService } from './authz/permission-check.service.js';
 export { RbacService } from './authz/rbac.service.js';
 export { RbacCacheService } from './authz/rbac-cache.service.js';

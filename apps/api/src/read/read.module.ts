@@ -7,6 +7,7 @@ import {
   ReadDenyService,
   RbacService,
   RbacCacheService,
+  SeedSavedQueryLookup,
   SignatureFailureLimiter,
   SubmissionRepository,
   SubmissionRevisionsRepository,
@@ -185,19 +186,37 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
       },
     },
     {
+      // The D-73 saved-query store (G-11). Declared as a factory rather than a
+      // class token: the class takes an *optional* `records` parameter, and
+      // letting Nest reflect that would make it try to inject an Array.
+      provide: SeedSavedQueryLookup,
+      useFactory: (): SeedSavedQueryLookup => new SeedSavedQueryLookup(),
+    },
+    {
       provide: ReadVerifierService,
       useFactory: (
         jwt: ReadLinkJwtVerifier,
         permissionCheck: PermissionCheckService,
         submissions: SubmissionRepository,
+        savedQueries: SeedSavedQueryLookup,
         denyService: ReadDenyService,
         revisions: SubmissionRevisionsRepository,
         tokenStore: LinkTokenStore,
-      ): ReadVerifierService => new ReadVerifierService(jwt, permissionCheck, submissions, undefined, denyService, revisions, tokenStore),
+      ): ReadVerifierService =>
+        new ReadVerifierService(
+          jwt,
+          permissionCheck,
+          submissions,
+          savedQueries,
+          denyService,
+          revisions,
+          tokenStore,
+        ),
       inject: [
         { token: 'READ_LINK_JWT_VERIFIER', optional: false },
         PermissionCheckService,
         SubmissionRepository,
+        SeedSavedQueryLookup,
         ReadDenyService,
         SubmissionRevisionsRepository,
         LinkTokenStore,

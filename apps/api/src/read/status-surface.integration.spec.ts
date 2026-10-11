@@ -1,3 +1,22 @@
+/**
+ * The status surface: projection + controller wiring.
+ *
+ * **Scope, stated plainly because the filename overstates it.** This spec
+ * provides `ReadVerifierService` as a `useValue` stub, so it never reaches
+ * `verifyQuery`, never touches Redis or Mongo, and would pass whether or not the
+ * production saved-query store is wired. It proves the projection
+ * (`completed | partial | failed | pending_external`) and the controller's
+ * rendering of it — nothing more.
+ *
+ * That is exactly how G-11 hid: the `query` action was denied *in production*
+ * while this spec stayed green. The real resolution is proven in
+ * `packages/domain/src/links/read-verifier.service.spec.ts`
+ * (`with the production seed store (G-11 reachability)`), and the DI wiring by
+ * `apps/api/src/read/read.module.spec.ts`. The filename is kept deliberately —
+ * it is cited by several planning records and by `WINDOWS.md` #21, so renaming it
+ * would rewrite history rather than clarify it.
+ */
+
 import { Test } from '@nestjs/testing';
 import type { Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';

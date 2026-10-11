@@ -37,6 +37,7 @@ import {
   type SubmissionLookup,
   type SubmissionRecord,
 } from './read-verifier.service.js';
+import { SeedSavedQueryLookup } from './seed-saved-query.lookup.js';
 import { PermissionCheckService } from '../authz/permission-check.service.js';
 import { RbacCacheService } from '../authz/rbac-cache.service.js';
 import { RbacService } from '../authz/rbac.service.js';
@@ -447,6 +448,97 @@ describe('ReadVerifierService', () => {
       expect(second.ok).toBe(true);
       // No Redis state: both calls hit the same verifier with the same result.
       expect(submissions.calls).toHaveLength(2);
+    });
+  });
+
+  // ── G-11: the *production* saved-query store is reachable ─────────────
+
+  /**
+   * `verifyQuery` fails closed to `wrong_version` when the `savedQueries` seam
+   * is absent, and the API module used to pass `undefined` — so every `query`
+   * read link (the status page's "My submissions" list) was denied in
+   * production while this suite stayed green, because every test above injects
+   * an in-memory double (`TestSavedQueryLookup`) that the production path never
+   * had. That is exactly the false confidence G-11 records.
+   *
+   * These tests use the **real** store instead — `SeedSavedQueryLookup`, the
+   * D-73 seed-backed implementation `ReadModule` now wires — against a real
+   * ES256-signed token. They fail if the store is missing, unwired, or keyed on
+   * `query_id` alone.
+   */
+  describe('with the production seed store (G-11 reachability)', () => {
+    let seeded: ReadVerifierService;
+
+    beforeEach(() => {
+      seeded = new ReadVerifierService(
+        jwt,
+        permissionCheck,
+        submissions,
+        new SeedSavedQueryLookup(),
+      );
+    });
+
+    it('resolves a seeded saved query end to end (D-73)', async () => {
+      const token = signTestJwt(
+        makeClaims({
+          action: 'query',
+          app_id: 'leave-request',
+          target_id: 'qry_my_leave_this_year',
+          query_version: 1,
+        }),
+      );
+
+      const result = await seeded.verify(token);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.savedQuery?.query_id).toBe('qry_my_leave_this_year');
+        expect(result.savedQuery?.app_id).toBe('leave-request');
+        // The record handed to the execution path is the seeded one.
+        expect(result.savedQuery?.dsl).toMatchObject({
+          sort: [{ field: 'created_at', dir: 'desc' }],
+        });
+        // A successful query still runs the live perm_version check (LNK-06).
+        expect(permissionCheck.check).toHaveBeenCalledWith(
+          'leave-request',
+          'u_123',
+          'query:run',
+          1,
+        );
+      }
+    });
+
+    it('denies wrong_version for a stale seed version (D-75)', async () => {
+      const token = signTestJwt(
+        makeClaims({
+          action: 'query',
+          app_id: 'leave-request',
+          target_id: 'qry_my_leave_this_year',
+          query_version: 2,
+        }),
+      );
+
+      const result = await seeded.verify(token);
+
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
+      expect(permissionCheck.check).not.toHaveBeenCalled();
+    });
+
+    it('does not resolve a seeded query under the wrong app_id', async () => {
+      const token = signTestJwt(
+        makeClaims({
+          action: 'query',
+          app_id: 'payroll',
+          target_id: 'qry_my_leave_this_year',
+          query_version: 1,
+        }),
+      );
+
+      const result = await seeded.verify(token);
+
+      // (app_id, query_id) is the key: the same query_id under another app is a
+      // different query, and an absent one is a version mismatch, not a leak.
+      expect(result).toEqual({ ok: false, reason: ReadDenyReason.wrong_version });
     });
   });
 });
