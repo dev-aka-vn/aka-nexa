@@ -70,7 +70,7 @@ over-budget = transient retry; placement = domain.
 **Interim state:** the vacuous spec no longer reports green. *(Superseded — the spec is
 now 5 real assertions and the limiter is wired; see the resolution above.)*
 
-### G-2 — AUD-10 / LNK: the read path enforces no rate limit
+### G-2 — AUD-10: the read path enforces no rate limit — ✅ CLOSED 2026-10-11
 
 **Blocks:** AUD-10, NFR-SEC-6 (per-user 10/min, per-app 100/min).
 
@@ -78,15 +78,97 @@ now 5 real assertions and the limiter is wired; see the resolution above.)*
 
 - `packages/contract/src/links/rate-limit-key.ts` is a **frozen phase-1 contract**: a
   key scoped to `user` or `link` `jti`, *"never per IP"*, with *"block only on
-  signature failure"* documented as its second half. Its only consumer in the repo is
+  signature failure"* documented as its second half. Its only consumer in the repo was
   its own spec.
 - `apps/api/src/read/read.controller.ts` performs no rate-limit check on any route.
-- The address scope is deliberately absent from the union, so the limiter this contract
-  describes cannot be the `@nestjs/throttler` default (which tracks by IP).
 
-**What a fix needs:** the threshold and window for signature failures per user and per
-jti — again a policy value. The key shape and the block rule are already pinned by the
-frozen contract, so the *mechanic* is specified; only the numbers are not.
+**Resolution (commit `AUD-10`):** no new policy number was invented after all —
+NFR-SEC-10 already pins one (*"max 5 failed link validations per 10 minutes"*). The
+AUD-10 ruling changes its **scope**, from per-IP to per-user and per-link-`jti`; the
+number carries over. `packages/domain/src/links/signature-failure-limiter.ts` implements
+`SignatureFailureLimiter` over the shared `incrementFixedWindow` primitive (the same one
+CON-05 uses), keyed per `RateLimitKey` (`ak:rl:sigfail:<scope>:<id>`), 5 failures per
+10 minutes per key. The controller calls it **only** for a `bad_signature` denial and
+answers 429 + `Retry-After` once a key is exhausted
+(`apps/api/src/read/read.controller.ts#denyResult`); every benign reason
+(`expired`/`consumed`/`wrong_version`/`deactivated_user`/`denied`/… ) redirects to the
+dead-link page exactly as before and is never counted. A `!token` request — no token to
+have a signature — is likewise neither counted nor blocked.
+
+Two things the plan did not anticipate, resolved here and worth recording:
+
+1. **The `user` key is not derivable on a failure path.** `ReadVerifyFailure` carries a
+   reason and nothing else, and reading the `sub` off an *unverified* token would let a
+   forger drive a chosen victim's counter to the block threshold. The read path therefore
+   supplies the `link` key only (the `:jti` route segment, which already matched the
+   token's `jti` for logging). The `user` scope remains part of the contract for callers
+   that hold a *verified* identity. This is a limitation of what a failure path can know,
+   not of the limiter.
+2. **The counter is the `signature_invalid` series.** AUD-10's alert rule is
+   `block > 0 ∧ signature_invalid ≈ 0`. `signature_invalid` is already
+   `read_link_denials_total{reason="bad_signature"}`; the block half is the new
+   `read_link_signature_blocks_total` counter (label `scope` only), added in
+   `apps/api/src/common/metrics/read-deny.metrics.ts` on the same single meter path.
+
+**Verified:** `apps/api/src/read/read.controller.spec.ts` — 5 benign failures never
+touch the limiter, a `bad_signature` failure is counted under `link` and answered 429
+when the budget is exhausted; `packages/domain/src/links/signature-failure-limiter.integration.spec.ts`
+— 4 real over-Redis cases (5th failure blocks, per-`jti`/per-user independence, any-key
+blocks, an invalid/empty key throws rather than coalescing callers);
+`read-deny.metrics.spec.ts` — block counter naming, scope label, independent memoisation.
+
+### G-10 — OBS-04 / CON-06: the metric instruments exist but nothing emits them
+
+**Blocks:** OBS-04 (*"`submission_status{status="partial"}` is exported"*), CON-06
+(*"`app_id` is a first-class label on connector metrics"*).
+
+**Evidence**
+
+- `packages/platform/src/metrics/business-metrics.ts` registers
+  `submission.status` (`SUBMISSION_STATUS_METRIC`) and `connector.outcome`
+  (`CONNECTOR_OUTCOME_METRIC`) as counters on the one `akane` meter, memoised and
+  obtained per call — the *registry* half of plan 05-05 task 2 is done.
+- **No call site calls `.add()` on either.** `grep -rn "submissionStatus\.add|connectorOutcome\.add"`
+  returns nothing; the only instrument ever incremented is `platformHeartbeat`
+  (`packages/platform/src/queue/platform-heartbeat.job.ts`). An OTel/Prometheus
+  counter with no `add()` and no label combination emits **no series at all**, so
+  `submission_status{status="partial"}` is not exported and the `app_id` label is
+  not carried by anything. The requirement is stated as *"is exported"*, not
+  *"an instrument of that name exists"*, and it is the second half that fails.
+- Plan 05-05 task 2 also required extending `business-metrics.spec.ts` to assert
+  `submission_status{status="partial"}` and the `app_id`/taxonomy labels. That
+  assertion was never written: `-t "submission_status app_id"` — the command cited
+  by `05-VALIDATION.md` row 11 — matches **no test**.
+
+**What a fix needs — and why it is a decision, not just a missing mechanic**
+
+The instruments and the vocabulary exist; what is undecided is *where a transition
+is emitted*, which plan 05-05 itself flagged as an open assumption
+(*"`submission_status` is emitted at status transition points only (not polled) …
+flagged, pending confirmation"*).
+
+- The states are known (`completed | partial | failed | pending_external`, in
+  `apps/api/src/read/status-projection.ts`) and the taxonomy codes are known
+  (`packages/domain/src/connectors/error-taxonomy.ts`, `classifyError` — usable
+  from the worker). So the *mechanic* is reachable: inject the business-metrics
+  handle into the worker's `ConnectorDeliveryProcessor` and emit
+  `connector.outcome{app_id, taxonomy_code}` where the connector result is
+  classified.
+- The `partial` series is harder: `partial` is the state of a submission whose
+  **internal** write succeeded but whose external leg has not confirmed. That
+  transition happens in `DataRouterService` (domain), not in the worker, so
+  emitting it needs a recorder seam threaded into domain code — the same shape as
+  `LinkTokenStore`'s Redis seam, but for metrics, and the domain package
+  deliberately holds no OTel handle today.
+- Choosing the emit point *is* the design decision the plan deferred: emit-on-write
+  in the data router vs. emit-on-projection vs. a status-change event. Each gives a
+  different count semantics (per transition, per read, per record), and OBS-04's
+  "otherwise invisible" rationale only holds for the first.
+
+**Interim state:** recorded, not silently closed. CON-06 is satisfiable with the
+existing instruments; OBS-04 is not, and `05-VALIDATION.md` row 11 must not be
+marked green until either the emitter or an explicit decision to drop the series
+exists.
 
 ### G-3 — `LinkTokenStore.consume()` has no caller (recorded, not a defect)
 
@@ -144,12 +226,14 @@ fail on them.
 
 ## Bookkeeping gaps (the record disagrees with the repo)
 
-### G-5 — `STATE.md` is incoherent
+### G-5 — `STATE.md` is incoherent — ✅ CLOSED 2026-10-11
 
 `current_phase: 04` while `current_phase_name: "Integration & Async Execution"` (that
 name is phase 5, and phase 4 is the read path); `completed_phases: 3` with
 `total_plans: 37 / completed_plans: 37`; `current_plan: 7` against the same file's
-"Total Plans in Phase: 9"; `status: shipped`. Reconciled in commit TODO-STATE.
+"Total Plans in Phase: 9"; `status: shipped`. Reconciled by hand in commit `803c8f27`
+(`current_phase: 05`, `current_plan: 9`, `completed_phases: 4`, `percent: 50`,
+`status: verifying`); `gsd-tools state validate` reports `valid: true`.
 
 ### G-6 — `ROADMAP.md` phase statuses disagree with the plans
 
@@ -157,7 +241,9 @@ name is phase 5, and phase 4 is the read path); `completed_phases: 3` with
   unticked checkbox.
 - Phases 2 and 3 are `[ ]` although all their plan checkboxes are ticked — and their
   code is unwired (G-4), so the `[ ]` is the *accurate* half of that disagreement.
-- Phase 5 is `[ ]`: correct. It is not complete (G-1, G-2).
+- Phase 5 is `[ ]`: still correct, but the reason has changed. G-1 and G-2 (the two
+  substantive gaps) are closed; what remains is the missing verification artifact (G-9)
+  and the six phase-2 orphans (G-4), neither of which is phase-5 work.
 
 ### G-7 — `05-VALIDATION.md` was never completed
 
@@ -172,7 +258,11 @@ the status/wave flags are unchanged.
 ### G-8 — `05-05-SUMMARY.md` overstates its result
 
 `deviations: []`, `Self-Check: PASSED`, and the body describes the CON-05 behaviour as
-delivered. It was not (G-1). Recorded so the SUMMARY is not relied on as evidence.
+delivered. It was not at the time (G-1) — the storage stub was app-local and nothing
+imported it. Recorded so the SUMMARY is not relied on as evidence of *how* CON-05 landed:
+the real implementation is commit `CON-05`, which puts the primitive in `platform` and
+the policy in `domain`. The SUMMARY's claim is now true of the repo, but it was not true
+when written, and the deviation it omits is the whole reason CON-05 needed redoing.
 
 ### G-9 — phase 05 has no verification artifact
 
@@ -190,9 +280,14 @@ Stated so this file is not read as "nothing works":
 - **CON-05 is now genuinely implemented and verified** — `ConnectorRateLimiter` wired
   into the worker delivery path, `rate-limit.integration.spec.ts` 5 passed over real
   Redis including the two-process shared-budget case (commit `CON-05`). G-1 closed.
+- **AUD-10 is now genuinely implemented and verified** — the signature-failure limiter
+  is wired into the read controller, benign outcomes are never counted, and a block is
+  observable as `read_link_signature_blocks_total` (commit `AUD-10`). G-2 closed.
 - The remaining phase-05 integration suites assert real behaviour:
   `outbox.integration.spec.ts` (transaction atomicity + rollback),
   `connector-delivery.integration.spec.ts`, `reconciliation.integration.spec.ts`,
   `dlq.integration.spec.ts`, `redmine.contract.spec.ts` (A2 live-gated, documented).
 - `npx tsc -b`, `npx eslint .` and `npm run build` are clean.
-- Full suite: the single failure is G-4 (six orphans).
+- Full suite (2026-10-11): **884 passed / 1 failed / 0 skipped, 84 files**. The single
+  failure is G-4 (six orphans). The three formerly-skipped CON-05 placeholders are now
+  real tests.

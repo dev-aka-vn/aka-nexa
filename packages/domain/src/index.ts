@@ -16,6 +16,13 @@ export type {
   ReadDenyContext,
   ReadDenyRecorder,
 } from './links/read-deny.service.js';
+export {
+  SignatureFailureLimiter,
+  SIGNATURE_FAILURE_MAX,
+  SIGNATURE_FAILURE_WINDOW_MS,
+  SIGNATURE_FAILURE_PREFIX,
+  type SignatureFailureDecision,
+} from './links/signature-failure-limiter.js';
 export { ReadVerifierService } from './links/read-verifier.service.js';
 export type {
   ReadVerifyResult,

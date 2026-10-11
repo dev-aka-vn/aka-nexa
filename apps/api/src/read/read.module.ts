@@ -7,6 +7,7 @@ import {
   ReadDenyService,
   RbacService,
   RbacCacheService,
+  SignatureFailureLimiter,
   SubmissionRepository,
   SubmissionRevisionsRepository,
   LinkTokenStore,
@@ -16,7 +17,10 @@ import {
 import { MongoModule, redisCacheProvider, verifyReadLinkJwt } from '@akane/platform';
 
 import { ReadController } from './read.controller.js';
-import { registerReadDenyMetrics } from '../common/metrics/read-deny.metrics.js';
+import {
+  registerReadDenyMetrics,
+  registerSignatureBlockMetrics,
+} from '../common/metrics/read-deny.metrics.js';
 
 /**
  * Reads the JWT read-link configuration from the live process environment.
@@ -168,6 +172,11 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     SubmissionRevisionsRepository,
     LinkTokenStore,
     DataRouterService,
+    SignatureFailureLimiter,
+    {
+      provide: 'READ_SIGNATURE_BLOCKS',
+      useFactory: () => registerSignatureBlockMetrics(),
+    },
     {
       provide: ReadDenyService,
       useFactory: (): ReadDenyService => {

@@ -8,9 +8,9 @@
  * but source files that import `Response` need a declaration to satisfy
  * `tsc`.
  *
- * This is intentionally minimal: only the three methods the read-link
- * controller uses are declared. If other source files need more Express
- * surface, expand this file rather than installing @types/express — the
+ * This is intentionally minimal: only the methods the read-link controller uses
+ * are declared. If other source files need more Express surface, expand this
+ * file rather than installing @types/express — the
  * boundary lint rule treats `express` as an allowed external module, but
  * minimizing the ambient surface reduces the risk of a stale typing masking
  * a real API mismatch.
@@ -20,5 +20,7 @@ declare module 'express' {
     status(code: number): this;
     json(body: unknown): void;
     redirect(status: number, url: string): void;
+    /** Used by the AUD-10 rate-limit branch to set `Retry-After`. */
+    set(field: string, value: string): this;
   }
 }

@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Query, Body, Res, Logger, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body, Res, Logger, Inject } from '@nestjs/common';
 import type { Response } from 'express';
 
-import { ReadDenyReason } from '@akane/contract';
+import { ReadDenyReason, type RateLimitScope } from '@akane/contract';
 import {
   ReadVerifierService,
   type ReadVerifyResult,
@@ -9,9 +9,11 @@ import {
   SubmissionRevisionsRepository,
   LinkTokenStore,
   DataRouterService,
+  SignatureFailureLimiter,
 } from '@akane/domain';
 import type { ReadLinkConfig } from './read.module.js';
 import { projectSubmissionStatus } from './status-projection.js';
+import type { SignatureBlockRecorder } from '../common/metrics/read-deny.metrics.js';
 
 const logger = new Logger('ReadController');
 
@@ -45,6 +47,8 @@ export class ReadController {
     private readonly revisions: SubmissionRevisionsRepository,
     private readonly tokenStore: LinkTokenStore,
     private readonly dataRouter: DataRouterService,
+    private readonly signatureLimiter: SignatureFailureLimiter,
+    @Inject('READ_SIGNATURE_BLOCKS') private readonly signatureBlocks: SignatureBlockRecorder,
     @Inject('READ_LINK_CONFIG') config: ReadLinkConfig,
   ) {
     this.rendererOrigin = config.rendererOrigin;
@@ -52,6 +56,7 @@ export class ReadController {
 
   @Get('view/:jti')
   async view(
+    @Param('jti') routeJti: string,
     @Query('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -77,11 +82,12 @@ export class ReadController {
     // LNK-08: record the distinct denial reason.
     logger.warn(`view access denied: reason=${result.reason}`);
 
-    this.redirectToDead(res, result.reason);
+    await this.denyResult(res, routeJti, result.reason);
   }
 
   @Get('query/:jti')
   async query(
+    @Param('jti') routeJti: string,
     @Query('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -141,11 +147,12 @@ export class ReadController {
     // LNK-08: record the distinct denial reason.
     logger.warn(`query access denied: reason=${result.reason}`);
 
-    this.redirectToDead(res, result.reason);
+    await this.denyResult(res, routeJti, result.reason);
   }
 
   @Get('edit/:jti')
   async editGet(
+    @Param('jti') routeJti: string,
     @Query('token') token: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -171,11 +178,12 @@ export class ReadController {
     }
 
     logger.warn(`edit access denied: reason=${result.reason}`);
-    this.redirectToDead(res, result.reason);
+    await this.denyResult(res, routeJti, result.reason);
   }
 
   @Post('edit/:jti')
   async editPost(
+    @Param('jti') routeJti: string,
     @Query('token') token: string,
     @Body() body: Record<string, unknown>,
     @Res() res: Response,
@@ -189,7 +197,7 @@ export class ReadController {
 
     if (!result.ok) {
       logger.warn(`edit submit denied: reason=${result.reason}`);
-      this.redirectToDead(res, result.reason);
+      await this.denyResult(res, routeJti, result.reason);
       return;
     }
 
@@ -262,6 +270,55 @@ export class ReadController {
       // Re-throw other errors (transaction failed - should not consume token)
       throw error;
     }
+  }
+
+  /**
+   * Answer a denial, applying AUD-10's rate limit.
+   *
+   * Only `bad_signature` counts. Every other reason is a *benign* outcome for a
+   * real user — an expired link, a link for the wrong app or version, a
+   * deactivated account, a permission the user no longer holds — and counting
+   * any of them would lock people out for being in a normal state, which is the
+   * per-IP failure mode under a different name. The frozen contract makes the
+   * address inexpressible; this branch makes the *reason* discipline explicit.
+   *
+   * `!token` (no `token` query parameter at all) also short-circuits before this:
+   * there is no signature to have failed, so it is neither counted nor blocked.
+   *
+   * The link key is the `:jti` route segment, which matches the token's `jti`
+   * for logging. It is the only key a *failed* verification can supply — see
+   * `SignatureFailureLimiter` for why the unverified `sub` is not used.
+   */
+  private async denyResult(
+    res: Response,
+    routeJti: string,
+    reason: ReadDenyReason,
+  ): Promise<void> {
+    if (reason === ReadDenyReason.bad_signature) {
+      const keyScope: RateLimitScope = 'link';
+      const decision = await this.signatureLimiter.recordSignatureFailure([
+        { scope: keyScope, id: routeJti },
+      ]);
+
+      if (decision.blocked) {
+        this.signatureBlocks.recordBlock(keyScope);
+        const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000));
+        logger.warn(
+          `rate limited: scope=${keyScope} jti=${routeJti} count=${decision.count}`,
+        );
+        res
+          .status(429)
+          .set('Retry-After', String(retryAfterSeconds))
+          .json({
+            error: 'rate_limited',
+            message: 'Too many failed link validations.',
+            retryAfterSeconds,
+          });
+        return;
+      }
+    }
+
+    this.redirectToDead(res, reason);
   }
 
   /**

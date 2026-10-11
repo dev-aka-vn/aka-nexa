@@ -218,7 +218,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
 - [x] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
-- [ ] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
+- [x] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
 - [ ] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
 - [ ] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
 - [x] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
@@ -236,7 +236,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **AUD-07**: A quarterly access review report is auto-generated showing who holds access to what
 - [ ] **AUD-08**: A purge is soft-delete first, then hard delete after a 30-day grace period, and every purge is logged with operator ID and timestamp
 - [ ] **AUD-09**: Archived app data stays queryable by a global admin for compliance
-- [ ] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
+- [x] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
 
 ### Observability & Operations
 
@@ -410,7 +410,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-10 | Phase 1 | **Pending — do not close until a KMS vendor is named (B-3/D-27).** `phase.complete` set this to `Complete` on 2026-10-03; that was a blanket phase-status update overriding a deliberate deferral, and it contradicts this requirement's own body. Reverted. The envelope, `KeyProvider` and production guard exist and are proven; **no KMS-backed key exists.** Phase 5 must not store a connector credential before the vendor is chosen. |
 | LNK-07 | Phase 1 | Complete |
 | RTE-10 | Phase 1 | Complete |
-| AUD-10 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered the rate-limit-key scope type (`ip`/`address`/`cidr` unexpressible). The requirement's own behaviour — "blocks only on signature failure" — is Phase 3/4. |
+| AUD-10 | Phase 1 → behaviour delivered in 5 | **Complete.** `phase.complete` set this to `Complete` on 2026-10-03 and it was reverted, correctly, because only the contract half existed then. Phase 1 delivered the rate-limit-key scope type (`ip`/`address`/`cidr` unexpressible); the behaviour half — "blocks only on signature failure" — landed in commit `AUD-10` on the read path (`packages/domain/src/links/signature-failure-limiter.ts`, wired at `read.controller.ts#denyResult`), keyed per link `jti`. The per-**user** key is supported by the limiter and the contract but is *not* derivable on a failed verification (no trusted claims), so the read path supplies the `link` key only; that is recorded in `05-GAPS.md` G-2 and must not be read as the requirement being narrowed. Verified by `read.controller.spec.ts` (benign never counted; `bad_signature` counted and blocked) and `signature-failure-limiter.integration.spec.ts` (5 real over-Redis cases). |
 | DAT-13 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered `supports_idempotency_key` as a **required** boolean (absent cannot read as `false`). Surfacing it in the App Builder is Phase 6. |
 | OBS-01 | Phase 1 | Complete (01-09, mounted 01-10) |
 | IDN-01 | Phase 2 | Pending |
@@ -488,7 +488,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |
 | CON-04 | Phase 5 | Complete |
-| CON-05 | Phase 5 | Pending |
+| CON-05 | Phase 5 | Complete (CON-05) |
 | CON-06 | Phase 5 | Pending |
 | CON-07 | Phase 5 | Pending |
 | CON-08 | Phase 5 | Complete |

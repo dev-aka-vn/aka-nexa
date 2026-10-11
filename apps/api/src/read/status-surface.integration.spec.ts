@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ReadVerifierService,
   type ReadVerifyResult,
+  SignatureFailureLimiter,
   SubmissionRepository,
   SubmissionRevisionsRepository,
   LinkTokenStore,
@@ -18,6 +19,7 @@ function createRes() {
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     redirect: vi.fn().mockReturnThis(),
+    set: vi.fn().mockReturnThis(),
   } as unknown as Response;
   return res;
 }
@@ -73,6 +75,8 @@ describe('status surface', () => {
         { provide: SubmissionRevisionsRepository, useValue: revisions },
         { provide: LinkTokenStore, useValue: { readOutcome: vi.fn().mockResolvedValue(null), recordOutcome: vi.fn(), consume: vi.fn() } },
         { provide: DataRouterService, useValue: { routeEdit: vi.fn(), routeSubmission: vi.fn() } },
+        { provide: SignatureFailureLimiter, useValue: { recordSignatureFailure: vi.fn() } },
+        { provide: 'READ_SIGNATURE_BLOCKS', useValue: { recordBlock: vi.fn() } },
         { provide: 'READ_LINK_CONFIG', useValue: { rendererOrigin } },
       ],
     }).compile();
@@ -80,7 +84,7 @@ describe('status surface', () => {
     const controller = module.get(ReadController);
     const res = createRes();
 
-    await controller.query('token-query', res);
+    await controller.query('jti_def', 'token-query', res);
 
     expect(res.status).toHaveBeenCalledWith(200);
     const jsonCall = (res.json as any).mock.calls[0][0];
