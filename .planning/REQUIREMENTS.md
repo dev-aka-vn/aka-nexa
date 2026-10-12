@@ -123,7 +123,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **IDN-02**: An admin can bulk-import identity mappings from a CSV file
 - [ ] **IDN-03**: One real user can hold multiple chat identities across different IM platforms
 - [ ] **IDN-04**: An unmapped user receives an onboarding prompt with instructions, never a raw system error
-- [ ] **IDN-05**: A user can self-onboard by verifying an OTP sent through their IM account, expiring after 10 minutes with max 3 attempts and a 30-minute lockout
+- [x] **IDN-05**: A user can self-onboard by verifying an OTP sent through their IM account, expiring after 10 minutes with max 3 attempts and a 30-minute lockout
 - [ ] **IDN-06**: Deactivating a mapping stops future resolution without deleting that user's historical submissions
 - [ ] **IDN-07**: An admin can search mappings by email, `real_user_id`, or `chat_user_id`
 - [x] **IDN-08**: An admin can map an SSO identity to a `real_user_id` without the user performing OTP verification
@@ -527,7 +527,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | APP-09 | Phase 6 | Pending |
 | FRM-05 | Phase 6 | Complete |
 | FRM-09 | Phase 6 | Complete |
-| IDN-05 | Phase 6 | Pending |
+| IDN-05 | Phase 6 | Complete |
 | IDN-08 | Phase 6 | Complete |
 | ACL-05 | Phase 6 | Pending |
 | ACL-10 | Phase 6 | Pending |
