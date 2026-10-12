@@ -126,7 +126,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **IDN-05**: A user can self-onboard by verifying an OTP sent through their IM account, expiring after 10 minutes with max 3 attempts and a 30-minute lockout
 - [ ] **IDN-06**: Deactivating a mapping stops future resolution without deleting that user's historical submissions
 - [ ] **IDN-07**: An admin can search mappings by email, `real_user_id`, or `chat_user_id`
-- [ ] **IDN-08**: An admin can map an SSO identity to a `real_user_id` without the user performing OTP verification
+- [x] **IDN-08**: An admin can map an SSO identity to a `real_user_id` without the user performing OTP verification
 
 ### Per-App Access Control
 
@@ -306,7 +306,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
 - [ ] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
 - [ ] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
-- [ ] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
+- [x] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
 
 ### Notifications & Two-Way Sync
 
@@ -518,7 +518,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BLD-09 | Phase 6 | Pending |
 | BLD-10 | Phase 6 | Pending |
 | BLD-11 | Phase 6 | Pending |
-| BLD-12 | Phase 6 | Pending |
+| BLD-12 | Phase 6 | Complete |
 | APP-03 | Phase 6 | Pending |
 | APP-05 | Phase 6 | Pending |
 | APP-06 | Phase 6 | Pending |
@@ -528,7 +528,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FRM-05 | Phase 6 | Complete |
 | FRM-09 | Phase 6 | Complete |
 | IDN-05 | Phase 6 | Pending |
-| IDN-08 | Phase 6 | Pending |
+| IDN-08 | Phase 6 | Complete |
 | ACL-05 | Phase 6 | Pending |
 | ACL-10 | Phase 6 | Pending |
 | OBS-05 | Phase 6 | Pending |

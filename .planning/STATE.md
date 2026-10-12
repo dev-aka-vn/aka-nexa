@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 6
 current_phase_name: Self-Service App Builder
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-10-12T03:11:32.244Z"
-state_head: 91865e687e66b869f13c529545bbcdc0b214d3f5
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-10-12T04:59:09.144Z"
+state_head: 5c9b3c306339f5b54abd73a95b5e8a5fd9534830
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 45
-  completed_plans: 38
+  completed_plans: 39
   percent: 50
 last_activity: 2026-10-11
 last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
@@ -20,15 +20,15 @@ last_activity_desc: Phase 05 plans all executed; a verification pass ran and rec
 ## Current Position
 
 Phase: 6 (Self-Service App Builder) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T03:11:22.426Z
-**Stopped at:** Completed 06-01-PLAN.md
+**Last session:** 2026-10-12T04:59:08.745Z
+**Stopped at:** Completed 06-02-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -48,6 +48,7 @@ Total Plans in Phase: 8
 | Phase 05 P07 | 105m | 2 tasks | 7 files |
 | Phase 05 P09 | 23min | 3 tasks | 11 files |
 | Phase 06-self-service-app-builder P01 | 74min | 2 tasks | 18 files |
+| Phase 06 P02 | 90min | 3 tasks | 25 files |
 
 ## Decisions
 
@@ -76,6 +77,9 @@ Total Plans in Phase: 8
 - [Phase 06-self-service-app-builder]: Chromium Playwright project at 1280x1024 so the builder canvas fits (below-fold drop = cancelled dragula drag)
 - [Phase 06-self-service-app-builder]: Tablet project is chromium-backed 768x1024 + hasTouch + isMobile (iPad preset forces webkit, uninstallable here)
 - [Phase 06-self-service-app-builder]: TypeScript stays pinned at workspace root 6.0.3; the SPA never re-declares typescript (Pitfall 12)
+- [Phase 06]: D-101 auto-selected (LOCKED): server-side Redis session, httpOnly Secure SameSite=Strict __Host- cookie, no token readable from SPA
+- [Phase 06]: Shared IdentityModule composes the identity stores once per api process — the IDN-08 realUserId check must see D-104-provisioned users
+- [Phase 06]: Session renewal window is less than half the IdP session lifetime remaining — derived from the IdP session, no second expiry policy (D-103)
 
 ## Blockers/Concerns
 
