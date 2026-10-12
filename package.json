@@ -15,11 +15,15 @@
     "build": "npm run lint && tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
+    "dev:app-builder": "vite --config apps/app-builder/vite.config.ts",
+    "build:app-builder": "vite build --config apps/app-builder/vite.config.ts",
+    "test:e2e": "playwright test",
     "start:api": "node --import ./apps/api/otel.mjs ./apps/api/dist/main.js",
     "start:worker": "node --import ./apps/worker/otel.mjs ./apps/worker/dist/main.js",
     "start:scheduler": "node --import ./apps/scheduler/otel.mjs ./apps/scheduler/dist/main.js"
   },
   "dependencies": {
+    "@casl/ability": "^7.0.1",
     "@formio/js": "5.6.1",
     "@nestjs/bullmq": "12.0.0",
     "@nestjs/common": "^12.1.2",
@@ -37,10 +41,14 @@
     "@opentelemetry/sdk-node": "0.222.0",
     "@opentelemetry/sdk-trace": "2.11.0",
     "bullmq": "6.3.11",
+    "csv-stringify": "^6.9.0",
     "ioredis": "6.0.0",
     "jose": "^6.2.12",
     "mongodb": "7.7.0",
+    "openid-client": "^6.8.8",
     "pino": "10.3.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.6.5"
@@ -48,14 +56,17 @@
   "devDependencies": {
     "@nestjs/testing": "^12.1.2",
     "@opentelemetry/semantic-conventions": "1.43.0",
+    "@playwright/test": "^1.64.0",
     "@testcontainers/mongodb": "12.2.0",
     "@testcontainers/redis": "12.2.0",
     "@types/node": "^24.19.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "10.11.0",
     "eslint-plugin-boundaries": "7.2.0",
     "testcontainers": "12.2.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.0",
+    "vite": "^8.3.4",
     "vitest": "^5.0.3"
   }
 }

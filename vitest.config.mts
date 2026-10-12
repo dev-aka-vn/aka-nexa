@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { defaultExclude, defineConfig } from 'vitest/config';
 
 const fromRoot = (relative: string): string =>
   fileURLToPath(new URL(relative, import.meta.url));
@@ -31,6 +31,12 @@ export default defineConfig({
       'apps/**/*.spec.ts',
       'tooling/**/*.spec.ts',
     ],
+    // Playwright e2e specs (apps/app-builder/e2e/**) match
+    // the include glob but are not vitest specs — they
+    // drive a real browser through @playwright/test.
+    // Excluding them keeps `npm test` (vitest run) green
+    // alongside the Playwright suite.
+    exclude: [...defaultExclude, '**/e2e/**'],
     setupFiles: ['./test/setup-env.ts'],
     testTimeout: 120000,
     hookTimeout: 120000,

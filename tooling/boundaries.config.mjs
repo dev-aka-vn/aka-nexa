@@ -184,6 +184,16 @@ export const ALLOWED_EDGES = Object.freeze({
     'authz',
     'connectors',
     'audit',
+    // Pattern 6 — the builder domain imports identity
+    // (D-104 OIDC auto-provision), links (the G-11
+    // saved-query write), and contract (builder-facing
+    // shapes). Permissive edges stay declared BEFORE
+    // the R1/R2/R3 restrictions: policies are
+    // last-match-wins, so the restrictions must be the
+    // last match.
+    'identity',
+    'links',
+    'contract',
   ]),
   // Composition roots are the only leaves: an app may reach every type.
   'app-api': Object.freeze([
