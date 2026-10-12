@@ -31,3 +31,32 @@ export class ConnectorRequestPendingExistsError extends BuilderError {
     );
   }
 }
+
+/** No request carries that `request_id` (or it belongs to another app). */
+export class ConnectorRequestNotFoundError extends BuilderError {
+  constructor(requestId: string) {
+    super(
+      'CONNECTOR_REQUEST_NOT_FOUND',
+      `connector request not found: ${requestId}`,
+    );
+  }
+}
+
+/**
+ * The request is not in a state the transition may
+ * leave: cancel operates on `pending` only, retry
+ * requires the previous request for the pair to be
+ * terminal, reject operates on `pending` only.
+ */
+export class ConnectorRequestTransitionError extends BuilderError {
+  constructor(
+    requestId: string,
+    from: string,
+    rule: string,
+  ) {
+    super(
+      'CONNECTOR_REQUEST_ILLEGAL_TRANSITION',
+      `connector request ${requestId} is ${from}: ${rule}`,
+    );
+  }
+}

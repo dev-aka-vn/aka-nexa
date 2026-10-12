@@ -92,6 +92,61 @@ export class ConnectorRequestController {
       requests: requests.map(toConnectorRequestResponse),
     };
   }
+
+  /** One request by its immutable identity — owner-scoped. */
+  @Get(':requestId')
+  async get(
+    @Param('id') appId: string,
+    @Param('requestId') requestId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const request = await this.requests.getForApp(
+      appId,
+      requestId,
+      actorOf(req),
+    );
+    return toConnectorRequestResponse(request);
+  }
+
+  /**
+   * The owner's cancel (D-98): `pending →
+   * rejected`, audited. Pending only.
+   */
+  @Post(':requestId/cancel')
+  @HttpCode(200)
+  async cancel(
+    @Param('id') appId: string,
+    @Param('requestId') requestId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const cancelled = await this.requests.cancel(
+      appId,
+      requestId,
+      actorOf(req),
+    );
+    return toConnectorRequestResponse(cancelled);
+  }
+
+  /**
+   * The owner's retry (D-98): a **fresh
+   * request_id** for the same definition, after
+   * the previous request for the pair reached a
+   * terminal state.
+   */
+  @Post(':requestId/retry')
+  @HttpCode(201)
+  async retry(
+    @Param('id') appId: string,
+    @Param('requestId') requestId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const retried = await this.requests.retry(
+      appId,
+      requestId,
+      actorOf(req),
+    );
+    return toConnectorRequestResponse(retried);
+  }
 }
 
 /**

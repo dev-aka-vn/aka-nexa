@@ -218,7 +218,9 @@ export { RestCore } from './connectors/rest-core.js';
 // the self-service request queue beside the
 // definition surfaces that own it.
 export {
+  ConnectorRequestNotFoundError,
   ConnectorRequestPendingExistsError,
+  ConnectorRequestTransitionError,
 } from './builder/connector-request/connector-request.errors.js';
 export type {
   ConnectorRequestDocument,

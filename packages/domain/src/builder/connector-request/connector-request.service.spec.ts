@@ -160,7 +160,25 @@ class FakeCollection {
           JSON.stringify(doc[key]) === JSON.stringify(expected),
       ),
     );
-    return { sort: () => ({ toArray: async () => [...matched] }) };
+    return {
+      sort: (sort: Record<string, number>) => ({
+        toArray: async () =>
+          [...matched].sort((a, b) => {
+            for (const [field, dir] of Object.entries(sort)) {
+              const left = a[field];
+              const right = b[field];
+              const cmp =
+                left instanceof Date && right instanceof Date
+                  ? left.getTime() - right.getTime()
+                  : String(left) < String(right)
+                    ? -1
+                    : 1;
+              if (cmp !== 0) return dir === 1 ? cmp : -cmp;
+            }
+            return 0;
+          }),
+      }),
+    };
   }
 }
 
@@ -370,5 +388,347 @@ describe('ConnectorRequestService (BLD-10, D-97..D-100)', () => {
     // The opaque handle is the only credential-named field, and it
     // is a reference, never a value.
     expect(keys).toContain('credential_ref');
+  });
+});
+
+describe('ConnectorRequestService lifecycle (BLD-10, D-98, T-06-24)', () => {
+  /** A service with one pending redmine request for the owner. */
+  async function withPendingRequest() {
+    const outcome = newService(new FakeDefinitions([definition()]));
+    const created = await outcome.service.request(
+      'leave-request',
+      'user-0001',
+      FULL_DEFINITION,
+    );
+    return { ...outcome, created };
+  }
+
+  it('cancel moves a pending request to rejected with the owner-supplied reason, audited', async () => {
+    const { service, repository, audit, created } =
+      await withPendingRequest();
+
+    const cancelled = await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+      'cancelled by owner',
+    );
+
+    expect(cancelled).toMatchObject({
+      request_id: created.request_id,
+      state: 'rejected',
+      reason: 'cancelled by owner',
+    });
+    expect(cancelled.resolvedAt).toBeInstanceOf(Date);
+
+    // Persisted — and no longer pending, so the pair is free.
+    expect(
+      await repository.findPending('leave-request', 'redmine'),
+    ).toBeNull();
+    expect(
+      await repository.findByRequestId(created.request_id),
+    ).toMatchObject({ state: 'rejected' });
+
+    // The audited transition.
+    const entries = await audit.findAll();
+    expect(entries).toHaveLength(2);
+    expect(entries[1]).toMatchObject({
+      actor: 'user-0001',
+      action: 'connector_request.cancelled',
+      target: 'leave-request',
+      previous_state: 'pending',
+      new_state: 'rejected',
+      connector_id: 'redmine',
+      request_id: created.request_id,
+      reason: 'cancelled by owner',
+    });
+  });
+
+  it('cancel defaults the reason to the owner-cancel rule', async () => {
+    const { service, created } = await withPendingRequest();
+
+    const cancelled = await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+
+    expect(cancelled.reason).toBe('cancelled by owner');
+  });
+
+  it('cancel is refused on a non-pending request — pending only', async () => {
+    const { service, created } = await withPendingRequest();
+
+    // Cancel once: the request is now terminal.
+    await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+
+    await expect(
+      service.cancel('leave-request', created.request_id, 'user-0001'),
+    ).rejects.toThrow(/CONNECTOR_REQUEST_ILLEGAL_TRANSITION/);
+  });
+
+  it('cancel by a non-owner is refused fail-closed', async () => {
+    const { service, created } = await withPendingRequest();
+
+    await expect(
+      service.cancel('leave-request', created.request_id, 'user-0002'),
+    ).rejects.toThrow(AppNotFoundError);
+  });
+
+  it('retry after a terminal state issues a fresh request_id carrying the same definition', async () => {
+    const { service, repository, audit, created } =
+      await withPendingRequest();
+
+    await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+
+    const retried = await service.retry(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+
+    // A fresh identity — the previous request keeps its own.
+    expect(retried.request_id).not.toBe(created.request_id);
+    expect(retried.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    // The definition traveled with the retry...
+    expect(retried).toMatchObject({
+      app_id: 'leave-request',
+      requested_by: 'user-0001',
+      connector_id: 'redmine',
+      name: 'Redmine',
+      base_url: 'https://redmine.example.test',
+      timeout_ms: 15000,
+      retries: 3,
+      state: 'pending',
+    });
+    expect(retried.requestedAt).toBeInstanceOf(Date);
+    // ...and the terminal request's resolution did not.
+    expect(retried.reason).toBeUndefined();
+    expect(retried.resolvedAt).toBeUndefined();
+    expect(retried.credential_ref).toBeUndefined();
+
+    // The fresh request is the pair's pending record now.
+    expect(
+      await repository.findPending('leave-request', 'redmine'),
+    ).toMatchObject({ request_id: retried.request_id });
+
+    // The audited transition: terminal → pending, both ids named.
+    const entries = await audit.findAll();
+    expect(entries[entries.length - 1]).toMatchObject({
+      actor: 'user-0001',
+      action: 'connector_request.retried',
+      target: 'leave-request',
+      previous_state: 'rejected',
+      new_state: 'pending',
+      connector_id: 'redmine',
+      request_id: retried.request_id,
+      previous_request_id: created.request_id,
+    });
+  });
+
+  it('retry after a provisioned request re-issues the definition without the credential handle', async () => {
+    const { service, repository, audit, created } =
+      await withPendingRequest();
+
+    // The operator provisioned the request through the
+    // repository seam (the CLI's write path)...
+    const provisioned = await repository.transition(
+      created.request_id,
+      'provisioned',
+      { credentialRef: 'cred-redmine-1' },
+    );
+    expect(provisioned).toMatchObject({
+      state: 'provisioned',
+      credential_ref: 'cred-redmine-1',
+    });
+
+    // ...then the owner retried it: the fresh request carries
+    // the definition, never the previous handle.
+    const retried = await service.retry(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+    expect(retried.state).toBe('pending');
+    expect(retried.credential_ref).toBeUndefined();
+
+    // And the pair's pending record is the fresh request.
+    const entries = await audit.findAll();
+    expect(entries[entries.length - 1]).toMatchObject({
+      action: 'connector_request.retried',
+      previous_state: 'provisioned',
+      new_state: 'pending',
+    });
+  });
+
+  it('retry is refused while the previous request is still pending — the pending record must be terminal first', async () => {
+    const { service, created } = await withPendingRequest();
+
+    await expect(
+      service.retry('leave-request', created.request_id, 'user-0001'),
+    ).rejects.toThrow(/CONNECTOR_REQUEST_ILLEGAL_TRANSITION/);
+  });
+
+  it('retry is refused while another pending request exists for the pair (T-06-24)', async () => {
+    const { service, created } = await withPendingRequest();
+
+    // The owner cancels, then requests a second pending
+    // request for the same connector...
+    await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+    const second = await service.request(
+      'leave-request',
+      'user-0001',
+      FULL_DEFINITION,
+    );
+
+    // ...so retrying the cancelled request would create a
+    // second pending row for the pair — refused, naming the
+    // pending request that blocks it.
+    let named: ConnectorRequestPendingExistsError | undefined;
+    try {
+      await service.retry('leave-request', created.request_id, 'user-0001');
+    } catch (error) {
+      named = error as ConnectorRequestPendingExistsError;
+    }
+    expect(named).toBeInstanceOf(ConnectorRequestPendingExistsError);
+    expect(named?.message).toContain(second.request_id);
+  });
+
+  it('retry by a non-owner is refused fail-closed', async () => {
+    const { service, created } = await withPendingRequest();
+
+    await service.cancel(
+      'leave-request',
+      created.request_id,
+      'user-0001',
+    );
+
+    await expect(
+      service.retry('leave-request', created.request_id, 'user-0002'),
+    ).rejects.toThrow(AppNotFoundError);
+  });
+
+  it('retry on an unknown request is refused', async () => {
+    const { service } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    await expect(
+      service.retry('leave-request', 'req-missing', 'user-0001'),
+    ).rejects.toThrow(/CONNECTOR_REQUEST_NOT_FOUND/);
+  });
+
+  it('an operator may reject a pending request with a reason — the admin sees it on the status badge', async () => {
+    const { service, repository, audit, created } =
+      await withPendingRequest();
+
+    const rejected = await service.reject(
+      created.request_id,
+      'connector unavailable in this region',
+    );
+
+    expect(rejected).toMatchObject({
+      request_id: created.request_id,
+      state: 'rejected',
+      reason: 'connector unavailable in this region',
+    });
+    expect(rejected.resolvedAt).toBeInstanceOf(Date);
+
+    // The reason rides the served record — the status badge
+    // renders it.
+    const listed = await service.listForApp('leave-request', 'user-0001');
+    expect(listed[0]).toMatchObject({
+      state: 'rejected',
+      reason: 'connector unavailable in this region',
+    });
+
+    // The audited transition.
+    const entries = await audit.findAll();
+    expect(entries[entries.length - 1]).toMatchObject({
+      actor: 'operator',
+      action: 'connector_request.rejected',
+      target: 'leave-request',
+      previous_state: 'pending',
+      new_state: 'rejected',
+      connector_id: 'redmine',
+      request_id: created.request_id,
+      reason: 'connector unavailable in this region',
+    });
+
+    // And the pair is free again.
+    expect(
+      await repository.findPending('leave-request', 'redmine'),
+    ).toBeNull();
+  });
+
+  it('reject is refused on a non-pending request', async () => {
+    const { service, created } = await withPendingRequest();
+
+    await service.reject(created.request_id, 'no longer needed');
+
+    await expect(
+      service.reject(created.request_id, 'again'),
+    ).rejects.toThrow(/CONNECTOR_REQUEST_ILLEGAL_TRANSITION/);
+  });
+
+  it('reject on an unknown request is refused', async () => {
+    const { service } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    await expect(
+      service.reject('req-missing', 'reason'),
+    ).rejects.toThrow(/CONNECTOR_REQUEST_NOT_FOUND/);
+  });
+
+  it('every lifecycle transition is an audited event with previous_state and new_state', async () => {
+    const { service, audit, created } = await withPendingRequest();
+
+    const before = (await audit.findAll()).length;
+
+    await service.cancel('leave-request', created.request_id, 'user-0001');
+    const retried = await service.retry('leave-request', created.request_id, 'user-0001');
+    await service.reject(retried.request_id, 'operator refused');
+
+    // Three more entries — cancel, retry, reject — each
+    // carrying the transition pair.
+    const entries = await audit.findAll();
+    expect(entries.length).toBe(before + 3);
+    const transitions = entries.slice(before).map((entry) => ({
+      action: entry.action,
+      previous: entry.previous_state,
+      next: entry.new_state,
+    }));
+    expect(transitions).toEqual([
+      {
+        action: 'connector_request.cancelled',
+        previous: 'pending',
+        next: 'rejected',
+      },
+      {
+        action: 'connector_request.retried',
+        previous: 'rejected',
+        next: 'pending',
+      },
+      {
+        action: 'connector_request.rejected',
+        previous: 'pending',
+        next: 'rejected',
+      },
+    ]);
   });
 });

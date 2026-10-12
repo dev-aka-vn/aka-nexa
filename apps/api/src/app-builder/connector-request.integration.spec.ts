@@ -49,6 +49,7 @@ import {
   ConnectorCredentialsRepository,
   ConnectorRegistry,
   ConnectorRequestRepository,
+  ConnectorRequestService,
   type AuditEntry,
 } from '@akane/domain';
 import { ConfigModule, LocalKeyProvider, MongoService } from '@akane/platform';
@@ -117,6 +118,7 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
   let baseUrl: string;
   let audit: AuditRepository;
   let requests: ConnectorRequestRepository;
+  let requestService: ConnectorRequestService;
   let credsRepo: ConnectorCredentialsRepository;
   let registry: ConnectorRegistry;
   let keyDir: string;
@@ -148,6 +150,7 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
 
     audit = moduleRef.get(AuditRepository);
     requests = moduleRef.get(ConnectorRequestRepository);
+    requestService = moduleRef.get(ConnectorRequestService);
 
     app = moduleRef.createNestApplication();
     // The session middleware's principal, replayed from a test
@@ -423,9 +426,54 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
     expect(entries.length).toBe(before.length + provisioned.length);
   });
 
-  it('D-100: a production boot without KMS refuses the operator credential write — CRYPTO_KEY_PROVIDER_REQUIRED, nothing written', async () => {
-    // A fresh pending request for a different connector — the
-    // one the refused provision would have resolved.
+  it('GET /apps/:id/connector-requests/:requestId returns the single request, owner-scoped fail-closed', async () => {
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests`,
+      {
+        connector_id: 'crm',
+        name: 'CRM',
+        base_url: 'https://crm.example.test',
+      },
+      OWNER,
+    );
+    expect(created.status).toBe(201);
+    const requestId = created.body['request_id'] as string;
+
+    const single = await call(
+      'GET',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}`,
+      undefined,
+      OWNER,
+    );
+    expect(single.status).toBe(200);
+    expect(single.body).toMatchObject({
+      request_id: requestId,
+      app_id: 'leave-request',
+      connector_id: 'crm',
+      state: 'pending',
+    });
+
+    // A non-owner gets the fail-closed 404...
+    const refused = await call(
+      'GET',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}`,
+      undefined,
+      OTHER,
+    );
+    expect(refused.status).toBe(404);
+
+    // ...and an unknown request_id is the same refusal.
+    const missing = await call(
+      'GET',
+      `${baseUrl}/apps/leave-request/connector-requests/req-missing`,
+      undefined,
+      OWNER,
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it('POST .../cancel cancels the owner\'s pending request — rejected, reasoned, audited', async () => {
     const created = await call(
       'POST',
       `${baseUrl}/apps/leave-request/connector-requests`,
@@ -433,6 +481,214 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
         connector_id: 'jira',
         name: 'Jira',
         base_url: 'https://jira.example.test',
+      },
+      OWNER,
+    );
+    expect(created.status).toBe(201);
+    const requestId = created.body['request_id'] as string;
+
+    const before = await audit.findAll();
+
+    const cancelled = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}/cancel`,
+      undefined,
+      OWNER,
+    );
+
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body).toMatchObject({
+      request_id: requestId,
+      state: 'rejected',
+      reason: 'cancelled by owner',
+    });
+    expect(typeof cancelled.body['resolvedAt']).toBe('string');
+
+    // The AUD-01 transition.
+    const entries = await audit.findAll();
+    expect(entries.length).toBe(before.length + 1);
+    expect(entries[entries.length - 1]).toMatchObject({
+      actor: OWNER,
+      action: 'connector_request.cancelled',
+      target: 'leave-request',
+      previous_state: 'pending',
+      new_state: 'rejected',
+      connector_id: 'jira',
+      request_id: requestId,
+      reason: 'cancelled by owner',
+    });
+
+    // Cancelling again is refused — pending only.
+    const again = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}/cancel`,
+      undefined,
+      OWNER,
+    );
+    expect(again.status).toBe(409);
+    expect(JSON.stringify(again.body)).toMatch(
+      /CONNECTOR_REQUEST_ILLEGAL_TRANSITION/,
+    );
+
+    // A non-owner cannot cancel — fail-closed.
+    const foreign = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}/cancel`,
+      undefined,
+      OTHER,
+    );
+    expect(foreign.status).toBe(404);
+  });
+
+  it('POST .../retry re-issues a fresh pending request after the terminal state', async () => {
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests`,
+      {
+        connector_id: 'jira',
+        name: 'Jira',
+        base_url: 'https://jira.example.test',
+      },
+      OWNER,
+    );
+    const requestId = created.body['request_id'] as string;
+    await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}/cancel`,
+      undefined,
+      OWNER,
+    );
+
+    const before = await audit.findAll();
+
+    const retried = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${requestId}/retry`,
+      undefined,
+      OWNER,
+    );
+
+    expect(retried.status).toBe(201);
+    // A fresh identity carrying the same definition.
+    expect(retried.body['request_id']).not.toBe(requestId);
+    expect(retried.body).toMatchObject({
+      app_id: 'leave-request',
+      connector_id: 'jira',
+      name: 'Jira',
+      base_url: 'https://jira.example.test',
+      state: 'pending',
+    });
+    expect(retried.body['reason']).toBeUndefined();
+
+    // The audited transition: terminal → pending.
+    const entries = await audit.findAll();
+    expect(entries.length).toBe(before.length + 1);
+    expect(entries[entries.length - 1]).toMatchObject({
+      actor: OWNER,
+      action: 'connector_request.retried',
+      target: 'leave-request',
+      previous_state: 'rejected',
+      new_state: 'pending',
+      connector_id: 'jira',
+      request_id: retried.body['request_id'],
+      previous_request_id: requestId,
+    });
+
+    // Retrying the fresh pending request is refused —
+    // the pending record must be terminal first.
+    const whilePending = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests/${retried.body['request_id']}/retry`,
+      undefined,
+      OWNER,
+    );
+    expect(whilePending.status).toBe(409);
+  });
+
+  it('an operator rejection carries the reason the admin sees on the status badge', async () => {
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests`,
+      {
+        connector_id: 'salesforce',
+        name: 'Salesforce',
+        base_url: 'https://salesforce.example.test',
+      },
+      OWNER,
+    );
+    const requestId = created.body['request_id'] as string;
+
+    // The operator's refusal — the operator seam, not
+    // a builder surface.
+    const rejected = await requestService.reject(
+      requestId,
+      'connector unavailable in this region',
+    );
+    expect(rejected).toMatchObject({
+      state: 'rejected',
+      reason: 'connector unavailable in this region',
+    });
+
+    // The admin sees the reason on the status badge.
+    const listed = await call(
+      'GET',
+      `${baseUrl}/apps/leave-request/connector-requests`,
+      undefined,
+      OWNER,
+    );
+    const request = (listed.body as { requests: Record<string, unknown>[] })
+      .requests.find((entry) => entry['request_id'] === requestId)!;
+    expect(request['state']).toBe('rejected');
+    expect(request['reason']).toBe(
+      'connector unavailable in this region',
+    );
+  });
+
+  it('the provisioned request serves credential_ref as an opaque handle — no plaintext, no envelope (T-06-23)', async () => {
+    // The redmine request the operator provisioned
+    // earlier in this suite.
+    const provisioned = (await requests.listByApp('leave-request'))
+      .find(
+        (request) =>
+          request.connector_id === 'redmine' &&
+          request.state === 'provisioned',
+      );
+    expect(provisioned).toBeDefined();
+
+    const single = await call(
+      'GET',
+      `${baseUrl}/apps/leave-request/connector-requests/${provisioned?.request_id}`,
+      undefined,
+      OWNER,
+    );
+    expect(single.status).toBe(200);
+    // The opaque handle — a reference, never a value.
+    expect(single.body['credential_ref']).toBe('cred-redmine-1');
+
+    const serialized = JSON.stringify(single.body);
+    expect(serialized).not.toMatch(/secret|credential_value|plaintext/i);
+    // And no envelope-shaped object: the AES-256-GCM
+    // envelope fields never appear on a builder surface.
+    for (const envelopeKey of [
+      'envelope',
+      'encrypted',
+      'wrapped',
+      'ciphertext',
+    ]) {
+      expect(serialized).not.toContain(`"${envelopeKey}"`);
+    }
+  });
+
+  it('D-100: a production boot without KMS refuses the operator credential write — CRYPTO_KEY_PROVIDER_REQUIRED, nothing written', async () => {
+    // A fresh pending request for a different connector — the
+    // one the refused provision would have resolved.
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps/leave-request/connector-requests`,
+      {
+        connector_id: 'zendesk',
+        name: 'Zendesk',
+        base_url: 'https://zendesk.example.test',
       },
       OWNER,
     );
@@ -464,7 +720,7 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
     expect(pendingAfter.length).toBe(pendingBefore.length);
     expect(
       pendingAfter.find(
-        (request) => request.connector_id === 'jira',
+        (request) => request.connector_id === 'zendesk',
       )?.state,
     ).toBe('pending');
     expect(await audit.findAll()).toHaveLength(before.length);
