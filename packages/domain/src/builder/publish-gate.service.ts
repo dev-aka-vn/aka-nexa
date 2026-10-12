@@ -257,22 +257,31 @@ function dryRunInput(
 
 /**
  * The app's declared intent labels: every trigger's
- * declared `intents`/`aliases`, falling back to the
- * trigger's `id` and `command` — the owner-declared
- * triggers (D-52) the intent set is built from.
+ * declared `intents`/`aliases` — the owner-declared
+ * triggers (D-52) the intent set is built from. A
+ * trigger that declares neither falls back to its own
+ * identity (the trigger `id` and its `command`), so a
+ * command-only trigger is still routable; when a
+ * trigger declares labels, its identity is not an
+ * additional label — the command is not an intent.
  */
 export function declaredLabels(definition: AppDefinitionDocument): string[] {
   const labels: string[] = [];
   for (const trigger of definition.triggers ?? []) {
-    for (const key of ['intents', 'aliases', 'id', 'command'] as const) {
+    const declared = [
+      ...(Array.isArray(trigger.intents) ? trigger.intents : []),
+      ...(Array.isArray(trigger.aliases) ? trigger.aliases : []),
+    ].filter(
+      (label): label is string =>
+        typeof label === 'string' && label.length > 0,
+    );
+    if (declared.length > 0) {
+      labels.push(...declared);
+      continue;
+    }
+    for (const key of ['id', 'command'] as const) {
       const value = trigger[key];
-      if (Array.isArray(value)) {
-        for (const label of value) {
-          if (typeof label === 'string' && label.length > 0) {
-            labels.push(label);
-          }
-        }
-      } else if (typeof value === 'string' && value.length > 0) {
+      if (typeof value === 'string' && value.length > 0) {
         labels.push(value);
       }
     }
