@@ -56,12 +56,16 @@ import {
   RoutingShareComputer,
   RuleBasedProvider,
   TemplateSeed,
+  TransferRequestRepository,
+  TransferRequestService,
 } from '@akane/domain';
 import { MongoModule, MongoService } from '@akane/platform';
 
 import { AppBuilderController } from './app-builder.controller.js';
 import { ConnectorRequestController } from './connector-request.controller.js';
 import { PublishController } from './publish.controller.js';
+import { TransferApprovalController } from './transfer-approval.controller.js';
+import { TransferRequestController } from './transfer-request.controller.js';
 
 @Module({
   imports: [MongoModule],
@@ -69,6 +73,8 @@ import { PublishController } from './publish.controller.js';
     AppBuilderController,
     ConnectorRequestController,
     PublishController,
+    TransferApprovalController,
+    TransferRequestController,
   ],
   providers: [
     AuditRepository,
@@ -221,6 +227,37 @@ import { PublishController } from './publish.controller.js';
       ): PublishGateService =>
         new PublishGateService(orchestrator, outcomes, definitions),
     },
+    {
+      // ACL-05: the transfer-request store
+      // over the `transfer_requests`
+      // collection — the one-pending-
+      // transfer-per-app partial unique
+      // index lives here.
+      provide: TransferRequestRepository,
+      useFactory: (mongo: MongoService): TransferRequestRepository =>
+        new TransferRequestRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      // ACL-05/ACL-10: the transfer
+      // service over the transfer
+      // repository, the definition
+      // repository (owner-scoping and the
+      // ownership move), and the audit log
+      // — every transition an audited one.
+      provide: TransferRequestService,
+      useFactory: (
+        transfers: TransferRequestRepository,
+        definitions: AppDefinitionRepository,
+        audit: AuditRepository,
+      ): TransferRequestService =>
+        new TransferRequestService(transfers, definitions, audit),
+      inject: [
+        TransferRequestRepository,
+        AppDefinitionRepository,
+        AuditRepository,
+      ],
+    },
   ],
   // The surfaces other modules compose against: the
   // definition store and the audit trail the
@@ -232,6 +269,8 @@ import { PublishController } from './publish.controller.js';
     ConnectorRequestRepository,
     ConnectorRequestService,
     FieldMappingService,
+    TransferRequestRepository,
+    TransferRequestService,
   ],
 })
 export class AppBuilderModule {}

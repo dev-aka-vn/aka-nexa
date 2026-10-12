@@ -22,7 +22,12 @@
  *    (the submissions viewer, plan 06 task
  *    2), `#/connectors?app=x` (the
  *    connector-request queue, plan 06 task
- *    2).
+ *    2), `#/users` (SSO identity mapping
+ *    and the transfer approval queue, plan
+ *    06 task 3), `#/audit` (the audit
+ *    browse, plan 06 task 3), `#/settings`
+ *    (the deferred platform knobs, plan
+ *    06 task 3).
  *  - **`#/spike`**: the S1 spike surface —
  *    the FormIO 5.6.1 builder verification
  *    harness. Dev-only, deliberately
@@ -50,10 +55,6 @@ import {
   SessionAuthError,
 } from './api/client.js';
 import {
-  AppsListSchema,
-  type AppDefinition,
-} from './api/definition.js';
-import {
   fetchSessionUser,
 } from './auth/session.client.js';
 import type { SessionMeResponse } from '@akane/contract';
@@ -67,6 +68,10 @@ import { RolesPage } from './roles/RolesPage.js';
 import { EditorPage } from './editor/EditorPage.js';
 import { SubmissionsPage } from './submissions/SubmissionsPage.js';
 import { ConnectorsPage } from './connectors/ConnectorsPage.js';
+import { UsersPage } from './users/UsersPage.js';
+import { AuditPage } from './audit/AuditPage.js';
+import { SettingsPage } from './settings/SettingsPage.js';
+import { AppsPage } from './apps/AppsPage.js';
 import { FormioBuilderField } from './form-designer/FormioBuilderField';
 import type { FormioBuilderHandle } from './form-designer/FormioBuilderField';
 import {
@@ -102,6 +107,9 @@ type RouteName =
   | 'roles'
   | 'submissions'
   | 'connectors'
+  | 'users'
+  | 'audit'
+  | 'settings'
   | 'unknown';
 
 interface ParsedRoute {
@@ -141,6 +149,15 @@ function parseRoute(route: string): ParsedRoute {
       name: 'connectors',
       appId: params.get('app') ?? undefined,
     };
+  }
+  if (head === 'users') {
+    return { name: 'users' };
+  }
+  if (head === 'audit') {
+    return { name: 'audit' };
+  }
+  if (head === 'settings') {
+    return { name: 'settings' };
   }
   if (head === 'apps' && segments.length === 1) {
     return { name: 'apps' };
@@ -232,165 +249,6 @@ function SessionGate({
   }
 
   return children(state.user);
-}
-
-/** The lifecycle badge tone, the mockup's status vocabulary. */
-function lifecycleTone(
-  lifecycle: AppDefinition['lifecycle'],
-): string {
-  switch (lifecycle) {
-    case 'published':
-      return 'it-teal';
-    case 'draft':
-      return 'it-amber';
-    case 'deprecated':
-      return 'it-violet';
-    case 'archived':
-      return 'it-red';
-    default:
-      return 'it-amber';
-  }
-}
-
-/**
- * The app list (`#/apps`): the caller's own
- * definitions (GET /apps), skeleton-shaped
- * while loading, inline-error on failure.
- */
-function AppsListPage(): ReactElement {
-  const client = useApiClient();
-  const [apps, setApps] = useState<AppDefinition[] | null>(
-    null,
-  );
-  const [error, setError] = useState<unknown>(null);
-
-  const load = useCallback(async (): Promise<void> => {
-    setError(null);
-    try {
-      const response = await client.get('/apps', AppsListSchema);
-      setApps(response.apps);
-    } catch (loadError) {
-      setApps(null);
-      setError(loadError);
-    }
-  }, [client]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <div data-testid="apps-list">
-      <div
-        className="od-row"
-        style={{
-          '--od-gap': '10px',
-          marginBottom: 18,
-          justifyContent: 'flex-end',
-        } as never}
-      >
-        <a className="btn btn-primary" href="#/wizard">
-          + Create a new app
-        </a>
-      </div>
-      {error ? (
-        <InlineError
-          operation="load your app list"
-          error={error}
-          onRetry={() => void load()}
-        />
-      ) : apps === null ? (
-        <Skeleton variant="cards" label="Loading your apps" />
-      ) : apps.length === 0 ? (
-        <section className="card">
-          <div className="card-body">
-            <div className="empty" style={{ padding: '32px' }}>
-              <h3>No apps yet</h3>
-              <p>
-                Create your first app — the five-step wizard
-                needs no documentation and no engineering ticket.
-              </p>
-              <a className="btn btn-primary" href="#/wizard">
-                + Create a new app
-              </a>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <div
-          className="od-grid"
-          style={{ '--od-cols': '3' } as never}
-          data-testid="apps-grid"
-        >
-          {apps.map((app) => (
-            <a
-              key={app.app_id}
-              className="card"
-              data-testid={`app-card-${app.app_id}`}
-              href={`#/apps/${app.app_id}`}
-              style={{ textDecoration: 'none', color: 'inherit' }}
-            >
-              <div className="card-body">
-                <div
-                  className="od-row"
-                  style={{
-                    '--od-gap': '12px',
-                    alignItems: 'flex-start',
-                  } as never}
-                >
-                  <div className="od-fill">
-                    <h3 style={{ fontSize: 16 }}>{app.name}</h3>
-                    <div
-                      className="lr-s"
-                      style={{
-                        fontFamily: 'var(--mono)',
-                        fontSize: 12,
-                      }}
-                    >
-                      {app.app_id}
-                    </div>
-                  </div>
-                  <span
-                    className={`badge ${lifecycleTone(app.lifecycle)}`}
-                    data-testid={`app-lifecycle-${app.app_id}`}
-                  >
-                    {app.lifecycle}
-                  </span>
-                </div>
-                <p
-                  className="od-clamp-2"
-                  style={{
-                    color: 'var(--muted)',
-                    fontSize: 13.5,
-                    marginTop: 12,
-                    minHeight: '2.9em',
-                  }}
-                >
-                  {app.description}
-                </p>
-                <div
-                  className="od-cluster"
-                  style={{ '--od-gap': '8px', marginTop: 12 } as never}
-                >
-                  <span className="pill-mono">v{app.version}</span>
-                  <span className="pill-mono">{app.data_mode}</span>
-                </div>
-              </div>
-              <div
-                className="card-foot od-row"
-                style={{ justifyContent: 'space-between' } as never}
-              >
-                <span className="lr-s">
-                  Open the app
-                </span>
-                <span className="btn btn-sm">Open →</span>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /* ======================= The S1 spike surface (#/spike) ======================= */
@@ -617,6 +475,16 @@ export function App(): ReactElement {
               position: 'sticky',
               top: 0,
               zIndex: 50,
+              // The nav outgrows the tablet
+              // viewport (BLD-09's 768px
+              // surface): the row wraps —
+              // the header grows downward —
+              // instead of widening the
+              // document past the layout
+              // viewport, which pushes the
+              // page's wide tables outside
+              // the emulated viewport.
+              flexWrap: 'wrap',
             } as never}
           >
             <a
@@ -667,6 +535,27 @@ export function App(): ReactElement {
               >
                 Connectors
               </a>
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#/users"
+                data-testid="nav-users"
+              >
+                Users
+              </a>
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#/audit"
+                data-testid="nav-audit"
+              >
+                Audit Log
+              </a>
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#/settings"
+                data-testid="nav-settings"
+              >
+                Settings
+              </a>
             </nav>
             <span className="od-fill" />
             <span
@@ -703,11 +592,17 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
       return <SubmissionsPage appId={route.appId} />;
     case 'connectors':
       return <ConnectorsPage appId={route.appId} />;
+    case 'users':
+      return <UsersPage />;
+    case 'audit':
+      return <AuditPage />;
+    case 'settings':
+      return <SettingsPage />;
     case 'editor':
       return <EditorPage appId={route.appId ?? ''} />;
     case 'apps':
     case 'unknown':
     default:
-      return <AppsListPage />;
+      return <AppsPage />;
   }
 }

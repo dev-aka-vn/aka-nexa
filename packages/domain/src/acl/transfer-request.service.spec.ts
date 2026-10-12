@@ -35,9 +35,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { AuditRepository, type AuditEntry } from '../audit/audit.repository.js';
-import { AppNotFoundError } from '../data-access/app-definition.repository.js';
-import type { AppDefinitionDocument } from '../data-access/app-definition.repository.js';
-import type { AppDefinitionRepository } from '../data-access/app-definition.repository.js';
+import { AppNotFoundError } from '../builder/data-access/app-definition.repository.js';
+import type { AppDefinitionDocument } from '../builder/data-access/app-definition.repository.js';
+import type { AppDefinitionRepository } from '../builder/data-access/app-definition.repository.js';
 
 import type { TransferRequestDocument } from './transfer-request.document.js';
 import { TransferRequestRepository } from './transfer-request.repository.js';

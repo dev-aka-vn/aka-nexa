@@ -282,9 +282,13 @@ export function builderErrorStatus(error: BuilderError): HttpStatus {
     case 'PUBLISH_REFUSED':
     case 'CONNECTOR_REQUEST_PENDING_EXISTS':
     case 'CONNECTOR_REQUEST_ILLEGAL_TRANSITION':
+    case 'TRANSFER_PENDING_EXISTS':
+    case 'TRANSFER_ILLEGAL_TRANSITION':
       return HttpStatus.CONFLICT;
     case 'CONNECTOR_REQUEST_NOT_FOUND':
     case 'SUBMISSION_NOT_FOUND':
+      return HttpStatus.NOT_FOUND;
+    case 'TRANSFER_NOT_FOUND':
       return HttpStatus.NOT_FOUND;
     case 'GLOBAL_ADMIN_REQUIRED':
       // The global-admin surfaces (the audit

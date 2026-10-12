@@ -11,6 +11,7 @@ import {
   HealthController,
   MetricsModule,
   MongoModule,
+  MongoService,
   ProviderBoundaryGuardRunner,
   QueueModule,
   redisCacheProvider,
@@ -22,10 +23,14 @@ import {
   type WorkerRunningStatus,
 } from '@akane/platform';
 import {
+  AppDefinitionRepository,
+  AuditRepository,
   ConnectorRateLimiter,
   ConnectorRegistry,
   OutboxRepository,
   SubmissionRevisionsRepository,
+  TransferRequestRepository,
+  TransferRequestService,
 } from '@akane/domain';
 
 import { WORKER_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
@@ -43,6 +48,10 @@ import {
   ReconciliationProcessor,
   reconciliationWorkersProvider,
 } from './processors/reconciliation.processor.js';
+import {
+  TransferAutoCancelProcessor,
+  transferAutoCancelWorkersProvider,
+} from './processors/transfer-auto-cancel.processor.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const WORKER_READINESS_KEY = 'bullmq_workers';
@@ -73,10 +82,44 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     ConnectorDeliveryProcessor,
     ReconciliationProcessor,
     reconciliationWorkersProvider,
+    TransferAutoCancelProcessor,
+    transferAutoCancelWorkersProvider,
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
     ConnectorRateLimiter,
+    {
+      // ACL-05/T-06-31: the transfer
+      // auto-cancel's domain chain — the
+      // worker's own instances of the
+      // definition store, the transfer
+      // store, the audit log, and the
+      // transfer service over them.
+      provide: AppDefinitionRepository,
+      useFactory: (mongo: MongoService): AppDefinitionRepository =>
+        new AppDefinitionRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      provide: TransferRequestRepository,
+      useFactory: (mongo: MongoService): TransferRequestRepository =>
+        new TransferRequestRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      provide: TransferRequestService,
+      useFactory: (
+        transfers: TransferRequestRepository,
+        definitions: AppDefinitionRepository,
+        audit: AuditRepository,
+      ): TransferRequestService =>
+        new TransferRequestService(transfers, definitions, audit),
+      inject: [
+        TransferRequestRepository,
+        AppDefinitionRepository,
+        AuditRepository,
+      ],
+    },
     {
       // OBS-04 / CON-06: the delivery processor writes the two business
       // counters through this seam rather than importing the OTel API itself.
@@ -85,13 +128,14 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
         delivery: ConnectorDeliveryProcessor,
         reconciliation: ReconciliationProcessor,
-      ) => [platform, relay, delivery, reconciliation],
+        transferAutoCancel: TransferAutoCancelProcessor,
+      ) => [platform, relay, delivery, reconciliation, transferAutoCancel],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,

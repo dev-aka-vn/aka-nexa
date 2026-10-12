@@ -327,6 +327,38 @@ export class AppDefinitionRepository {
   }
 
   /**
+   * Move the app's ownership (ACL-05) —
+   * the approved transfer's write: the
+   * definition's `createdBy` becomes the
+   * target user, and the update timestamp
+   * advances. The approval transition and
+   * this write are one service method, so
+   * the record and the owner never disagree.
+   * Returns the updated definition, or
+   * `null` when no definition carries the
+   * `app_id`.
+   */
+  async transferOwnership(
+    appId: string,
+    newOwnerUserId: string,
+  ): Promise<AppDefinitionDocument | null> {
+    const current = await this.collection.findOne({ app_id: appId });
+    if (current === null) {
+      return null;
+    }
+    return this.collection.findOneAndUpdate(
+      { app_id: appId },
+      {
+        $set: {
+          createdBy: newOwnerUserId,
+          updatedAt: new Date(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+  }
+
+  /**
    * Write a full definition snapshot into the version history
    * (APP-03). The compound unique index on `(app_id, version)`
    * makes a concurrent double-write of the same version

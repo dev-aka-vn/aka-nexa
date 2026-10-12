@@ -27,6 +27,10 @@ import {
 
 import { SCHEDULER_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 import { RECONCILE_OUTBOUND_ID, registerReconciliation } from './reconciliation.registration.js';
+import {
+  TRANSFER_AUTO_CANCEL_ID,
+  registerTransferAutoCancel,
+} from './transfer-auto-cancel.registration.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const SCHEDULER_READINESS_KEY = 'job_schedulers';
@@ -80,7 +84,11 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
     ProviderBoundaryGuardRunner,
     {
       provide: JOB_SCHEDULER_REGISTRATIONS,
-      useValue: Object.freeze([PLATFORM_HEARTBEAT_ID, RECONCILE_OUTBOUND_ID]),
+      useValue: Object.freeze([
+        PLATFORM_HEARTBEAT_ID,
+        RECONCILE_OUTBOUND_ID,
+        TRANSFER_AUTO_CANCEL_ID,
+      ]),
     },
     {
       provide: EXTRA_HEALTH_INDICATORS,
@@ -101,10 +109,29 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
             queue,
             RECONCILE_OUTBOUND_ID,
           );
-          const registered = heartbeatRegistered && reconcileRegistered;
+          const transferAutoCancelRegistered = await jobSchedulerReadyIndicator(
+            queue,
+            TRANSFER_AUTO_CANCEL_ID,
+          );
+          const registered =
+            heartbeatRegistered &&
+            reconcileRegistered &&
+            transferAutoCancelRegistered;
           return registered
-            ? session.up({ schedulers: [PLATFORM_HEARTBEAT_ID, RECONCILE_OUTBOUND_ID] })
-            : session.down({ schedulers: [PLATFORM_HEARTBEAT_ID, RECONCILE_OUTBOUND_ID] });
+            ? session.up({
+                schedulers: [
+                  PLATFORM_HEARTBEAT_ID,
+                  RECONCILE_OUTBOUND_ID,
+                  TRANSFER_AUTO_CANCEL_ID,
+                ],
+              })
+            : session.down({
+                schedulers: [
+                  PLATFORM_HEARTBEAT_ID,
+                  RECONCILE_OUTBOUND_ID,
+                  TRANSFER_AUTO_CANCEL_ID,
+                ],
+              });
         },
       ],
     },
@@ -118,6 +145,7 @@ export class AppModule implements OnApplicationBootstrap, OnApplicationShutdown 
   async onApplicationBootstrap(): Promise<void> {
     await registerPlatformHeartbeat(this.queue);
     await registerReconciliation(this.queue);
+    await registerTransferAutoCancel(this.queue);
   }
 
   async onApplicationShutdown(): Promise<void> {

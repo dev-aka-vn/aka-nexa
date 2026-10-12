@@ -298,6 +298,10 @@ describe('TransferRequestRepository (ACL-05)', () => {
     await repository.create(
       pendingTransfer({
         transfer_id: 'tr_live',
+        // A second app — the one-pending-per-app
+        // invariant means two pending rows for one
+        // app cannot coexist, expired or not.
+        app_id: 'expense-claim',
         // Expires 2026-10-20 — still live at the "now".
         expiresAt: new Date('2026-10-20T10:00:00.000Z'),
       }),

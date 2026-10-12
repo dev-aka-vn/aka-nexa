@@ -231,3 +231,19 @@ export {
   SubmissionsFilterSchema,
   type SubmissionsFilter,
 } from './submissions/submissions.contract.js';
+
+// Ownership-transfer contracts (ACL-05,
+// ACL-10, T-06-31) — the owner's request,
+// the served projection, and the global
+// admin's approval queue, beside the frozen
+// contracts.
+export {
+  TransferRequestCreateSchema,
+  type TransferRequestCreate,
+  TransferStateSchema,
+  type TransferState,
+  TransferRequestResponseSchema,
+  type TransferRequestResponse,
+  TransferApprovalQueueSchema,
+  type TransferApprovalQueue,
+} from './acl/transfer.contract.js';

@@ -34,7 +34,7 @@ import { createServer, type AddressInfo } from 'node:net';
 
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Request } from 'express';
 
@@ -158,6 +158,22 @@ describe('ownership transfer (ACL-05, ACL-10, T-06-31)', () => {
     );
     expect(created.status).toBe(201);
   }, 180_000);
+
+  afterEach(async () => {
+    // Each test starts from the same world: an empty
+    // transfer queue (the one-pending-per-app
+    // invariant refuses a second pending request for
+    // the app, so a leftover record would refuse the
+    // next test's request) and the app still owned
+    // by its original owner (an approval moves
+    // ownership, which would fail-close the next
+    // test's owner-scoped request).
+    await mongo.db().collection('transfer_requests').deleteMany({});
+    await mongo.db().collection('apps').updateOne(
+      { app_id: 'leave-request' },
+      { $set: { createdBy: OWNER } },
+    );
+  });
 
   afterAll(async () => {
     await app?.close();

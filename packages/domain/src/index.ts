@@ -264,3 +264,24 @@ export {
   ConnectorRequestService,
   ConnectorRequestValidationError,
 } from './builder/connector-request/connector-request.service.js';
+
+// Ownership transfers (ACL-05, ACL-10,
+// T-06-31) — the self-service transfer
+// surface beside the definition surfaces
+// that own the app's owner.
+export {
+  GlobalAdminRequiredError,
+  TransferNotFoundError,
+  TransferPendingExistsError,
+  TransferTransitionError,
+  TransferValidationError,
+} from './acl/transfer-request.errors.js';
+export type {
+  TransferRequestDocument,
+  TransferState,
+} from './acl/transfer-request.document.js';
+export { TransferRequestRepository } from './acl/transfer-request.repository.js';
+export {
+  TransferRequestService,
+  type TransferActor,
+} from './acl/transfer-request.service.js';
