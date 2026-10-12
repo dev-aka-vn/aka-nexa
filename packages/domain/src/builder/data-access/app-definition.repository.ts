@@ -317,6 +317,11 @@ export class AppDefinitionRepository {
     return result ?? null;
   }
 
+  /** Every definition currently in the `published` lifecycle — the routing distribution's membership. */
+  async listPublished(): Promise<AppDefinitionDocument[]> {
+    return this.collection.find({ lifecycle: 'published' }).toArray();
+  }
+
   async listByOwner(ownerUserId: string): Promise<AppDefinitionDocument[]> {
     return this.collection.find({ createdBy: ownerUserId }).toArray();
   }

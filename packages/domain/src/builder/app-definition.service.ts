@@ -3,6 +3,7 @@ import {
   DeprecateAppSchema,
   UpdateSectionSchema,
   type CreateAppDraftInput,
+  type PublishGateResult,
   type SectionName,
 } from '@akane/contract';
 import { z } from 'zod';
@@ -173,9 +174,31 @@ export class AppDefinitionService {
    * transition after the gate's dry-run passes. Only
    * `draft → published` is legal; anything else is
    * refused with the named illegal-transition error.
+   *
+   * The gate's full `PublishGateResult` rides the
+   * AUD-01 entry (T-06-20) — the publish decision
+   * (share drops, collision, change summary) is
+   * reconstructable after the fact, and the summary
+   * the admin saw is the summary the audit log
+   * retains (BLD-06).
    */
-  async commitPublish(appId: string, actor: string): Promise<AppDefinitionDocument> {
-    return this.transition(appId, actor, 'published', 'app.published', {});
+  async commitPublish(
+    appId: string,
+    actor: string,
+    publishRecord?: PublishGateResult,
+  ): Promise<AppDefinitionDocument> {
+    // The definition carries only the transition; the
+    // gate's full decision rides the AUD-01 entry
+    // (T-06-20) — the summary the admin saw is the
+    // summary the audit log retains (BLD-06).
+    return this.transition(
+      appId,
+      actor,
+      'published',
+      'app.published',
+      {},
+      publishRecord === undefined ? {} : { ...publishRecord },
+    );
   }
 
   /**
@@ -339,6 +362,12 @@ export class AppDefinitionService {
     to: AppLifecycleState,
     action: string,
     extra: Record<string, unknown>,
+    /**
+     * Fields embedded in the AUD-01 entry but not the
+     * definition — the publish gate's full result rides
+     * the audit row (T-06-20), never the document.
+     */
+    auditExtra: Record<string, unknown> = {},
   ): Promise<AppDefinitionDocument> {
     for (let attempt = 0; attempt < MAX_TRANSITION_ATTEMPTS; attempt++) {
       const current = await this.repository.findByAppId(appId);
@@ -362,6 +391,7 @@ export class AppDefinitionService {
           target: appId,
           previous_state: current.lifecycle,
           new_state: written.lifecycle,
+          ...auditExtra,
         });
 
         await this.snapshot(appId, written, actor);

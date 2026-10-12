@@ -8,12 +8,13 @@ import {
   PublishedAppLoader,
   ProviderHealthService,
   ProviderRegistry,
-  RuleBasedProvider,
   RoutingOrchestrator,
+  RoutingOutcomeRepository,
+  RuleBasedProvider,
   ClarificationSessionService,
   type OtpDeliveryPort,
 } from '@akane/domain';
-import { REDIS_CACHE } from '@akane/platform';
+import { MongoModule, MongoService, REDIS_CACHE } from '@akane/platform';
 import { InboundEventProcessor } from './processors/inbound-event.processor.js';
 import { OtpDeliveryService } from './processors/otp-delivery.service.js';
 
@@ -24,10 +25,22 @@ import { OtpDeliveryService } from './processors/otp-delivery.service.js';
  * any of the decision providers (RTE-02).
  */
 @Module({
+  imports: [MongoModule],
   providers: [
     IdentityMappingRepository,
     IdentityService,
     LinkIssuerService,
+    {
+      // OBS-05: the routing-outcome store the
+      // inbound processor records applied link
+      // routings into — the substrate the
+      // routing_share gauge and the publish
+      // gate's dry-run baseline read.
+      provide: RoutingOutcomeRepository,
+      inject: [MongoService],
+      useFactory: (mongo: MongoService): RoutingOutcomeRepository =>
+        new RoutingOutcomeRepository(mongo),
+    },
     {
       provide: PublishedAppLoader,
       useFactory: () =>

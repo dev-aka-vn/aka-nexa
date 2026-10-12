@@ -26,6 +26,15 @@
  * writes through the definition repository so
  * the draft lands in the same `apps`
  * collection with the same guards.
+ *
+ * The publish gate (APP-07, APP-08) wires the
+ * real routing chain the live router uses —
+ * `RuleBasedProvider` → `ProviderRegistry` →
+ * `ProviderHealthService` → `RoutingOrchestrator`
+ * — over the published set the definition
+ * repository serves, so the gate's dry-run is
+ * the live router's own computation (Pitfall 8),
+ * never a second implementation.
  */
 
 import { Module } from '@nestjs/common';
@@ -34,15 +43,25 @@ import {
   AppDefinitionRepository,
   AppDefinitionService,
   AuditRepository,
+  PublishGateService,
+  ProviderHealthService,
+  ProviderRegistry,
+  declaredLabels,
+  publishedAppFromDefinition,
+  RoutingOrchestrator,
+  RoutingOutcomeRepository,
+  RoutingShareComputer,
+  RuleBasedProvider,
   TemplateSeed,
 } from '@akane/domain';
 import { MongoModule, MongoService } from '@akane/platform';
 
 import { AppBuilderController } from './app-builder.controller.js';
+import { PublishController } from './publish.controller.js';
 
 @Module({
   imports: [MongoModule],
-  controllers: [AppBuilderController],
+  controllers: [AppBuilderController, PublishController],
   providers: [
     AuditRepository,
     {
@@ -68,6 +87,94 @@ import { AppBuilderController } from './app-builder.controller.js';
       ): AppDefinitionService =>
         new AppDefinitionService(repository, audit),
       inject: [AppDefinitionRepository, AuditRepository],
+    },
+    {
+      // OBS-05: the routing-outcome store the
+      // publish gate's baseline and the
+      // routing_share gauge both read.
+      provide: RoutingOutcomeRepository,
+      useFactory: (mongo: MongoService): RoutingOutcomeRepository =>
+        new RoutingOutcomeRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      provide: RoutingShareComputer,
+      useFactory: (
+        outcomes: RoutingOutcomeRepository,
+        definitions: AppDefinitionRepository,
+      ): RoutingShareComputer =>
+        new RoutingShareComputer(outcomes, async () =>
+          (await definitions.listPublished()).map(
+            publishedAppFromDefinition,
+          ),
+        ),
+      inject: [RoutingOutcomeRepository, AppDefinitionRepository],
+    },
+    {
+      // The rule-based provider's alias map is the
+      // published set at boot — the same static-
+      // catalog shape the live router's composition
+      // root wires. The gate's arithmetic is
+      // catalog-independent (a label the candidate
+      // shares with an existing app always
+      // abstains), so a boot-time snapshot is the
+      // honest wiring, not a stale-read defect.
+      provide: RuleBasedProvider,
+      inject: [AppDefinitionRepository],
+      useFactory: async (
+        definitions: AppDefinitionRepository,
+      ): Promise<RuleBasedProvider> => {
+        try {
+          const published = await definitions.listPublished();
+          const aliases = new Map<string, string[]>();
+          for (const definition of published) {
+            aliases.set(definition.app_id, declaredLabels(definition));
+          }
+          return new RuleBasedProvider(aliases);
+        } catch {
+          // The routing distribution is empty until
+          // the first catalog read succeeds.
+          return new RuleBasedProvider(new Map());
+        }
+      },
+    },
+    {
+      provide: ProviderRegistry,
+      inject: [RuleBasedProvider],
+      useFactory: (rules: RuleBasedProvider) =>
+        new ProviderRegistry({ providers: [{ provider: rules }] }),
+    },
+    {
+      provide: ProviderHealthService,
+      inject: [ProviderRegistry],
+      useFactory: (registry: ProviderRegistry) =>
+        new ProviderHealthService(registry.chain()),
+    },
+    {
+      provide: RoutingOrchestrator,
+      inject: [ProviderRegistry, ProviderHealthService],
+      useFactory: (
+        registry: ProviderRegistry,
+        health: ProviderHealthService,
+      ) =>
+        new RoutingOrchestrator(registry.chain(), {
+          health,
+          attemptCaps: registry.attemptCaps(),
+        }),
+    },
+    {
+      provide: PublishGateService,
+      inject: [
+        RoutingOrchestrator,
+        RoutingOutcomeRepository,
+        AppDefinitionRepository,
+      ],
+      useFactory: (
+        orchestrator: RoutingOrchestrator,
+        outcomes: RoutingOutcomeRepository,
+        definitions: AppDefinitionRepository,
+      ): PublishGateService =>
+        new PublishGateService(orchestrator, outcomes, definitions),
     },
   ],
 })

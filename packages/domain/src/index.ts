@@ -184,6 +184,31 @@ export {
 export { RepositorySavedQueryLookup } from './builder/saved-query.repository.js';
 export { backfillSavedQueries } from './builder/saved-query.backfill.js';
 export {
+  PUBLISH_SHARE_DROP_THRESHOLD_POINTS,
+  DESCRIPTION_COLLISION_JACCARD_THRESHOLD,
+  PublishGateService,
+  type PublishGateResult,
+  buildChangeSummary,
+  declaredLabels,
+  descriptionsCollide,
+  publishedAppFromDefinition,
+} from './builder/publish-gate.service.js';
+export {
+  RoutingOutcomeRepository,
+  UNLABELLED_INTENT_LABEL,
+  type RoutingOutcomeInput,
+  type RoutingOutcomeRecord,
+  type RoutingOutcomeStore,
+} from './builder/routing-share/routing-outcome.repository.js';
+export {
+  RoutingShareComputer,
+  ROUTING_SHARE_WINDOW_MS,
+} from './builder/routing-share/routing-share.computer.js';
+export {
+  registerRoutingShareMetrics,
+  ROUTING_SHARE_METRIC,
+} from './builder/routing-share/routing-share.metrics.js';
+export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,
 } from './connectors/data-access/connector-credentials.repository.js';

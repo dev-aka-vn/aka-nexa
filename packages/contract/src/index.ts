@@ -172,6 +172,16 @@ export {
   UpdateSectionSchema,
   UpdateSectionInput,
 } from './builder/app-definition.contract.js';
+export {
+  ChangeSummaryRowSchema,
+  type ChangeSummaryRow,
+  PublishGateResultSchema,
+  type PublishGateResult,
+  PublishResponseSchema,
+  type PublishResponse,
+  ShareDropSchema,
+  type ShareDrop,
+} from './builder/publish.contract.js';
 
 // OTP self-onboarding contracts (IDN-05) — the
 // chat ↔ worker payloads for the unmapped-

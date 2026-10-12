@@ -20,6 +20,8 @@ export type AuthorizeApp = (appId: string, realUserId: string) => Promise<boolea
 
 export interface AuthorizedApp {
   readonly tool: ToolDescriptor;
+  /** The app's declared intent labels (D-52) — the OBS-05 record's label source. */
+  readonly intents: readonly string[];
   readonly aliases: readonly string[];
   readonly threshold: number;
   /** Re-check current permission at the execution boundary. */
@@ -44,6 +46,7 @@ export class PublishedAppLoader {
       if (!(await this.authorize(app.id, realUserId))) continue;
       out.push({
         tool: { id: app.id, description: app.description, parameters: [...app.parameters] },
+        intents: [...app.intents],
         aliases: app.aliases,
         threshold: app.threshold,
         canOpenNow: () => this.authorize(app.id, realUserId),

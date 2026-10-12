@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import {
   InboundEventSchema,
@@ -13,7 +13,10 @@ import {
   RoutingOrchestrator,
   ClarificationSessionService,
   OtpOnboardingService,
+  RoutingOutcomeRepository,
+  UNLABELLED_INTENT_LABEL,
   redact,
+  type AuthorizedApp,
 } from '@akane/domain';
 import {
   OTP_ONBOARDING_INTENT,
@@ -22,6 +25,16 @@ import {
 
 /** Absolute chat-to-link budget; `occurred_at` seeds it, never per-provider (T-03-04). */
 const ROUTING_BUDGET_MS = 2000;
+
+/**
+ * The OBS-05 record's sentinel label: a routed
+ * question that matched no declared label of
+ * the routed app. Free-text user input never
+ * lands in the record — the sentinel groups
+ * unlabelled routings honestly and is inert
+ * for every app's share.
+ */
+const UNLABELLED_INTENT = UNLABELLED_INTENT_LABEL;
 
 /**
  * Deterministic slash → app binding (Phase 2 path). Slash commands NEVER
@@ -68,6 +81,7 @@ export class InboundEventProcessor extends WorkerHost {
     private readonly linkIssuer: LinkIssuerService,
     private readonly clarificationSession: ClarificationSessionService,
     private readonly onboarding: OtpOnboardingService,
+    private readonly routingOutcomes: RoutingOutcomeRepository,
   ) {
     super();
   }
@@ -154,6 +168,12 @@ export class InboundEventProcessor extends WorkerHost {
 
     if (outcome.kind === 'link') {
       const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId: chat.real_user_id });
+      await this.recordRoutingOutcome(
+        event,
+        authorized,
+        outcome.toolId,
+        event.text,
+      );
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
@@ -334,6 +354,12 @@ export class InboundEventProcessor extends WorkerHost {
     if (outcome.kind === 'link') {
       await this.clarificationSession.invalidateSession(realUserId, event.channel_id, event.channel_id);
       const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId });
+      await this.recordRoutingOutcome(
+        event,
+        currentAuthorized,
+        outcome.toolId,
+        combinedText,
+      );
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
@@ -380,4 +406,64 @@ export class InboundEventProcessor extends WorkerHost {
 
     return null;
   }
+
+  /**
+   * Record one applied link routing outcome (OBS-05) —
+   * the record the `routing_share{app_id}` gauge and
+   * the publish gate's dry-run baseline both read.
+   *
+   * Written **after** the link is durably issued: a
+   * record-write failure is logged and swallowed,
+   * never sacrificing the already-issued link — the
+   * record is the metric's substrate, not the
+   * routing's. Only link outcomes are recorded: a
+   * clarify outcome names no app and produces no
+   * record — the distribution is over routings to
+   * apps.
+   */
+  private async recordRoutingOutcome(
+    event: InboundEvent,
+    authorized: readonly AuthorizedApp[],
+    appId: string,
+    question: string,
+  ): Promise<void> {
+    const app = authorized.find((entry) => entry.tool.id === appId);
+    const intentLabel =
+      app === undefined
+        ? UNLABELLED_INTENT
+        : firstMatchingLabel(app, question);
+    try {
+      await this.routingOutcomes.record({
+        routing_id: event.event_id,
+        intent_label: intentLabel,
+        app_id: appId,
+      });
+    } catch (error) {
+      // The link is already issued — log the record
+      // failure and still return the link.
+      new Logger(InboundEventProcessor.name).error(
+        `routing outcome record failed for ${event.event_id}: ${String(error)}`,
+      );
+    }
+  }
+}
+
+/**
+ * The routed app's declared intent label the question
+ * matched — the first of its declared intents/aliases
+ * the question contains case-insensitively, or the
+ * 'unlabelled' sentinel when none matches (never the
+ * raw question text).
+ */
+function firstMatchingLabel(
+  app: Pick<AuthorizedApp, 'intents' | 'aliases'>,
+  question: string,
+): string {
+  const lowered = question.toLowerCase();
+  for (const label of [...app.intents, ...app.aliases]) {
+    if (label.length > 0 && lowered.includes(label.toLowerCase())) {
+      return label;
+    }
+  }
+  return UNLABELLED_INTENT;
 }

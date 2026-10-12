@@ -184,19 +184,6 @@ export class AppBuilderController {
     return toDefinitionResponse(updated);
   }
 
-  /** The plan-05 gate's seam: commit the publish transition. */  @Post('apps/:id/publish')
-  @HttpCode(200)
-  async publish(
-    @Param('id') appId: string,
-    @Req() req: Request,
-  ): Promise<Record<string, unknown>> {
-    const published = await this.definitions.commitPublish(
-      appId,
-      actorOf(req),
-    );
-    return toDefinitionResponse(published);
-  }
-
   /** Deprecate (APP-05) — functional, notice served, no new triggers. */
   @Post('apps/:id/deprecate')
   @HttpCode(200)
@@ -237,7 +224,7 @@ function actorOf(req: Request): string {
 }
 
 /** Map a domain refusal to its HTTP status. The code is the contract. */
-function builderErrorStatus(error: BuilderError): HttpStatus {
+export function builderErrorStatus(error: BuilderError): HttpStatus {
   switch (error.code) {
     case 'APP_NOT_FOUND':
     case 'TEMPLATE_NOT_FOUND':
@@ -246,13 +233,14 @@ function builderErrorStatus(error: BuilderError): HttpStatus {
     case 'LIFECYCLE_ILLEGAL_TRANSITION':
     case 'VERSION_CONFLICT':
     case 'VERSION_NOT_RETAINED':
+    case 'PUBLISH_REFUSED':
       return HttpStatus.CONFLICT;
     default:
       return HttpStatus.BAD_REQUEST;
   }
 }
 
-function errorBody(code: string, message: string): {
+export function errorBody(code: string, message: string): {
   error: { code: string; message: string };
 } {
   return { error: { code, message } };
