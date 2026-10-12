@@ -23,6 +23,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import type { ReactElement } from 'react';
@@ -32,6 +33,10 @@ import {
   type AppDefinition,
   type AppDataMode,
 } from '../api/definition.js';
+import {
+  ConnectorRequestListSchema,
+  type ConnectorRequestView,
+} from '../api/connectors.js';
 import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
@@ -83,6 +88,12 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // The data-routing tab's provisioned-connector
+  // read (the app's connector-request queue).
+  const [connectorRequests, setConnectorRequests] = useState<
+    readonly ConnectorRequestView[] | null
+  >(null);
+
   const load = useCallback(async (): Promise<void> => {
     setLoadError(null);
     setDefinition(null);
@@ -126,6 +137,81 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       }
     },
     [definition],
+  );
+
+  // The data-routing tab: read the app's
+  // connector-request queue so the tab can
+  // offer the app's provisioned connectors
+  // for selection — the request's definition
+  // becomes the app's routing target.
+  useEffect(() => {
+    if (activeSection !== 'data-routing') {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await client.get(
+          `/apps/${encodeURIComponent(appId)}/connector-requests`,
+          ConnectorRequestListSchema,
+        );
+        if (!cancelled) {
+          setConnectorRequests(response.requests);
+        }
+      } catch {
+        if (!cancelled) {
+          setConnectorRequests([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, appId, client]);
+
+  /** The app's provisioned connectors — the routing targets the tab offers. */
+  const provisionedConnectors = useMemo(
+    () =>
+      (connectorRequests ?? []).filter(
+        (request) => request.state === 'provisioned',
+      ),
+    [connectorRequests],
+  );
+
+  /**
+   * Offer a provisioned connector into the
+   * routing configuration — the selection
+   * merges `connector_id` into the section's
+   * JSON payload (the tab edits
+   * `routing_config`).
+   */
+  const selectRoutingConnector = useCallback(
+    (connectorId: string): void => {
+      if (connectorId.length === 0) {
+        return;
+      }
+      let payload: Record<string, unknown> = {};
+      try {
+        const parsed: unknown = JSON.parse(jsonText);
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          !Array.isArray(parsed)
+        ) {
+          payload = parsed as Record<string, unknown>;
+        }
+      } catch {
+        payload = {};
+      }
+      setJsonText(
+        JSON.stringify(
+          { ...payload, connector_id: connectorId },
+          null,
+          2,
+        ),
+      );
+    },
+    [jsonText],
   );
 
   /**
@@ -353,6 +439,37 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {activeSection === 'data-routing' ? (
+                  <label className="field" style={{ maxWidth: 420 }}>
+                    <span className="lr-s" style={{ fontWeight: 600 }}>
+                      Provisioned connector
+                    </span>
+                    <select
+                      className="select"
+                      data-testid="routing-connector-select"
+                      defaultValue=""
+                      onChange={(event) =>
+                        selectRoutingConnector(event.target.value)
+                      }
+                    >
+                      <option value="">
+                        Select a provisioned connector…
+                      </option>
+                      {provisionedConnectors.map((request) => (
+                        <option
+                          key={request.request_id}
+                          value={request.connector_id}
+                        >
+                          {request.name} ({request.connector_id})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="helper">
+                      The app's provisioned connectors — selecting one
+                      offers it into the routing configuration.
+                    </span>
+                  </label>
+                ) : null}
                 <span className="helper">
                   The section's JSON payload (the{' '}
                   {jsonFields.join(', ')} field

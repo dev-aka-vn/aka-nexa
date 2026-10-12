@@ -200,6 +200,8 @@ button{font:inherit;color:inherit}
 .badge-completed{background:var(--green-soft);color:#256b48}
 .badge-partial{background:var(--amber-soft);color:#8a5a10}
 .badge-pending{background:var(--blue-soft);color:#1f5289}
+.badge-provisioned{background:var(--green-soft);color:#256b48}
+.badge-rejected{background:var(--red-soft);color:#98291d}
 .badge-failed{background:var(--red-soft);color:#98291d}
 .badge-neutral{background:var(--surface-2);color:var(--text-2)}
 .pill-mono{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:2px 7px;border-radius:var(--radius-xs);color:var(--text-2)}

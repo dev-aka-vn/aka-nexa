@@ -18,7 +18,11 @@
  *    `#/apps/:id/designer` (the form
  *    designer, plan 07 task 2),
  *    `#/apps/:id/roles` (the roles page,
- *    plan 07 task 3).
+ *    plan 07 task 3), `#/submissions?app=x`
+ *    (the submissions viewer, plan 06 task
+ *    2), `#/connectors?app=x` (the
+ *    connector-request queue, plan 06 task
+ *    2).
  *  - **`#/spike`**: the S1 spike surface —
  *    the FormIO 5.6.1 builder verification
  *    harness. Dev-only, deliberately
@@ -61,6 +65,8 @@ import { DashboardPage } from './dashboard/DashboardPage.js';
 import { FormDesignerPage } from './form-designer/FormDesignerPage.js';
 import { RolesPage } from './roles/RolesPage.js';
 import { EditorPage } from './editor/EditorPage.js';
+import { SubmissionsPage } from './submissions/SubmissionsPage.js';
+import { ConnectorsPage } from './connectors/ConnectorsPage.js';
 import { FormioBuilderField } from './form-designer/FormioBuilderField';
 import type { FormioBuilderHandle } from './form-designer/FormioBuilderField';
 import {
@@ -94,6 +100,8 @@ type RouteName =
   | 'editor'
   | 'designer'
   | 'roles'
+  | 'submissions'
+  | 'connectors'
   | 'unknown';
 
 interface ParsedRoute {
@@ -101,9 +109,17 @@ interface ParsedRoute {
   appId?: string;
 }
 
-/** Parse the hash route. Unknown routes fall back to the app list. */
+/**
+ * Parse the hash route. The route may carry a
+ * query string (`#/submissions?app=x` — the
+ * scoped pages' app parameter); the query is
+ * split off before the path segments are read.
+ * Unknown routes fall back to the app list.
+ */
 function parseRoute(route: string): ParsedRoute {
-  const segments = route.split('/').filter(Boolean);
+  const [path = '', query = ''] = route.split('?');
+  const params = new URLSearchParams(query);
+  const segments = path.split('/').filter(Boolean);
   if (segments.length === 0) {
     return { name: 'apps' };
   }
@@ -113,6 +129,18 @@ function parseRoute(route: string): ParsedRoute {
   }
   if (head === 'wizard') {
     return { name: 'wizard' };
+  }
+  if (head === 'submissions') {
+    return {
+      name: 'submissions',
+      appId: params.get('app') ?? undefined,
+    };
+  }
+  if (head === 'connectors') {
+    return {
+      name: 'connectors',
+      appId: params.get('app') ?? undefined,
+    };
   }
   if (head === 'apps' && segments.length === 1) {
     return { name: 'apps' };
@@ -625,6 +653,20 @@ export function App(): ReactElement {
               >
                 Create
               </a>
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#/submissions"
+                data-testid="nav-submissions"
+              >
+                Submissions
+              </a>
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#/connectors"
+                data-testid="nav-connectors"
+              >
+                Connectors
+              </a>
             </nav>
             <span className="od-fill" />
             <span
@@ -657,6 +699,10 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
       return <FormDesignerPage appId={route.appId ?? ''} />;
     case 'roles':
       return <RolesPage appId={route.appId ?? ''} />;
+    case 'submissions':
+      return <SubmissionsPage appId={route.appId} />;
+    case 'connectors':
+      return <ConnectorsPage appId={route.appId} />;
     case 'editor':
       return <EditorPage appId={route.appId ?? ''} />;
     case 'apps':
