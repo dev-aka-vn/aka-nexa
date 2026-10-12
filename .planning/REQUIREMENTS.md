@@ -164,8 +164,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **APP-04**: A published app declares intents and slash commands that activate it
 - [x] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
 - [x] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
-- [ ] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
-- [ ] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
+- [x] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
+- [x] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
 - [x] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
 
 ### Form Engine & Renderer
@@ -272,7 +272,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [x] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
-- [ ] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
+- [x] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
 - [ ] **OBS-06**: Alerts fire on connector failure >5% over 5 min, token consume failure >10/min, average decision confidence <0.6 over 10 min, DLQ depth >50, Redis memory >80%, MongoDB replication lag >5 s, and all decision providers unhealthy
 - [ ] **OBS-07**: Logs are retained 30 days hot (searchable) and 1 year cold
 - [ ] **OBS-08**: A load test demonstrates 1,000 concurrent users and 50 IM events/sec, and measures the 3-tier throttler's Redis cost rather than assuming it
@@ -300,7 +300,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
 - [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
 - [ ] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
-- [ ] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
+- [x] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
 - [ ] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
 - [ ] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
 - [ ] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
@@ -512,7 +512,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BLD-03 | Phase 6 | Pending |
 | BLD-04 | Phase 6 | Complete |
 | BLD-05 | Phase 6 | Pending |
-| BLD-06 | Phase 6 | Pending |
+| BLD-06 | Phase 6 | Complete |
 | BLD-07 | Phase 6 | Pending |
 | BLD-08 | Phase 6 | Pending |
 | BLD-09 | Phase 6 | Pending |
@@ -522,8 +522,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | APP-03 | Phase 6 | Complete |
 | APP-05 | Phase 6 | Complete |
 | APP-06 | Phase 6 | Complete |
-| APP-07 | Phase 6 | Pending |
-| APP-08 | Phase 6 | Pending |
+| APP-07 | Phase 6 | Complete |
+| APP-08 | Phase 6 | Complete |
 | APP-09 | Phase 6 | Complete |
 | FRM-05 | Phase 6 | Complete |
 | FRM-09 | Phase 6 | Complete |
@@ -531,7 +531,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IDN-08 | Phase 6 | Complete |
 | ACL-05 | Phase 6 | Pending |
 | ACL-10 | Phase 6 | Pending |
-| OBS-05 | Phase 6 | Pending |
+| OBS-05 | Phase 6 | Complete |
 | IM-10 | Phase 7 | Pending |
 | NOT-01 | Phase 7 | Pending |
 | NOT-02 | Phase 7 | Pending |

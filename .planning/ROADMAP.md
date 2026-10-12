@@ -229,7 +229,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: 4/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -245,7 +245,7 @@ Plans:
 - [x] 06-04-PLAN.md — App definitions: draft CRUD, 20-version retention + rollback, lifecycle state machine, D-31 template gallery with snapshot forks, G-11 saved-query store replacement
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 06-05-PLAN.md — Publish gate: APP-07 routing dry-run through the real orchestrator (>5-point share drop blocks), APP-08 description collision, BLD-06 change summary, OBS-05 routing_share{app_id} metric
+- [x] 06-05-PLAN.md — Publish gate: APP-07 routing dry-run through the real orchestrator (>5-point share drop blocks), APP-08 description collision, BLD-06 change summary, OBS-05 routing_share{app_id} metric
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 06-06-PLAN.md — Connector requests (BLD-10, D-97..D-100: definition minus secret, operator-provisioned terminal state), submissions viewer + visible-column CSV export (BLD-08/D-111), field-mapping endpoint (BLD-05)
@@ -351,7 +351,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
-| 6. Self-Service App Builder | 4/8 | In Progress|  |
+| 6. Self-Service App Builder | 5/8 | In Progress|  |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |
 

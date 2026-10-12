@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 6
 current_phase_name: Self-Service App Builder
-current_plan: 5
+current_plan: 6
 status: executing
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-10-12T08:22:49.748Z"
-state_head: dd17daaad8a32dd13ad9f4da13479761cf391725
+stopped_at: Completed 06-05-PLAN.md
+last_updated: "2026-10-12T11:40:17.242Z"
+state_head: cfd5e35d28e778bc021c5efa24bdef7aba592df2
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 45
-  completed_plans: 41
+  completed_plans: 42
   percent: 50
 last_activity: 2026-10-11
 last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
@@ -20,15 +20,15 @@ last_activity_desc: Phase 05 plans all executed; a verification pass ran and rec
 ## Current Position
 
 Phase: 6 (Self-Service App Builder) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
-Current Plan: 5
+Current Plan: 6
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T08:22:49.330Z
-**Stopped at:** Completed 06-04-PLAN.md
+**Last session:** 2026-10-12T11:40:16.422Z
+**Stopped at:** Completed 06-05-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -51,6 +51,7 @@ Total Plans in Phase: 8
 | Phase 06 P02 | 90min | 3 tasks | 25 files |
 | Phase 06 P03 | 61min | 2 tasks | 12 files |
 | Phase 6 P04 | 95min | 3 tasks | 33 files |
+| Phase 6 P05 | 129min | 3 tasks | 28 files |
 
 ## Decisions
 
@@ -92,6 +93,12 @@ Total Plans in Phase: 8
 - [Phase 6]: Template fork writes through AppDefinitionRepository.createDraft — inherits unique-app_id guard + audited creation; structuredClone guarantees no shared reference with the platform record (D-108)
 - [Phase 6]: Boot steps in main.ts — TemplateSeed.load() and saved-query backfill run at api composition root; both idempotent so rolling deploys are safe
 - [Phase 6]: SeedSavedQueryLookup retained, unwired — G-11 swap changes only the read.module.ts provider; backfill reads the frozen seed JSON directly
+- [Phase 6]: Share-drop model is additive dilution with 2dp rounding: post(A)=(cA+sA)/(cL+K), points=round(100*(preShare-postShare)*100)/100, allowed = all drops <= 5.00 AND no collision
+- [Phase 6]: Single AUD-01 app.published audit entry carries the full PublishGateResult via a new auditExtra param on AppDefinitionService.transition()
+- [Phase 6]: declaredLabels: trigger labels are declared intents/aliases; id/command fallback applies only when a trigger declares neither
+- [Phase 6]: OTel API 1.9.1 gauge registration: createObservableGauge takes no callback; attach via gauge.addCallback with observableResult.observe(share, { app_id })
+- [Phase 6]: RoutingOutcomeStore structural interface: gate and share computer consume the seam, not the Mongo-backed class; specs use in-memory doubles
+- [Phase 6]: Zero-change publish short-circuits the gate before any dry-run: allowed, empty shareDrops/collision/changeSummary, version unmoved
 
 ## Blockers/Concerns
 
