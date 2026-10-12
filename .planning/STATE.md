@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 6
 current_phase_name: Self-Service App Builder
-current_plan: 6
+current_plan: 7
 status: executing
-stopped_at: Completed 06-05-PLAN.md
-last_updated: "2026-10-12T11:40:17.242Z"
-state_head: cfd5e35d28e778bc021c5efa24bdef7aba592df2
+stopped_at: Completed 06-06-PLAN.md
+last_updated: "2026-10-12T13:29:40.529Z"
+state_head: 74692a2a29a1e44bfd88c226c84a178a0f7ca66b
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 45
-  completed_plans: 42
+  completed_plans: 43
   percent: 50
 last_activity: 2026-10-11
 last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
@@ -20,15 +20,15 @@ last_activity_desc: Phase 05 plans all executed; a verification pass ran and rec
 ## Current Position
 
 Phase: 6 (Self-Service App Builder) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T11:40:16.422Z
-**Stopped at:** Completed 06-05-PLAN.md
+**Last session:** 2026-10-12T13:29:40.017Z
+**Stopped at:** Completed 06-06-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -52,6 +52,7 @@ Total Plans in Phase: 8
 | Phase 06 P03 | 61min | 2 tasks | 12 files |
 | Phase 6 P04 | 95min | 3 tasks | 33 files |
 | Phase 6 P05 | 129min | 3 tasks | 28 files |
+| Phase 06-self-service-app-builder P06 | 96min | 3 tasks | 28 files |
 
 ## Decisions
 
@@ -99,6 +100,10 @@ Total Plans in Phase: 8
 - [Phase 6]: OTel API 1.9.1 gauge registration: createObservableGauge takes no callback; attach via gauge.addCallback with observableResult.observe(share, { app_id })
 - [Phase 6]: RoutingOutcomeStore structural interface: gate and share computer consume the seam, not the Mongo-backed class; specs use in-memory doubles
 - [Phase 6]: Zero-change publish short-circuits the gate before any dry-run: allowed, empty shareDrops/collision/changeSummary, version unmoved
+- [Phase 06-self-service-app-builder]: csv-stringify 6.9.0 is the D-111 export writer (D-111 names csv-parse, the parser; the writer is its adaltas/node-csv sibling)
+- [Phase 06-self-service-app-builder]: Submissions viewer and export share one projection path (toViewerRow over projectSubmissionStatus) so the export row count equals the filtered view count by construction
+- [Phase 06-self-service-app-builder]: ReadModule providers with constructor deps are explicit factory providers — undecorated classes emit no design:paramtypes under tsc or vitest, so bare-class providers instantiate with undefined deps
+- [Phase 06-self-service-app-builder]: Export safe-reason column carries the curated delivery message (never raw submission content); downstream reference comes from the latest revision
 
 ## Blockers/Concerns
 

@@ -299,12 +299,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
 - [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
 - [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
-- [ ] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
+- [x] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
 - [x] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
 - [ ] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
-- [ ] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
+- [x] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
 - [ ] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
-- [ ] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
+- [x] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
 - [ ] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
 - [x] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
 
@@ -511,12 +511,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BLD-02 | Phase 6 | Complete |
 | BLD-03 | Phase 6 | Pending |
 | BLD-04 | Phase 6 | Complete |
-| BLD-05 | Phase 6 | Pending |
+| BLD-05 | Phase 6 | Complete |
 | BLD-06 | Phase 6 | Complete |
 | BLD-07 | Phase 6 | Pending |
-| BLD-08 | Phase 6 | Pending |
+| BLD-08 | Phase 6 | Complete |
 | BLD-09 | Phase 6 | Pending |
-| BLD-10 | Phase 6 | Pending |
+| BLD-10 | Phase 6 | Complete |
 | BLD-11 | Phase 6 | Pending |
 | BLD-12 | Phase 6 | Complete |
 | APP-03 | Phase 6 | Complete |
