@@ -34,7 +34,11 @@ import { ConfigModule } from '@akane/platform';
 import { startThreeContainers, type ThreeContainers } from '../../../../tooling/containers.js';
 
 import { AuthModule } from './auth.module.js';
-import { SESSION_COOKIE_NAME, SESSION_KEY_PREFIX } from './oidc.service.js';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_KEY_PREFIX,
+  type AuthenticatedSession,
+} from './oidc.service.js';
 import { StubOidcIssuer } from './oidc-issuer.stub.js';
 
 /** The builder client the specs configure against the stub issuer. */
@@ -72,6 +76,44 @@ function sessionId(setCookie: string): string {
   const value = pair.slice(SESSION_COOKIE_NAME.length + 1);
   expect(value).toMatch(/^[0-9a-f-]{36}$/);
   return value;
+}
+
+/** The opaque session id inside a `Cookie` request header pair. */
+function sidFromCookie(cookie: string): string {
+  const value = cookie.slice(SESSION_COOKIE_NAME.length + 1);
+  expect(value).toMatch(/^[0-9a-f-]{36}$/);
+  return value;
+}
+
+/**
+ * Rewrite the authenticated session record behind a cookie
+ * directly in Redis — the specs drive D-103's lifetime
+ * legs (expired, renewal window) by backdating the
+ * record the callback wrote, not by waiting on a clock.
+ */
+async function forceSessionRecord(
+  sid: string,
+  overrides: Partial<AuthenticatedSession>,
+  ttlSeconds = 3600,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const record: AuthenticatedSession = {
+    stage: 'authenticated',
+    oidcSub: SUBJECT,
+    realUserId: 'forced-real-user',
+    role: 'global-admin',
+    idpSessionIssuedAt: now - 60,
+    idpSessionExp: now + 3600,
+    mfaAt: new Date().toISOString(),
+    refreshToken: '',
+    ...overrides,
+  };
+  await redis.set(
+    `${SESSION_KEY_PREFIX}${sid}`,
+    JSON.stringify(record),
+    'EX',
+    ttlSeconds,
+  );
 }
 
 /** The five attributes D-101 mandates on the session cookie. */
@@ -332,14 +374,161 @@ describe('builder auth session (BLD-12, D-101/D-102/D-103/D-104)', () => {
     expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
+  // -------------------------------------------------------------------- //
+  // Task 2 — session middleware (T-06-04, D-103, logout)
+  // -------------------------------------------------------------------- //
+
+  it('middleware: state-changing calls without a same-origin Origin are refused (T-06-04)', async () => {
+    const { cookie } = await completeLogin(SUBJECT);
+
+    // An Origin-less mutation is refused. POST is the builder's
+    // state-changing verb today (/auth/logout); the middleware
+    // applies the same check to PUT/PATCH/DELETE, asserted here
+    // against a cross-origin PUT — the check runs before routing,
+    // so the 403 proves the method set, not a route.
+    const absent = await fetch(`${apiOrigin}/auth/logout`, {
+      method: 'POST',
+      headers: { cookie },
+    });
+    expect(absent.status).toBe(403);
+    expect(await absent.json()).toMatchObject({ error: 'CSRF_ORIGIN_MISMATCH' });
+
+    const crossOrigin = await fetch(`${apiOrigin}/auth/me`, {
+      method: 'PUT',
+      headers: { cookie, origin: 'https://evil.example.com' },
+    });
+    expect(crossOrigin.status).toBe(403);
+    expect(await crossOrigin.json()).toMatchObject({
+      error: 'CSRF_ORIGIN_MISMATCH',
+    });
+
+    const patch = await fetch(`${apiOrigin}/auth/me`, {
+      method: 'PATCH',
+      headers: { cookie, origin: 'https://evil.example.com' },
+    });
+    expect(patch.status).toBe(403);
+    expect(await patch.json()).toMatchObject({
+      error: 'CSRF_ORIGIN_MISMATCH',
+    });
+
+    const del = await fetch(`${apiOrigin}/auth/me`, {
+      method: 'DELETE',
+      headers: { cookie, origin: 'https://evil.example.com' },
+    });
+    expect(del.status).toBe(403);
+    expect(await del.json()).toMatchObject({
+      error: 'CSRF_ORIGIN_MISMATCH',
+    });
+
+    // A same-origin mutation passes the CSRF check and reaches
+    // the route (the logout it targets answers, below).
+    const sameOrigin = await fetch(`${apiOrigin}/auth/logout`, {
+      method: 'POST',
+      headers: { cookie, origin: apiOrigin },
+    });
+    expect(sameOrigin.status).toBe(200);
+  });
+
+  it('middleware: an expired IdP session forces re-login with 401 SESSION_EXPIRED (D-103)', async () => {
+    const { cookie, record } = await completeLogin(SUBJECT);
+    const sid = sidFromCookie(cookie);
+
+    // The IdP session has ended: idpSessionExp is behind us.
+    // The stored refresh token is still valid at the issuer —
+    // a middleware that "silently renewed" would use it, so
+    // the no-exchange assertion is what proves the refusal.
+    const now = Math.floor(Date.now() / 1000);
+    await forceSessionRecord(sid, {
+      ...record,
+      idpSessionIssuedAt: now - 7200,
+      idpSessionExp: now - 60,
+    });
+
+    const exchangesBefore = issuer.exchanges;
+    const me = await fetch(`${apiOrigin}/auth/me`, {
+      headers: { cookie },
+    });
+    expect(me.status).toBe(401);
+    expect(await me.json()).toMatchObject({ error: 'SESSION_EXPIRED' });
+
+    // Not silently renewed: no token exchange was attempted
+    // for a session whose IdP session has already ended.
+    expect(issuer.exchanges).toBe(exchangesBefore);
+  });
+
+  it('middleware: a session inside its renewal window is silently renewed (D-103)', async () => {
+    const { cookie, record } = await completeLogin(SUBJECT);
+    const sid = sidFromCookie(cookie);
+
+    // Backdate the record: a 3600s IdP session lifetime with
+    // only 100s remaining — inside the renewal window (less
+    // than half the IdP session lifetime is left), so the
+    // middleware exchanges the server-stored refresh token.
+    const now = Math.floor(Date.now() / 1000);
+    await forceSessionRecord(sid, {
+      ...record,
+      idpSessionIssuedAt: now - 3500,
+      idpSessionExp: now + 100,
+    });
+
+    const exchangesBefore = issuer.exchanges;
+    const me = await fetch(`${apiOrigin}/auth/me`, {
+      headers: { cookie },
+    });
+    expect(me.status).toBe(200);
+
+    // The refresh grant ran against the issuer, and the
+    // rotated refresh token replaced the stored one.
+    expect(issuer.exchanges).toBe(exchangesBefore + 1);
+    const renewed = JSON.parse(
+      (await redis.get(`${SESSION_KEY_PREFIX}${sid}`)) as string,
+    ) as AuthenticatedSession;
+    expect(renewed.idpSessionExp).toBeGreaterThan(now + 3000);
+    expect(renewed.refreshToken).not.toBe(record.refreshToken);
+
+    // The Redis TTL tracks the refreshed IdP session lifetime —
+    // the only TTL input there is (D-103).
+    const ttl = await redis.ttl(`${SESSION_KEY_PREFIX}${sid}`);
+    expect(ttl).toBeGreaterThan(3000);
+  });
+
+  it('logout: destroys the Redis session and clears the __Host- cookie', async () => {
+    const { cookie } = await completeLogin(SUBJECT);
+    const sid = sidFromCookie(cookie);
+
+    const response = await fetch(`${apiOrigin}/auth/logout`, {
+      method: 'POST',
+      headers: { cookie, origin: apiOrigin },
+      redirect: 'manual',
+    });
+    expect(response.status).toBe(200);
+
+    // The session record is gone from Redis.
+    expect(await redis.get(`${SESSION_KEY_PREFIX}${sid}`)).toBeNull();
+
+    // The cookie is cleared, with the same five attributes the
+    // begin endpoint sets it with.
+    const setCookie = response.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    expect(setCookie).toMatch(/(?:^|;\s*)Max-Age=0(?:;|$)/);
+    expectFiveCookieAttributes(setCookie);
+
+    // A subsequent /auth/me is 401: the session no longer
+    // resolves to anything.
+    const me = await fetch(`${apiOrigin}/auth/me`, {
+      headers: { cookie },
+    });
+    expect(me.status).toBe(401);
+  });
+
   /**
    * Drive a full login and return the authenticated session's
-   * record and the cookie that resolves it.
+   * full Redis record and the cookie that resolves it.
    */
   async function completeLogin(
     subject: string,
     login: { role?: string } = {},
-  ): Promise<{ cookie: string; record: { realUserId: string } }> {
+  ): Promise<{ cookie: string; record: AuthenticatedSession }> {
     const begin = await beginLogin();
     const callbackUrl = await authorizeAndReturnCallback(begin.location, {
       subject,
@@ -353,7 +542,7 @@ describe('builder auth session (BLD-12, D-101/D-102/D-103/D-104)', () => {
     const cookie = cookiePair(response.headers.get('set-cookie') ?? '');
     const record = JSON.parse(
       (await redis.get(`${SESSION_KEY_PREFIX}${sessionId(response.headers.get('set-cookie') ?? '')}`)) as string,
-    );
+    ) as AuthenticatedSession;
     return { cookie, record };
   }
 });

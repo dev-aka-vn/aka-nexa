@@ -30,6 +30,7 @@ import {
   OidcService,
   readOidcConfig,
 } from './oidc.service.js';
+import { SessionMiddleware } from './session.middleware.js';
 
 interface ProviderShape {
   readonly provide?: unknown;
@@ -134,6 +135,37 @@ describe('AuthModule wiring (BLD-12)', () => {
     const outcome = await service.upsertFromOidc('wiring-subject', undefined);
     expect(outcome.provisioned).toBe(true);
     expect(outcome.realUserId).toBeTruthy();
+  });
+
+  it('registers the session middleware on every route except the OIDC login flow', () => {
+    // configure() is imperative, so the guard drives it against a
+    // recording consumer: the middleware must be applied to every
+    // builder route, with the two login routes excluded — they
+    // *create* the session, so guarding them would deadlock login.
+    const applied: unknown[] = [];
+    const excluded: unknown[] = [];
+    const routes: unknown[] = [];
+    const consumer = {
+      apply: (...args: unknown[]) => {
+        applied.push(...args);
+        return consumer;
+      },
+      exclude: (...args: unknown[]) => {
+        excluded.push(...args);
+        return consumer;
+      },
+      forRoutes: (...args: unknown[]) => {
+        routes.push(...args);
+        return consumer;
+      },
+    };
+    new AuthModule().configure(consumer as never);
+
+    expect(applied).toContain(SessionMiddleware);
+    const paths = excluded.map((entry) => (entry as { path?: string }).path);
+    expect(paths).toContain('auth/oidc/begin');
+    expect(paths).toContain('auth/oidc/callback');
+    expect(routes).toContain('*');
   });
 
   it('reads the OIDC config from the live environment', () => {
