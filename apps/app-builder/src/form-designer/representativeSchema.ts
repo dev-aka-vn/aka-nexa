@@ -22,7 +22,7 @@
  *                  template-port assertion observes the port.
  */
 
-export interface RepresentativeSchema {
+export interface RepresentativeSchema extends Record<string, unknown> {
   display: string;
   components: Array<Record<string, unknown>>;
 }

@@ -120,7 +120,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
   test('builder mounts; a text-component add fires change and the captured snapshot deep-equals builder.schema', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/spike');
 
     // The builder rendered its DOM into the React-owned
     // container (container-as-leaf mount, Pattern 4).
@@ -162,7 +162,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
   test('FRM-05 boundary: min/max passes exactly at the bound and fails one step outside, with component.errors an array', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/spike');
     await waitForPreview(page);
 
     // Exactly at the min bound: valid — an empty errors array.
@@ -205,7 +205,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
   test('EditGrid.validateRow returns an array — isValid is validateRow(...).length === 0', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/spike');
     await waitForPreview(page);
 
     // The 5.x shape: validateRow returns an array of row
@@ -233,7 +233,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
   test('undo/redo round-trips a real component add through the builder', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/spike');
     const host = page.getByTestId('formio-builder-host');
     await expect(host.locator('.formio-builder-form')).toBeVisible({
       timeout: 20_000,
@@ -260,7 +260,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
   test('the ported Bootstrap-4-era label template renders with the 5.x class vocabulary', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/spike');
     await waitForPreview(page);
 
     const preview = page.getByTestId('spike-preview');

@@ -30,6 +30,13 @@ export default defineConfig({
       '/api': {
         target: API_ORIGIN,
         changeOrigin: true,
+        // The API serves its routes at the root
+        // (no `/api` prefix — the controllers
+        // are mounted unprefixed), so the proxy
+        // strips the key it is addressed by.
+        // Without the rewrite every proxied
+        // call 404s against the API.
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
