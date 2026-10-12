@@ -32,6 +32,18 @@ export class IdentityMappingRepository {
     return m || null;
   }
 
+  /**
+   * Every active mapping carrying an email — the
+   * IDN-07 search shape the Users page lists by
+   * (a single email can map several platforms'
+   * identities to the same user).
+   */
+  async findAllByEmail(email: string): Promise<IdentityMapping[]> {
+    return this.mappings.filter(
+      (x) => x.email === email && !x.deactivated_at,
+    );
+  }
+
   async findByRealUserId(real_user_id: string): Promise<IdentityMapping | null> {
     const m = this.mappings.find((x) => x.real_user_id === real_user_id && !x.deactivated_at);
     return m || null;

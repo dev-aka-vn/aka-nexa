@@ -183,16 +183,23 @@ describe('users sso mappings (IDN-08, D-110)', () => {
     expect(created.email).toBe(EMAIL);
 
     // The mapping is immediately listable by email — the
-    // IDN-07 search shape the Users page uses.
+    // IDN-07 search shape the Users page uses. The list
+    // also carries the admin's own D-104-provisioned
+    // join (an oidcSub→real_user mapping is exactly
+    // what the provisioner writes), so membership —
+    // not length — is the assertion.
     const list = await fetch(
       `${apiOrigin}/users/sso-mappings?email=${encodeURIComponent(EMAIL)}`,
       { headers: { cookie: admin.cookie, origin: apiOrigin } },
     );
     expect(list.status).toBe(200);
     const mappings = await list.json();
-    expect(mappings).toHaveLength(1);
-    expect(mappings[0].oidc_sub).toBe('employee-77');
-    expect(mappings[0].real_user_id).toBe(admin.record.realUserId);
+    const listed = mappings.find(
+      (m: { oidc_sub: string }) => m.oidc_sub === 'employee-77',
+    );
+    expect(listed).toBeDefined();
+    expect(listed.real_user_id).toBe(admin.record.realUserId);
+    expect(listed.email).toBe(EMAIL);
   });
 
   it('a non-global-admin is refused with 403 GLOBAL_ADMIN_REQUIRED', async () => {
@@ -234,14 +241,19 @@ describe('users sso mappings (IDN-08, D-110)', () => {
     expect(error.error).toBe('REAL_USER_UNKNOWN');
     expect(error.message).toContain('no-such-real-user');
 
-    // And nothing was mapped: the list still holds only
-    // the mapping the first test created.
+    // And nothing was mapped: the refused subject
+    // is absent from the list, and the first
+    // test's mapping is still there.
     const list = await fetch(
       `${apiOrigin}/users/sso-mappings?email=${encodeURIComponent(EMAIL)}`,
       { headers: { cookie: admin.cookie, origin: apiOrigin } },
     );
     const mappings = await list.json();
-    expect(mappings).toHaveLength(1);
-    expect(mappings.some((m: { oidc_sub: string }) => m.oidc_sub === 'employee-79')).toBe(false);
+    expect(
+      mappings.some((m: { oidc_sub: string }) => m.oidc_sub === 'employee-79'),
+    ).toBe(false);
+    expect(
+      mappings.some((m: { oidc_sub: string }) => m.oidc_sub === 'employee-77'),
+    ).toBe(true);
   });
 });

@@ -13,11 +13,14 @@
  *
  * ## What this module deliberately does **not** have
  *
- * No `MongoModule` — the D-104 provisioner works
- * over the in-memory identity repositories, exactly
- * as the worker module composes them today; a
- * Mongo-backed identity store is a later plan's
- * replacement, not this module's concern.
+ * No `MongoModule`, and no identity repositories of
+ * its own — the D-104 provisioner works over the
+ * `IdentityModule`'s shared stores, which the users
+ * module (IDN-08) also composes: the auto-provisioned
+ * `real_user` and the admin's mapping check must see
+ * the same directory. A Mongo-backed identity store is
+ * a later plan's replacement, not this module's
+ * concern.
  */
 
 import {
@@ -27,15 +30,12 @@ import {
 } from '@nestjs/common';
 import * as oidcClient from 'openid-client';
 
-import {
-  IdentityMappingRepository,
-  OidcProvisionService,
-  ProfileRepository,
-} from '@akane/domain';
+import { OidcProvisionService } from '@akane/domain';
 import { redisCacheProvider } from '@akane/platform';
 
 import { AuthController } from './auth.controller.js';
 import { SessionMiddleware } from './session.middleware.js';
+import { IdentityModule } from '../identity/identity.module.js';
 import {
   BuilderSessionStore,
   discoverOidcClient,
@@ -46,11 +46,10 @@ import {
 } from './oidc.service.js';
 
 @Module({
+  imports: [IdentityModule],
   controllers: [AuthController],
   providers: [
     redisCacheProvider,
-    IdentityMappingRepository,
-    ProfileRepository,
     {
       provide: 'OIDC_CONFIG',
       useFactory: (): OidcConfig => readOidcConfig(),

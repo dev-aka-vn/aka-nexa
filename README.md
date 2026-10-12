@@ -175,6 +175,67 @@ During the 90-day rotation window (LNK-12) a second key, `JWT_READ_PUBLIC_KEY_PR
 as well. It is optional: omit it entirely outside a rotation, because an empty value trips the same
 `must set` refusal as an absent one.
 
+### Builder SSO authentication (BLD-12, D-101…D-104, IDN-08)
+
+The self-service App Builder authenticates department admins against the enterprise
+identity provider over OIDC. Four variables are required at boot, read straight from
+the environment like the read-link config (not declared as schema fields, so a
+differently-named variable gets a named refusal rather than a silent default):
+
+| Variable | What it is |
+|---|---|
+| `OIDC_ISSUER` | The corporate IdP's issuer URL. Discovery is fetched once at module init from `<OIDC_ISSUER>/.well-known/openid-configuration` (T-06-09: a slow IdP degrades login latency, not security). |
+| `OIDC_CLIENT_ID` | The builder's client registration at the IdP. |
+| `OIDC_CLIENT_SECRET` | The client secret. |
+| `OIDC_REDIRECT_URI` | The callback the `api` serves (`https://<api-host>/auth/oidc/callback`). |
+
+A boot missing any of the four refuses to start with `OIDC_CONFIG_INVALID: must set …`,
+naming the absent ones. In non-production the issuer may be `http://` (the integration
+specs run an in-spec stub issuer on loopback); a production boot against an `http://`
+issuer still fails discovery.
+
+**The login flow** (`GET /auth/oidc/begin` → IdP → `GET /auth/oidc/callback`):
+
+1. `begin` generates a PKCE S256 pair and stashes the `code_verifier` and `state`
+   **server-side** in a pre-login Redis session (120 s, the authorization-code
+   exchange window) — the browser carries only the opaque session id.
+2. `callback` verifies the returned `state` against the stash **before** any network
+   call (T-06-05), exchanges the code with the stashed verifier, and gates the
+   login on the ID token's `acr`/`amr` claims (D-102): only the values in
+   `ACCEPTABLE_ACR_VALUES` (`mfa`, `phr` — the Keycloak-style pair; the enterprise
+   IdP's actual values are the S3 open question, and this one constant is the
+   single place to change them) count as MFA-strong. A password-only login answers
+   `403 AUTH_MFA_REQUIRED`.
+3. First login auto-provisions the `real_user` (D-104) — no admin pre-mapping step.
+
+**The session** (D-101): the authenticated session is an opaque Redis record
+(`ak:sess:<uuid>`), delivered as an httpOnly, Secure, SameSite=Strict
+`__Host-akane_sid` cookie — never a JWT, never readable by the SPA (T-06-07), and
+the OIDC subject lives only in the server-side record (the PII-in-JWT constraint:
+nothing of it is ever minted into our own tokens). The session middleware guards
+every builder route except the two login routes:
+
+- **CSRF** (T-06-04): SameSite=Strict is the structural layer; the second layer
+  refuses a state-changing call (POST/PUT/PATCH/DELETE) whose `Origin` is absent
+  or cross-origin with `403 CSRF_ORIGIN_MISMATCH`.
+- **Lifetime** (D-103): the IdP session is the only TTL input — there is no second,
+  independently-configured expiry. A session whose `idpSessionExp` has passed
+  answers `401 SESSION_EXPIRED`; inside the renewal window (less than half the
+  IdP session lifetime remaining) the server-stored refresh token is exchanged and
+  the Redis TTL extended to the refreshed IdP lifetime. When the IdP session has
+  ended, a full re-login is forced.
+- **Logout** (`POST /auth/logout`): destroys the Redis record and clears the cookie
+  (`Max-Age=0`, same five attributes).
+
+**The Users page's identity surface** (IDN-08, D-110): `POST /users/sso-mappings`
+maps an OIDC subject to an existing `real_user_id` with **no OTP** — the admin's
+global-admin session is the proof (deliberately separate from the employee OTP
+self-onboarding route, IDN-05). A non-global-admin answers `403 GLOBAL_ADMIN_REQUIRED`;
+a mapping to an unknown `real_user_id` answers a field-naming inline error
+(`REAL_USER_UNKNOWN`, field `realUserId`). `GET /users/sso-mappings?email=…` lists
+the mappings carrying that email (the IDN-07 search shape). Both endpoints are
+global-admin-only.
+
 ## Local infrastructure
 
 `compose.dev.yml` starts the three data services the platform needs. It is a development convenience,

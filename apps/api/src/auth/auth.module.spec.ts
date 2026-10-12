@@ -23,6 +23,7 @@ import {
 
 import { AuthController } from './auth.controller.js';
 import { AuthModule } from './auth.module.js';
+import { IdentityModule } from '../identity/identity.module.js';
 import {
   BuilderSessionStore,
   OIDC_CLIENT,
@@ -42,6 +43,8 @@ describe('AuthModule wiring (BLD-12)', () => {
   const providers = (Reflect.getMetadata('providers', AuthModule) ??
     []) as ProviderShape[];
   const controllers = (Reflect.getMetadata('controllers', AuthModule) ??
+    []) as unknown[];
+  const imports = (Reflect.getMetadata('imports', AuthModule) ??
     []) as unknown[];
 
   /**
@@ -119,10 +122,14 @@ describe('AuthModule wiring (BLD-12)', () => {
     expect(service?.inject).toContain(OidcProvisionService);
   });
 
-  it('binds the D-104 auto-provision service and its repositories', () => {
+  it('binds the D-104 auto-provision service over the shared identity stores', () => {
     expect(declared(OidcProvisionService)).toBe(true);
-    expect(declared(IdentityMappingRepository)).toBe(true);
-    expect(declared(ProfileRepository)).toBe(true);
+    // The provisioner's repositories come from the
+    // shared IdentityModule — the same stores the
+    // users module's IDN-08 mapping service
+    // validates against, so a D-104-provisioned
+    // real_user is visible to the mapping check.
+    expect(imports).toContain(IdentityModule);
   });
 
   it('provisions against the real repository shape', async () => {

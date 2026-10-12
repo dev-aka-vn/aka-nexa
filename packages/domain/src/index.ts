@@ -15,6 +15,12 @@ export {
 } from './identity/oidc-provision.service.js';
 export { ProfileRepository } from './identity/profile.repository.js';
 export type { Profile } from './identity/profile.repository.js';
+export { SsoMappingService } from './identity/sso-mapping.service.js';
+export type {
+  SsoMappingInput,
+  SsoMappingRecord,
+  SsoMappingResult,
+} from './identity/sso-mapping.service.js';
 export { LinkIssuerService } from './links/link-issuer.service.js';
 export type { IssueLinkInput } from './links/link-issuer.service.js';
 export { ReadDenyService } from './links/read-deny.service.js';
