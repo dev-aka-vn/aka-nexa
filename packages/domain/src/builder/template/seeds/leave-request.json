@@ -1,0 +1,25 @@
+{
+  "template_id": "leave-request",
+  "name": "Leave Request",
+  "description": "Request time off — absence and leave approvals, routed to the HR queue",
+  "domain": "absence/leave",
+  "tags": ["time-off", "hr", "all-staff"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "date", "key": "start_date", "label": "First day", "input": true },
+      { "type": "date", "key": "end_date", "label": "Last day", "input": true },
+      { "type": "textarea", "key": "reason", "label": "Reason", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "leave", "type": "slash", "command": "/leave", "description": "Request time off" }
+  ]
+}

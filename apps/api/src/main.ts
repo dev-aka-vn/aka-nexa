@@ -3,6 +3,12 @@ import { NestFactory } from '@nestjs/core';
 
 import { otelBootstrapConfigFromEnv, startOtel } from '@akane/platform/otel';
 
+import {
+  backfillSavedQueries,
+  TemplateSeed,
+} from '@akane/domain';
+import { MongoService } from '@akane/platform';
+
 /**
  * The `api` bootstrap — one shape, copied verbatim by `worker` and `scheduler`
  * (FND-03, D-09, D-20).
@@ -42,6 +48,20 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // The two idempotent boot steps, after the graph is
+  // wired and before the first request is served:
+  //
+  // D-105 — the template gallery loads (a content-hash
+  // guard makes a re-load a no-op, so a rolling deploy
+  // cannot duplicate platform templates), and
+  //
+  // G-11 — the frozen saved-query seeds backfill the
+  // repository-backed store (insert-if-absent, so a
+  // builder's newer query_version is never clobbered
+  // and a re-run is a no-op).
+  await app.get(TemplateSeed).load();
+  await backfillSavedQueries(app.get(MongoService));
 
   await app.listen(app.get(ConfigService).getOrThrow<number>('PORT'));
 }

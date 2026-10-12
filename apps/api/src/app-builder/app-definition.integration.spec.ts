@@ -48,6 +48,7 @@ import {
   ReadVerifierService,
   RbacCacheService,
   RbacService,
+  TemplateSeed,
   type PublishedApp,
   type ReadLinkJwtVerifier,
 } from '@akane/domain';
@@ -234,6 +235,7 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
   let baseUrl: string;
   let service: AppDefinitionService;
   let audit: AuditRepository;
+  let templateSeed: TemplateSeed;
 
   beforeAll(async () => {
     containers = await startThreeContainers();
@@ -252,6 +254,11 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
 
     service = moduleRef.get(AppDefinitionService);
     audit = moduleRef.get(AuditRepository);
+    templateSeed = moduleRef.get(TemplateSeed);
+
+    // D-105: the gallery loads at boot (main.ts does this
+    // step in production; the spec runs it directly).
+    await templateSeed.load();
 
     app = moduleRef.createNestApplication();
     await app.init();
@@ -504,5 +511,140 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
       expect(after.claims.app_id).toBe('asset-request');
       expect(after.submission?.app_id).toBe('asset-request');
     }
+  });
+
+  it('GET /templates serves the ten-template gallery, every one platform-owned (D-105, D-106)', async () => {
+    const gallery = await call('GET', `${baseUrl}/templates`);
+
+    expect(gallery.status).toBe(200);
+    const templates = (gallery.body as { templates: Record<string, unknown>[] })
+      .templates;
+    expect(templates).toHaveLength(10);
+
+    // Every template is platform-owned and read-only to
+    // builders — the gallery exposes no mutation route.
+    for (const template of templates) {
+      expect(template.owner).toBe('platform');
+    }
+
+    // The D-106 domains: the internal request domains
+    // plus the external/hybrid examples.
+    const ids = templates.map((t) => t.template_id).sort();
+    expect(ids).toEqual(
+      [
+        'asset-request',
+        'crm-contact',
+        'expense-report',
+        'facilities-request',
+        'hr-request',
+        'it-helpdesk-ticket',
+        'leave-request',
+        'procurement-request',
+        'redmine-issue',
+        'travel-request',
+      ],
+    );
+
+    // The external/hybrid examples carry a connector_ref
+    // expectation — and no credentials, ever (T-06-18).
+    const redmine = templates.find(
+      (t) => t.template_id === 'redmine-issue',
+    )!;
+    expect(redmine.data_mode).toBe('external');
+    expect(redmine.connector_ref).toBe('redmine');
+    expect(JSON.stringify(redmine)).not.toMatch(/credential|secret/i);
+  });
+
+  it('POST /templates/:id/fork deep-copies a template into a user-owned draft with no origin reference (D-108)', async () => {
+    const forked = await call('POST', `${baseUrl}/templates/travel-request/fork`, {
+      app_id: 'team-travel',
+    });
+
+    expect(forked.status).toBe(201);
+    expect(forked.body).toMatchObject({
+      app_id: 'team-travel',
+      name: 'Travel Request',
+      lifecycle: 'draft',
+      version: 1,
+    });
+
+    // D-108: a snapshot, not a reference — no origin
+    // field, no provenance, no update-subscription.
+    const keys = Object.keys(forked.body);
+    for (const field of [
+      'template_id',
+      'origin',
+      'provenance',
+      'template',
+      'forked_from',
+    ]) {
+      expect(keys).not.toContain(field);
+    }
+
+    // The template's definition traveled with the fork.
+    expect((forked.body as { tags: string[] }).tags).toEqual([
+      'travel',
+      'all-staff',
+    ]);
+    expect(
+      (forked.body as { form_schema: unknown }).form_schema,
+    ).toEqual(
+      (
+        await templateSeed.listTemplates()
+      ).find((t) => t.template_id === 'travel-request')!.form_schema,
+    );
+
+    // The fork is editable under BLD-02/APP-03 rules.
+    const edited = await call('PATCH', `${baseUrl}/apps/team-travel`, {
+      section: 'general',
+      patch: { name: 'Team Travel' },
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({
+      app_id: 'team-travel',
+      name: 'Team Travel',
+      version: 2,
+    });
+  });
+
+  it('rejects a tag outside the curated vocabulary, naming the allowed set (D-107)', async () => {
+    await call('POST', `${baseUrl}/apps`, {
+      name: 'Tagged',
+      app_id: 'tagged-app',
+      description: 'A tagged app',
+    });
+
+    const rejected = await call('PATCH', `${baseUrl}/apps/tagged-app`, {
+      section: 'metadata',
+      patch: { tags: ['not-a-real-tag'] },
+    });
+
+    expect(rejected.status).toBe(400);
+    const rendered = JSON.stringify(rejected.body);
+    expect(rendered).toMatch(/curated platform set/);
+    // The allowed vocabulary is named in the refusal.
+    expect(rendered).toMatch(/time-off/);
+    expect(rendered).toMatch(/all-staff/);
+    expect(rendered).toMatch(/engineering/);
+    expect(rendered).toMatch(/not-a-real-tag/);
+  });
+
+  it('accepts curated tags on the metadata section', async () => {
+    await call('POST', `${baseUrl}/apps`, {
+      name: 'Curated',
+      app_id: 'curated-app',
+      description: 'A curated app',
+    });
+
+    const updated = await call('PATCH', `${baseUrl}/apps/curated-app`, {
+      section: 'metadata',
+      patch: { tags: ['time-off', 'hr'] },
+    });
+
+    expect(updated.status).toBe(200);
+    expect((updated.body as { tags: string[] }).tags).toEqual([
+      'time-off',
+      'hr',
+    ]);
   });
 });

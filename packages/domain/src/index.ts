@@ -165,6 +165,25 @@ export {
   RETAINED_VERSIONS,
 } from './builder/app-definition.service.js';
 export {
+  assertCuratedTags,
+  isPlatformTag,
+  PLATFORM_DEPARTMENT_TAGS,
+  PLATFORM_TAGS,
+  PLATFORM_USE_CASE_TAGS,
+  PlatformTagSchema,
+  PlatformTagsSchema,
+  type PlatformTag,
+} from './builder/template/tag-set.js';
+export {
+  TemplateSeed,
+  TEMPLATE_SEEDS,
+  templateContentHash,
+  type TemplateRecord,
+  type TemplateSeedInput,
+} from './builder/template/template.seed.js';
+export { RepositorySavedQueryLookup } from './builder/saved-query.repository.js';
+export { backfillSavedQueries } from './builder/saved-query.backfill.js';
+export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,
 } from './connectors/data-access/connector-credentials.repository.js';

@@ -18,9 +18,15 @@ import {
 
 import {
   AppDefinitionService,
+  AppDefinitionValidationError,
   BuilderError,
+  TemplateSeed,
   type AppDefinitionDocument,
 } from '@akane/domain';
+import {
+  ForkTemplateSchema,
+  type ForkTemplateInput,
+} from '@akane/contract';
 
 /**
  * Renders every domain refusal inline: the `code` maps
@@ -72,7 +78,10 @@ export class BuilderExceptionFilter implements ExceptionFilter {
 @Controller()
 @UseFilters(new BuilderExceptionFilter())
 export class AppBuilderController {
-  constructor(private readonly definitions: AppDefinitionService) {}
+  constructor(
+    private readonly definitions: AppDefinitionService,
+    private readonly templates: TemplateSeed,
+  ) {}
 
   /** Create the wizard's step-1 draft. */
   @Post('apps')
@@ -109,6 +118,51 @@ export class AppBuilderController {
     return { apps: docs.map(toDefinitionResponse) };
   }
 
+  /**
+   * The template gallery (D-105) — the platform-owned
+   * collection, read-only to builders. Every template
+   * is a snapshot source: the only write path is the
+   * fork below.
+   */
+  @Get('templates')
+  async listTemplates(): Promise<{
+    templates: Record<string, unknown>[];
+  }> {
+    return {
+      templates: (await this.templates.listTemplates()).map(
+        (record) => ({ ...record }),
+      ),
+    };
+  }
+
+  /**
+   * Fork a template into a user-owned draft (D-108) —
+   * a deep-copied snapshot with no origin reference,
+   * editable under BLD-02/APP-03 rules from version 1.
+   */
+  @Post('templates/:id/fork')
+  @HttpCode(201)
+  async forkTemplate(
+    @Param('id') templateId: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const parsed = ForkTemplateSchema.safeParse(
+      body ?? {},
+    );
+    if (!parsed.success) {
+      throw new AppDefinitionValidationError(
+        parsed.error.issues,
+      );
+    }
+    const forked = await this.templates.forkTemplate(
+      templateId,
+      actorOf(req),
+      (parsed.data as ForkTemplateInput).app_id,
+    );
+    return toDefinitionResponse(forked);
+  }
+
   /** Edit one BLD-02 tab section — a version-bumped, audited transition. */
   @Patch('apps/:id')
   async updateSection(
@@ -129,8 +183,7 @@ export class AppBuilderController {
     return toDefinitionResponse(updated);
   }
 
-  /** The plan-05 gate's seam: commit the publish transition. */
-  @Post('apps/:id/publish')
+  /** The plan-05 gate's seam: commit the publish transition. */  @Post('apps/:id/publish')
   @HttpCode(200)
   async publish(
     @Param('id') appId: string,
@@ -186,6 +239,7 @@ function actorOf(req: Request): string {
 function builderErrorStatus(error: BuilderError): HttpStatus {
   switch (error.code) {
     case 'APP_NOT_FOUND':
+    case 'TEMPLATE_NOT_FOUND':
       return HttpStatus.NOT_FOUND;
     case 'APP_ID_IN_USE':
     case 'LIFECYCLE_ILLEGAL_TRANSITION':

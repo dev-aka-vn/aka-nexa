@@ -12,6 +12,7 @@ import {
   BuilderError,
   type AppLifecycleState,
 } from './app-lifecycle.js';
+import { assertCuratedTags } from './template/tag-set.js';
 import {
   AppDefinitionRepository,
   AppIdInUseError,
@@ -133,6 +134,16 @@ export class AppDefinitionService {
       throw new AppDefinitionValidationError(parsed.error.issues);
     }
     await this.assertExists(appId);
+    // D-107 (T-06-16): the metadata tab carries the app's
+    // tags, and tags are the curated platform vocabulary —
+    // an out-of-vocabulary tag is refused inline, naming
+    // the allowed set, before anything is written.
+    if (
+      parsed.data.section === 'metadata' &&
+      'tags' in parsed.data.patch
+    ) {
+      assertCuratedTags(parsed.data.patch['tags']);
+    }
 
     const updated = await this.repository.updateSection(
       appId,

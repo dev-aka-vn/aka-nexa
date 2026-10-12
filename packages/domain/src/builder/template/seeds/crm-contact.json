@@ -1,0 +1,26 @@
+{
+  "template_id": "crm-contact",
+  "name": "CRM Contact",
+  "description": "Log a contact in the CRM and notify the sales desk — hybrid: stored internally, synced to the CRM connector",
+  "domain": "crm",
+  "tags": ["external", "sales"],
+  "data_mode": "hybrid",
+  "connector_ref": "crm",
+  "form_schema": {
+    "components": [
+      { "type": "textfield", "key": "name", "label": "Name", "input": true },
+      { "type": "email", "key": "email", "label": "Email", "input": true },
+      { "type": "textfield", "key": "company", "label": "Company", "input": true },
+      { "type": "textarea", "key": "notes", "label": "Notes", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "crm", "type": "slash", "command": "/crm", "description": "Log a CRM contact" }
+  ]
+}

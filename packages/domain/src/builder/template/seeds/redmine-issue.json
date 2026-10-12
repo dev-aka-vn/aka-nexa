@@ -1,0 +1,25 @@
+{
+  "template_id": "redmine-issue",
+  "name": "Redmine Issue",
+  "description": "File an issue in the engineering tracker — created through the Redmine connector",
+  "domain": "issue-tracking",
+  "tags": ["external", "engineering"],
+  "data_mode": "external",
+  "connector_ref": "redmine",
+  "form_schema": {
+    "components": [
+      { "type": "textfield", "key": "subject", "label": "Subject", "input": true },
+      { "type": "select", "key": "tracker", "label": "Tracker", "input": true, "data": { "values": [{ "label": "Bug", "value": "bug" }, { "label": "Feature", "value": "feature" }, { "label": "Task", "value": "task" }] } },
+      { "type": "textarea", "key": "description", "label": "Description", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "redmine", "type": "slash", "command": "/redmine", "description": "File a Redmine issue" }
+  ]
+}

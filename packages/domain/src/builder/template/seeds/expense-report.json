@@ -1,0 +1,25 @@
+{
+  "template_id": "expense-report",
+  "name": "Expense Report",
+  "description": "Submit an expense — receipt-backed reimbursement through finance",
+  "domain": "expenses",
+  "tags": ["expenses", "finance"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "number", "key": "amount", "label": "Amount", "input": true },
+      { "type": "select", "key": "category", "label": "Category", "input": true, "data": { "values": [{ "label": "Travel", "value": "travel" }, { "label": "Meals", "value": "meals" }, { "label": "Software", "value": "software" }, { "label": "Other", "value": "other" }] } },
+      { "type": "textarea", "key": "receipt_note", "label": "Receipt note", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "expense", "type": "slash", "command": "/expense", "description": "Submit an expense" }
+  ]
+}

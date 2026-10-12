@@ -5,9 +5,9 @@ import {
   PermissionCheckService,
   ReadVerifierService,
   ReadDenyService,
+  RepositorySavedQueryLookup,
   RbacService,
   RbacCacheService,
-  SeedSavedQueryLookup,
   SignatureFailureLimiter,
   SubmissionRepository,
   SubmissionRevisionsRepository,
@@ -15,7 +15,7 @@ import {
   DataRouterService,
   type ReadLinkJwtVerifier,
 } from '@akane/domain';
-import { MongoModule, redisCacheProvider, verifyReadLinkJwt } from '@akane/platform';
+import { MongoModule, MongoService, redisCacheProvider, verifyReadLinkJwt } from '@akane/platform';
 
 import { ReadController } from './read.controller.js';
 import {
@@ -186,11 +186,21 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
       },
     },
     {
-      // The D-73 saved-query store (G-11). Declared as a factory rather than a
-      // class token: the class takes an *optional* `records` parameter, and
-      // letting Nest reflect that would make it try to inject an Array.
-      provide: SeedSavedQueryLookup,
-      useFactory: (): SeedSavedQueryLookup => new SeedSavedQueryLookup(),
+      // The D-73 saved-query store (G-11). The repository-backed
+      // implementation of the interface the verifier already
+      // consumes — `SeedSavedQueryLookup` was the stopgap that
+      // read the frozen seed until the App Builder existed; the
+      // class is kept as the backfill's source, not wired here.
+      // A factory rather than a class token: the constructor
+      // takes the `MongoService`, and explicit tokens keep the
+      // graph identical under the test runner (which emits no
+      // decorator metadata for bare-class providers).
+      provide: RepositorySavedQueryLookup,
+      useFactory: (
+        mongo: MongoService,
+      ): RepositorySavedQueryLookup =>
+        new RepositorySavedQueryLookup(mongo),
+      inject: [MongoService],
     },
     {
       provide: ReadVerifierService,
@@ -198,7 +208,7 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
         jwt: ReadLinkJwtVerifier,
         permissionCheck: PermissionCheckService,
         submissions: SubmissionRepository,
-        savedQueries: SeedSavedQueryLookup,
+        savedQueries: RepositorySavedQueryLookup,
         denyService: ReadDenyService,
         revisions: SubmissionRevisionsRepository,
         tokenStore: LinkTokenStore,
@@ -216,7 +226,7 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
         { token: 'READ_LINK_JWT_VERIFIER', optional: false },
         PermissionCheckService,
         SubmissionRepository,
-        SeedSavedQueryLookup,
+        RepositorySavedQueryLookup,
         ReadDenyService,
         SubmissionRevisionsRepository,
         LinkTokenStore,

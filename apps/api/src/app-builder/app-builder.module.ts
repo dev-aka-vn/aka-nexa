@@ -18,10 +18,14 @@
  * reads the `MongoService` lazily through the
  * platform barrel), so it stays a class
  * provider; the definition repository takes the
- * `MongoService` `MongoModule` exports, and the
+ * `MongoService` `MongoModule` exports, the
  * audit log is the process-wide append-only
  * AUD-01 store every audited transition (D-86)
- * appends to.
+ * appends to, and the template gallery owns the
+ * platform `templates` collection — its fork
+ * writes through the definition repository so
+ * the draft lands in the same `apps`
+ * collection with the same guards.
  */
 
 import { Module } from '@nestjs/common';
@@ -30,6 +34,7 @@ import {
   AppDefinitionRepository,
   AppDefinitionService,
   AuditRepository,
+  TemplateSeed,
 } from '@akane/domain';
 import { MongoModule, MongoService } from '@akane/platform';
 
@@ -45,6 +50,15 @@ import { AppBuilderController } from './app-builder.controller.js';
       useFactory: (mongo: MongoService): AppDefinitionRepository =>
         new AppDefinitionRepository(mongo),
       inject: [MongoService],
+    },
+    {
+      provide: TemplateSeed,
+      useFactory: (
+        mongo: MongoService,
+        definitions: AppDefinitionRepository,
+        audit: AuditRepository,
+      ): TemplateSeed => new TemplateSeed(mongo, definitions, audit),
+      inject: [MongoService, AppDefinitionRepository, AuditRepository],
     },
     {
       provide: AppDefinitionService,

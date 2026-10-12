@@ -18,8 +18,9 @@ import {
   AppDefinitionRepository,
   AppDefinitionService,
   AuditRepository,
+  TemplateSeed,
 } from '@akane/domain';
-import { MongoModule } from '@akane/platform';
+import { MongoModule, MongoService } from '@akane/platform';
 
 import { AppBuilderController } from './app-builder.controller.js';
 import { AppBuilderModule } from './app-builder.module.js';
@@ -61,6 +62,16 @@ describe('AppBuilderModule wiring (BLD-02)', () => {
     expect(Array.isArray(service?.inject)).toBe(true);
     expect(service?.inject).toContain(AppDefinitionRepository);
     expect(service?.inject).toContain(AuditRepository);
+  });
+
+  it('binds the template gallery as a factory over the connection, repository and audit log', () => {
+    const seed = providers.find((p) => p.provide === TemplateSeed);
+    expect(seed).toBeDefined();
+    expect(typeof seed?.useFactory).toBe('function');
+    expect(Array.isArray(seed?.inject)).toBe(true);
+    expect(seed?.inject).toContain(MongoService);
+    expect(seed?.inject).toContain(AppDefinitionRepository);
+    expect(seed?.inject).toContain(AuditRepository);
   });
 
   it('places the repository and audit log in the factory positions', () => {

@@ -17,7 +17,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { ReadVerifierService, SeedSavedQueryLookup } from '@akane/domain';
+import {
+  ReadVerifierService,
+  RepositorySavedQueryLookup,
+} from '@akane/domain';
 
 import { ReadModule } from './read.module.js';
 
@@ -32,21 +35,27 @@ describe('ReadModule wiring (G-11)', () => {
   const verifier = providers.find((p) => p.provide === ReadVerifierService);
 
   it('declares the production saved-query store', () => {
-    expect(providers.some((p) => p.provide === SeedSavedQueryLookup)).toBe(true);
+    expect(
+      providers.some((p) => p.provide === RepositorySavedQueryLookup),
+    ).toBe(true);
   });
 
   it('binds the store into the ReadVerifierService inject list', () => {
     expect(verifier).toBeDefined();
     expect(Array.isArray(verifier?.inject)).toBe(true);
-    expect(verifier?.inject).toContain(SeedSavedQueryLookup);
+    expect(verifier?.inject).toContain(RepositorySavedQueryLookup);
   });
 
   it('places the store in the savedQueries position when the factory runs', () => {
     expect(typeof verifier?.useFactory).toBe('function');
 
-    const store = new SeedSavedQueryLookup();
-    // The factory only forwards to the constructor; no seam is exercised here,
-    // so untyped stand-ins are enough for the ones not under assertion.
+    // The repository-backed store is the G-11 replacement: the
+    // constructor takes the MongoService, which the factory's
+    // explicit inject list binds by token. The stand-in carries
+    // no behavior here — the positions are the assertion.
+    const store = new RepositorySavedQueryLookup(
+      undefined as never,
+    );
     const service = verifier!.useFactory!(
       {} as never,
       {} as never,
