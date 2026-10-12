@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 11
+open_count: 12
 waived_count: 1
 fixed_count: 10
-total_count: 22
-last_updated: 2026-10-12T04:55:48.914Z
+total_count: 23
+last_updated: 2026-10-12T06:20:41.628Z
 ---
 
 # Broken Windows Ledger
@@ -37,6 +37,7 @@ last_updated: 2026-10-12T04:55:48.914Z
 | 20 | 05 | unrun-verify | .planning/phases/05-integration-async-execution/05-09-PLAN.md |  | Full suite (npx vitest run, 83 spec files incl. Docker-backed integration specs) not run to completion — exceeded a 10-min timeout; plan-scoped renderer suite is green (97 tests). | open |  | 2026-10-10T17:32:26.285Z |  |
 | 21 | 05 | deviation | apps/api/src/read/status-surface.integration.spec.ts |  | Pre-existing red from plan 05-08: read.controller.ts gained a LinkTokenStore constructor dependency (index 3) but status-surface.integration.spec.ts (last touched 05-07) does not provide it in its RootTestModule, so the spec fails with a Nest DI resolution error. Not caused by 05-09 (renderer-only). Owner: plan 05-08. | open |  | 2026-10-10T17:32:27.220Z |  |
 | 22 | 06 | deviation | apps/api/src/auth/oidc-issuer.stub.ts |  | 06-02: drift walk now excludes *.stub.ts test fixtures (production orphan guard unchanged); six pre-existing future-phase orphans logged in 06-02-deferred-items.md | open |  | 2026-10-12T04:55:48.914Z |  |
+| 23 | 06 | stub | apps/worker/src/processors/otp-delivery.service.ts |  | OtpDeliveryService logs delivery only; live Slack leg is the manual-verify item (06-VALIDATION.md) | open |  | 2026-10-12T06:20:41.628Z |  |
 
 ````json
 [
@@ -318,6 +319,19 @@ last_updated: 2026-10-12T04:55:48.914Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-12T04:55:48.914Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 23,
+    "kind": "stub",
+    "phase": "06",
+    "file": "apps/worker/src/processors/otp-delivery.service.ts",
+    "line": null,
+    "description": "OtpDeliveryService logs delivery only; live Slack leg is the manual-verify item (06-VALIDATION.md)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T06:20:41.628Z",
     "resolved_at": null,
     "milestone": null
   }

@@ -31,7 +31,7 @@
     {
       "number": "6",
       "name": "Self-Service App Builder",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "7",
@@ -49,5 +49,5 @@
     "label": "Advance to the next step",
     "reason": "Phase 6 of 8 · 50% · executing"
   },
-  "updated_at": "2026-10-12T03:11:05.685Z"
+  "updated_at": "2026-10-12T06:20:55.441Z"
 }
