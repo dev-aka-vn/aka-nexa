@@ -279,4 +279,128 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     });
     expect(entries.length).toBe(before.length + 1);
   });
+
+  it("a publish that drops a competitor's share past 5 points is refused, inline and side-effect-free", async () => {
+    // The competitor: published, declaring the same two
+    // labels the candidate will declare.
+    const competitorCreated = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Competitor',
+        app_id: 'competitor-app',
+        description: 'A competing expense app',
+      },
+      OWNER,
+    );
+    expect(competitorCreated.status).toBe(201);
+    const competitorTriggers = await call(
+      'PATCH',
+      `${baseUrl}/apps/competitor-app`,
+      {
+        section: 'triggers',
+        patch: {
+          triggers: [
+            {
+              id: 'comp',
+              type: 'slash',
+              command: '/comp',
+              intents: ['expense report', 'expense'],
+              aliases: ['expense report', 'expense'],
+            },
+          ],
+        },
+      },
+      OWNER,
+    );
+    expect(competitorTriggers.status).toBe(200);
+    const competitorPublished = await call(
+      'POST',
+      `${baseUrl}/apps/competitor-app/publish`,
+      undefined,
+      OWNER,
+    );
+    expect(competitorPublished.status).toBe(200);
+
+    // The candidate, declaring the same labels.
+    const candidateCreated = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Gate Candidate',
+        app_id: 'gate-candidate',
+        description: 'Submit a gate candidate',
+      },
+      OWNER,
+    );
+    expect(candidateCreated.status).toBe(201);
+    const candidateTriggers = await call(
+      'PATCH',
+      `${baseUrl}/apps/gate-candidate`,
+      TRIGGERS_SECTION,
+      OWNER,
+    );
+    expect(candidateTriggers.status).toBe(200);
+
+    // The live 24h window the gate's baseline reads: 10 of
+    // the 19 shared-label routings to the competitor. The
+    // candidate's two labels dilute the competitor's share
+    // 10/19 → 10/21 = 5.01 points — one hundredth past
+    // the line the rule draws.
+    await mongo
+      .db()
+      .collection('routing_outcomes')
+      .insertMany([
+        ...Array.from({ length: 10 }, (_, i) => ({
+          routing_id: `comp_${i}`,
+          intent_label: 'expense report',
+          app_id: 'competitor-app',
+          decidedAt: new Date(),
+        })),
+        ...Array.from({ length: 9 }, (_, i) => ({
+          routing_id: `other_${i}`,
+          intent_label: 'expense',
+          app_id: 'another-app',
+          decidedAt: new Date(),
+        })),
+      ]);
+
+    const before = await audit.findAll();
+    const refusal = await call(
+      'POST',
+      `${baseUrl}/apps/gate-candidate/publish`,
+      undefined,
+      OWNER,
+    );
+
+    // The refusal is inline and specific: the affected
+    // app and the delta, not a generic confirmation.
+    expect(refusal.status).toBe(409);
+    expect(refusal.body).toMatchObject({
+      error: {
+        code: 'PUBLISH_REFUSED',
+        message: expect.stringContaining('competitor-app'),
+      },
+    });
+    expect(
+      (refusal.body.error as { message: string }).message,
+    ).toContain('5.01');
+
+    // Side-effect-free: the candidate is still a draft and
+    // the audit log gained no publish entry.
+    const stored = await mongo
+      .db()
+      .collection('apps')
+      .findOne({ app_id: 'gate-candidate' });
+    expect(stored?.lifecycle).toBe('draft');
+    const entries = await audit.findAll();
+    expect(
+      entries.filter(
+        (entry) =>
+          entry.action === 'app.published' &&
+          entry.target === 'gate-candidate',
+      ),
+    ).toHaveLength(0);
+    expect(entries.length).toBe(before.length);
+  });
 });
