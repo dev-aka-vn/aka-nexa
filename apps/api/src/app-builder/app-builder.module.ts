@@ -43,6 +43,8 @@ import {
   AppDefinitionRepository,
   AppDefinitionService,
   AuditRepository,
+  ConnectorRequestRepository,
+  ConnectorRequestService,
   PublishGateService,
   ProviderHealthService,
   ProviderRegistry,
@@ -57,11 +59,16 @@ import {
 import { MongoModule, MongoService } from '@akane/platform';
 
 import { AppBuilderController } from './app-builder.controller.js';
+import { ConnectorRequestController } from './connector-request.controller.js';
 import { PublishController } from './publish.controller.js';
 
 @Module({
   imports: [MongoModule],
-  controllers: [AppBuilderController, PublishController],
+  controllers: [
+    AppBuilderController,
+    ConnectorRequestController,
+    PublishController,
+  ],
   providers: [
     AuditRepository,
     {
@@ -161,6 +168,30 @@ import { PublishController } from './publish.controller.js';
           health,
           attemptCaps: registry.attemptCaps(),
         }),
+    },
+    {
+      provide: ConnectorRequestRepository,
+      useFactory: (mongo: MongoService): ConnectorRequestRepository =>
+        new ConnectorRequestRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      // BLD-10: the connector-request service over
+      // the request repository, the definition
+      // repository (owner-scoping), and the audit
+      // log — every transition an audited one.
+      provide: ConnectorRequestService,
+      useFactory: (
+        requests: ConnectorRequestRepository,
+        definitions: AppDefinitionRepository,
+        audit: AuditRepository,
+      ): ConnectorRequestService =>
+        new ConnectorRequestService(requests, definitions, audit),
+      inject: [
+        ConnectorRequestRepository,
+        AppDefinitionRepository,
+        AuditRepository,
+      ],
     },
     {
       provide: PublishGateService,

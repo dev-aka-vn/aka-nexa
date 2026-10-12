@@ -234,6 +234,7 @@ export function builderErrorStatus(error: BuilderError): HttpStatus {
     case 'VERSION_CONFLICT':
     case 'VERSION_NOT_RETAINED':
     case 'PUBLISH_REFUSED':
+    case 'CONNECTOR_REQUEST_PENDING_EXISTS':
       return HttpStatus.CONFLICT;
     default:
       return HttpStatus.BAD_REQUEST;

@@ -214,3 +214,21 @@ export {
 } from './connectors/data-access/connector-credentials.repository.js';
 export { RedmineAdapter } from './connectors/redmine.adapter.js';
 export { RestCore } from './connectors/rest-core.js';
+// Connector requests (BLD-10, D-97..D-100) —
+// the self-service request queue beside the
+// definition surfaces that own it.
+export {
+  ConnectorRequestPendingExistsError,
+} from './builder/connector-request/connector-request.errors.js';
+export type {
+  ConnectorRequestDocument,
+  ConnectorRequestState,
+} from './builder/connector-request/connector-request.document.js';
+export {
+  ConnectorRequestRepository,
+  type ConnectorRequestTransitionOptions,
+} from './builder/connector-request/connector-request.repository.js';
+export {
+  ConnectorRequestService,
+  ConnectorRequestValidationError,
+} from './builder/connector-request/connector-request.service.js';

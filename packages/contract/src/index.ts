@@ -183,6 +183,19 @@ export {
   type ShareDrop,
 } from './builder/publish.contract.js';
 
+// Connector-request contracts (BLD-10, D-97..D-100) —
+// the self-service request payload and the
+// credential-free response projection, beside
+// the frozen contracts.
+export {
+  ConnectorRequestDefinitionSchema,
+  type ConnectorRequestDefinition,
+  ConnectorRequestResponseSchema,
+  type ConnectorRequestResponse,
+  ConnectorRequestStateSchema,
+  type ConnectorRequestState,
+} from './builder/connector-request.contract.js';
+
 // OTP self-onboarding contracts (IDN-05) — the
 // chat ↔ worker payloads for the unmapped-
 // employee flow, beside the frozen contracts.

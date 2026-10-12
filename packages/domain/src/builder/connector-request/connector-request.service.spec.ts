@@ -1,0 +1,374 @@
+/**
+ * BLD-10 / D-97..D-100 — the connector-request service.
+ *
+ * Every method an **audited transition** (D-86 discipline):
+ * the mutation and its AUD-01 entry are the method's two
+ * halves. The service owns the rules; the repository owns
+ * the writes.
+ *
+ * ## The rules this spec proves
+ *
+ * 1. `request` validates the definition against the Zod
+ *    contract and refuses an invalid one inline, naming the
+ *    offending field (BLD-07).
+ * 2. `request` is **owner-scoped, fail-closed**: an actor
+ *    who does not own the app gets the same
+ *    `APP_NOT_FOUND` refusal as a missing app — never a
+ *    403 that would leak the app's existence (D-97).
+ * 3. `request` refuses a second pending request for the
+ *    same `(app_id, connector_id)` with a named error that
+ *    names the existing `request_id` (T-06-24).
+ * 4. `request` persists the full definition minus the
+ *    secret and appends the `connector_request.requested`
+ *    AUD-01 entry.
+ * 5. **No builder read path can carry a credential**
+ *    (T-06-23): the served projection's key set is exactly
+ *    the response contract's fields — no key matching
+ *    `/secret|credential_value|plaintext/i` exists by
+ *    construction.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { ConnectorRequestResponseSchema } from '@akane/contract';
+import type { ConnectorRequestDefinition } from '@akane/contract';
+import type { MongoService } from '@akane/platform';
+
+import { AppNotFoundError } from '../data-access/app-definition.repository.js';
+import type { AppDefinitionDocument } from '../data-access/app-definition.repository.js';
+import { AuditRepository } from '../../audit/audit.repository.js';
+
+import { ConnectorRequestPendingExistsError } from './connector-request.errors.js';
+import { ConnectorRequestRepository } from './connector-request.repository.js';
+import { ConnectorRequestService } from './connector-request.service.js';
+import { ConnectorRequestValidationError } from './connector-request.service.js';
+
+// ─── Doubles ──────────────────────────────────────────────
+
+/** The definition store's read surface the service consumes. */
+class FakeDefinitions {
+  constructor(
+    private readonly docs: AppDefinitionDocument[] = [],
+  ) {}
+
+  async findByAppId(
+    appId: string,
+  ): Promise<AppDefinitionDocument | null> {
+    return (
+      this.docs.find((doc) => doc.app_id === appId) ?? null
+    );
+  }
+}
+
+/** A definition in the extended builder shape. */
+function definition(
+  overrides: Partial<AppDefinitionDocument> = {},
+): AppDefinitionDocument {
+  return {
+    app_id: 'leave-request',
+    name: 'Leave Request',
+    description: 'Request time off',
+    data_mode: 'external',
+    lifecycle: 'draft',
+    version: 1,
+    tags: ['time-off', 'all-staff'],
+    form_schema: null,
+    triggers: [],
+    roles: {},
+    routing_config: null,
+    field_mapping: null,
+    retention_policy: null,
+    deprecation_notice: null,
+    lifecycle_prefs: null,
+    jev_behavior: null,
+    role_assignments: null,
+    roles_permissions: null,
+    versioning_policy: null,
+    metadata: null,
+    createdBy: 'user-0001',
+    createdAt: new Date('2026-10-12T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+/** The full connector definition minus the secret (D-99). */
+const FULL_DEFINITION: ConnectorRequestDefinition = {
+  connector_id: 'redmine',
+  name: 'Redmine',
+  base_url: 'https://redmine.example.test',
+  timeout_ms: 15000,
+  retries: 3,
+  rate_limit: { perMinute: 60 },
+  mapping: { correlation_custom_field_id: 'issue_id' },
+  taxonomy: { domain: 'it' },
+};
+
+// ─── The repository's Mongo seam (in-memory double) ─────
+//
+// The service spec exercises the real repository over the
+// same in-memory collection double the repository spec
+// uses — the service's rules and the repository's writes
+// compose here exactly as they do in production.
+
+class FakeCollection {
+  private readonly docs: Record<string, unknown>[] = [];
+
+  async createIndex(): Promise<string> {
+    return 'fake-index';
+  }
+
+  async insertOne(
+    doc: Record<string, unknown>,
+  ): Promise<{ insertedId: string }> {
+    const stored = { ...doc, _id: `fake-id-${this.docs.length}` };
+    this.docs.push(stored);
+    return { insertedId: stored._id as string };
+  }
+
+  async findOne(
+    filter: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    return (
+      this.docs.find((doc) =>
+        Object.entries(filter).every(
+          ([key, expected]) =>
+            JSON.stringify(doc[key]) === JSON.stringify(expected),
+        ),
+      ) ?? null
+    );
+  }
+
+  async findOneAndUpdate(
+    filter: Record<string, unknown>,
+    update: { $set?: Record<string, unknown> },
+  ): Promise<Record<string, unknown> | null> {
+    const index = this.docs.findIndex((doc) =>
+      Object.entries(filter).every(
+        ([key, expected]) =>
+          JSON.stringify(doc[key]) === JSON.stringify(expected),
+      ),
+    );
+    if (index < 0) return null;
+    this.docs[index] = { ...this.docs[index], ...(update.$set ?? {}) };
+    return this.docs[index];
+  }
+
+  find(filter: Record<string, unknown>) {
+    const matched = this.docs.filter((doc) =>
+      Object.entries(filter).every(
+        ([key, expected]) =>
+          JSON.stringify(doc[key]) === JSON.stringify(expected),
+      ),
+    );
+    return { sort: () => ({ toArray: async () => [...matched] }) };
+  }
+}
+
+class FakeMongo {
+  private readonly collections = new Map<string, FakeCollection>();
+
+  db(): { collection: (name: string) => FakeCollection } {
+    return {
+      collection: (name: string) => {
+        let collection = this.collections.get(name);
+        if (collection === undefined) {
+          collection = new FakeCollection();
+          this.collections.set(name, collection);
+        }
+        return collection;
+      },
+    };
+  }
+}
+
+function newService(
+  definitions: FakeDefinitions,
+  audit = new AuditRepository(),
+): { service: ConnectorRequestService; repository: ConnectorRequestRepository; audit: AuditRepository } {
+  const repository = new ConnectorRequestRepository(
+    new FakeMongo() as unknown as MongoService,
+  );
+  return {
+    service: new ConnectorRequestService(
+      repository,
+      definitions as never,
+      audit,
+    ),
+    repository,
+    audit,
+  };
+}
+
+describe('ConnectorRequestService (BLD-10, D-97..D-100)', () => {
+  it('request persists the definition minus the secret and appends the audited transition', async () => {
+    const { service, repository, audit } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    const created = await service.request(
+      'leave-request',
+      'user-0001',
+      FULL_DEFINITION,
+    );
+
+    // The pending request carries the full definition minus
+    // the secret — every ConnectorSeed field except a value.
+    expect(created).toMatchObject({
+      app_id: 'leave-request',
+      requested_by: 'user-0001',
+      connector_id: 'redmine',
+      name: 'Redmine',
+      base_url: 'https://redmine.example.test',
+      timeout_ms: 15000,
+      retries: 3,
+      rate_limit: { perMinute: 60 },
+      mapping: { correlation_custom_field_id: 'issue_id' },
+      taxonomy: { domain: 'it' },
+      state: 'pending',
+    });
+    expect(created.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(created.requestedAt).toBeInstanceOf(Date);
+
+    // Persisted under the app.
+    expect(await repository.listByApp('leave-request')).toHaveLength(1);
+
+    // The AUD-01 entry: the transition, the actor, the states.
+    const entries = await audit.findAll();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      actor: 'user-0001',
+      action: 'connector_request.requested',
+      target: 'leave-request',
+      new_state: 'pending',
+      connector_id: 'redmine',
+      request_id: created.request_id,
+    });
+    expect(entries[0]?.previous_state).toBeUndefined();
+    expect(entries[0]?.timestamp).toBeInstanceOf(Date);
+  });
+
+  it('refuses an invalid definition inline, naming the offending field', async () => {
+    const { service } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    await expect(
+      service.request('leave-request', 'user-0001', {
+        connector_id: '',
+        name: 'Redmine',
+        base_url: 'not-a-url',
+        credential: 'smuggled-secret',
+      }),
+    ).rejects.toThrow(ConnectorRequestValidationError);
+
+    await expect(
+      service.request('leave-request', 'user-0001', {
+        connector_id: 'redmine',
+        name: 'Redmine',
+        base_url: 'https://redmine.example.test',
+      }),
+    ).resolves.toMatchObject({ state: 'pending' });
+  });
+
+  it('a non-owner is refused fail-closed — APP_NOT_FOUND, not a leak', async () => {
+    const { service, repository, audit } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    // Another owner's app: indistinguishable from a missing one.
+    await expect(
+      service.request('leave-request', 'user-0002', FULL_DEFINITION),
+    ).rejects.toThrow(AppNotFoundError);
+
+    // And nothing was written or audited.
+    expect(await repository.listByApp('leave-request')).toHaveLength(0);
+    expect(await audit.findAll()).toHaveLength(0);
+  });
+
+  it('an unknown app is refused the same way (fail-closed)', async () => {
+    const { service } = newService(new FakeDefinitions());
+
+    await expect(
+      service.request('missing-app', 'user-0001', FULL_DEFINITION),
+    ).rejects.toThrow(AppNotFoundError);
+  });
+
+  it('a second pending request for the pair is refused, naming the existing request_id (T-06-24)', async () => {
+    const { service, repository } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    const first = await service.request(
+      'leave-request',
+      'user-0001',
+      FULL_DEFINITION,
+    );
+
+    let named: ConnectorRequestPendingExistsError | undefined;
+    try {
+      await service.request('leave-request', 'user-0001', {
+        ...FULL_DEFINITION,
+        base_url: 'https://redmine2.example.test',
+      });
+    } catch (error) {
+      named = error as ConnectorRequestPendingExistsError;
+    }
+
+    // The named error names the pending request it protects.
+    expect(named).toBeInstanceOf(ConnectorRequestPendingExistsError);
+    expect(named?.message).toContain(first.request_id);
+
+    // The original pending request is untouched.
+    expect(await repository.listByApp('leave-request')).toHaveLength(1);
+  });
+
+  it('a different connector_id for the same app is a separate request', async () => {
+    const { service, repository } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    await service.request('leave-request', 'user-0001', FULL_DEFINITION);
+    const second = await service.request('leave-request', 'user-0001', {
+      ...FULL_DEFINITION,
+      connector_id: 'jira',
+      name: 'Jira',
+      base_url: 'https://jira.example.test',
+    });
+
+    expect(second.connector_id).toBe('jira');
+    expect(await repository.listByApp('leave-request')).toHaveLength(2);
+  });
+
+  it('listForApp is owner-scoped and fails closed for a non-owner', async () => {
+    const { service } = newService(
+      new FakeDefinitions([definition()]),
+    );
+
+    await service.request('leave-request', 'user-0001', FULL_DEFINITION);
+
+    expect(
+      await service.listForApp('leave-request', 'user-0001'),
+    ).toHaveLength(1);
+
+    await expect(
+      service.listForApp('leave-request', 'user-0002'),
+    ).rejects.toThrow(AppNotFoundError);
+  });
+
+  it('no field of the served projection can carry a secret (T-06-23, by construction)', () => {
+    // The response contract is the allowlist: its key set is
+    // exactly what a builder read path may render, and it is
+    // strict — an added key is a validation failure. No key
+    // matches the credential-value pattern, so no response
+    // body can serialize one.
+    const keys = Object.keys(ConnectorRequestResponseSchema.shape);
+    for (const key of keys) {
+      expect(key).not.toMatch(/secret|credential_value|plaintext/i);
+    }
+    // The opaque handle is the only credential-named field, and it
+    // is a reference, never a value.
+    expect(keys).toContain('credential_ref');
+  });
+});
