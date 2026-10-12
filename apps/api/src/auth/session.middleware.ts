@@ -102,8 +102,11 @@ export class SessionMiddleware implements NestMiddleware {
     }
 
     const sessionId = readSessionId(req);
-    const session =
-      sessionId === null ? null : await this.sessions.get(sessionId);
+    if (sessionId === null) {
+      res.status(401).json({ error: 'SESSION_MISSING' });
+      return;
+    }
+    const session = await this.sessions.get(sessionId);
     if (session === null || session.stage !== 'authenticated') {
       res.status(401).json({ error: 'SESSION_MISSING' });
       return;

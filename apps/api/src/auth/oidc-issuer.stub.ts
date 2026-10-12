@@ -391,8 +391,11 @@ export class StubOidcIssuer {
       return;
     }
     const refreshToken = form.get('refresh_token');
-    const issued =
-      refreshToken === null ? undefined : this.refreshTokens.get(refreshToken);
+    if (refreshToken === null) {
+      this.oauthError(res, 400, 'invalid_grant');
+      return;
+    }
+    const issued = this.refreshTokens.get(refreshToken);
     if (issued === undefined) {
       this.oauthError(res, 400, 'invalid_grant');
       return;

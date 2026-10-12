@@ -255,7 +255,7 @@ describe('builder auth session (BLD-12, D-101/D-102/D-103/D-104)', () => {
       headers: { cookie: sessionCookie },
     });
     expect(me.status).toBe(200);
-    const body = await me.json();
+    const body = (await me.json()) as { real_user_id: string; mfa_at: number };
     expect(body.real_user_id).toBe(record.realUserId);
     expect(body.mfa_at).toBe(record.mfaAt);
   });
@@ -264,7 +264,7 @@ describe('builder auth session (BLD-12, D-101/D-102/D-103/D-104)', () => {
     const first = await completeLogin(SUBJECT);
     const second = await completeLogin(SUBJECT);
 
-    expect(second.realUserId).toBe(first.realUserId);
+    expect(second.record.realUserId).toBe(first.record.realUserId);
   });
 
   it('callback: a password-only acr is refused with 403 AUTH_MFA_REQUIRED and creates no session', async () => {

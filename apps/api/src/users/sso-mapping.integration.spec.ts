@@ -174,7 +174,12 @@ describe('users sso mappings (IDN-08, D-110)', () => {
       realUserId: admin.record.realUserId,
     });
     expect(response.status).toBe(201);
-    const created = await response.json();
+    const created = (await response.json()) as {
+      platform: string;
+      oidc_sub: string;
+      real_user_id: string;
+      email: string;
+    };
     expect(created.platform).toBe('oidc');
     expect(created.oidc_sub).toBe('employee-77');
     expect(created.real_user_id).toBe(admin.record.realUserId);
@@ -193,13 +198,15 @@ describe('users sso mappings (IDN-08, D-110)', () => {
       { headers: { cookie: admin.cookie, origin: apiOrigin } },
     );
     expect(list.status).toBe(200);
-    const mappings = await list.json();
-    const listed = mappings.find(
-      (m: { oidc_sub: string }) => m.oidc_sub === 'employee-77',
-    );
+    const mappings = (await list.json()) as Array<{
+      oidc_sub: string;
+      real_user_id: string;
+      email: string;
+    }>;
+    const listed = mappings.find((m) => m.oidc_sub === 'employee-77');
     expect(listed).toBeDefined();
-    expect(listed.real_user_id).toBe(admin.record.realUserId);
-    expect(listed.email).toBe(EMAIL);
+    expect(listed?.real_user_id).toBe(admin.record.realUserId);
+    expect(listed?.email).toBe(EMAIL);
   });
 
   it('a non-global-admin is refused with 403 GLOBAL_ADMIN_REQUIRED', async () => {
@@ -234,7 +241,11 @@ describe('users sso mappings (IDN-08, D-110)', () => {
       realUserId: 'no-such-real-user',
     });
     expect(response.status).toBe(400);
-    const error = await response.json();
+    const error = (await response.json()) as {
+      field: string;
+      error: string;
+      message: string;
+    };
     // Specific, actionable, never generic: the response
     // names the offending field.
     expect(error.field).toBe('realUserId');
@@ -248,12 +259,16 @@ describe('users sso mappings (IDN-08, D-110)', () => {
       `${apiOrigin}/users/sso-mappings?email=${encodeURIComponent(EMAIL)}`,
       { headers: { cookie: admin.cookie, origin: apiOrigin } },
     );
-    const mappings = await list.json();
+    const mappings = (await list.json()) as Array<{
+      oidc_sub: string;
+      real_user_id: string;
+      email: string;
+    }>;
     expect(
-      mappings.some((m: { oidc_sub: string }) => m.oidc_sub === 'employee-79'),
+      mappings.some((m) => m.oidc_sub === 'employee-79'),
     ).toBe(false);
     expect(
-      mappings.some((m: { oidc_sub: string }) => m.oidc_sub === 'employee-77'),
+      mappings.some((m) => m.oidc_sub === 'employee-77'),
     ).toBe(true);
   });
 });

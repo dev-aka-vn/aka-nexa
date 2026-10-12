@@ -100,7 +100,17 @@ export default tseslint.config(
     // the raw driver — and none of that ships. The proof that the policies fire
     // is `boundaries.fixture.spec.ts`, which runs the real rule against
     // non-test fixtures; excluding `*.spec.ts` here leaves that proof untouched.
-    ignores: ['**/*.spec.ts', '**/*.spec.mts', '**/__tests__/**'],
+    // `*.stub.ts` joins the exclusion for the same reason the entrypoint-drift
+    // walk already classifies it as a test artifact, not process code: a stub
+    // is a fixture's collaborator (the OIDC issuer stub signs test tokens with
+    // an ephemeral in-memory key — no secret, no env, no KMS), and R2's
+    // secret-containment target is the deployable signing surface.
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.spec.mts',
+      '**/__tests__/**',
+      '**/*.stub.ts',
+    ],
     plugins: { boundaries },
     settings: {
       ...boundariesSettings,
