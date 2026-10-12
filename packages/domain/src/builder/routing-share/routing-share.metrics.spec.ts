@@ -144,11 +144,14 @@ describe('routing_share{app_id} (OBS-05)', () => {
 
   it('observes every app in the labelled intent set with the app_id attribute', () => {
     // leave-request: 2 of 6 shared-label routings; hr-private: 4 of 6.
+    // The exporter appends the meter's scope name to every series on
+    // a non-default scope — the app_id attribute the gauge carries is
+    // the series key the assertion reads.
     expect(body).toMatch(
-      /^routing_share\{app_id="leave-request"\} 0\.333333/m,
+      /^routing_share\{app_id="leave-request",otel_scope_name="akane"\} 0\.333333/m,
     );
     expect(body).toMatch(
-      /^routing_share\{app_id="hr-private"\} 0\.666667/m,
+      /^routing_share\{app_id="hr-private",otel_scope_name="akane"\} 0\.666666/m,
     );
   });
 

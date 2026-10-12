@@ -44,8 +44,14 @@ class FakeCollection {
     return { insertedId: stored._id as string };
   }
 
-  async find(filter: Doc): Promise<Doc[]> {
-    return this.docs.filter((doc) => matches(doc, filter));
+  /**
+   * The driver's `find` returns a cursor synchronously and
+   * the repository reads it with `toArray()` — the double
+   * models that shape, not an array.
+   */
+  find(filter: Doc): { toArray: () => Promise<Doc[]> } {
+    const matched = this.docs.filter((doc) => matches(doc, filter));
+    return { toArray: async () => matched };
   }
 }
 

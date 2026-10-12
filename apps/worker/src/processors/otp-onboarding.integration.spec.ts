@@ -19,6 +19,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
 
+import { MongoService } from '@akane/platform';
 import {
   ClarificationSessionService,
   IdentityMappingRepository,
@@ -29,6 +30,7 @@ import {
   OtpStateMachine,
   PublishedAppLoader,
   RoutingOrchestrator,
+  RoutingOutcomeRepository,
   RuleBasedProvider,
   type PublishedApp,
 } from '@akane/domain';
@@ -74,10 +76,17 @@ function event(overrides: Record<string, unknown>) {
 describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
   let containers: ThreeContainers;
   let redis: Redis;
+  let routingOutcomes: RoutingOutcomeRepository;
 
   beforeAll(async () => {
     containers = await startThreeContainers();
     redis = new Redis(containers.urls.cache);
+    // The OBS-05 outcome store, over the same Mongo the worker
+    // uses — the post-onboarding leg of this flow issues a link,
+    // which records its routing outcome.
+    routingOutcomes = new RoutingOutcomeRepository(
+      new MongoService(containers.urls.mongo),
+    );
   });
 
   afterAll(async () => {
@@ -113,6 +122,7 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       new LinkIssuerService(),
       new ClarificationSessionService(redis),
       onboarding,
+      routingOutcomes,
     );
     return { processor, mappings, stateMachine };
   }

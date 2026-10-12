@@ -86,7 +86,7 @@ const TRIGGERS_SECTION = {
 
 const FORMS_SECTION = {
   section: 'forms',
-  patch: { form_schema: { components: [{ type: 'text', key: 'vendor' }] },
+  patch: { form_schema: { components: [{ type: 'text', key: 'vendor' }] } },
 };
 
 const DATA_ROUTING_SECTION = {
@@ -126,7 +126,7 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
       if (typeof realUserId === 'string') {
         (req as Request & { user?: { realUserId: string } }).user = {
           realUserId,
-        };
+        } as never;
       }
       next();
     });
@@ -142,12 +142,22 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
   });
 
   it('publishes a clean draft: 200, draft→published, the change summary, and the audited entry', async () => {
-    const created = await call('POST', `${baseUrl}/apps`, {
-      name: 'Expense Report',
-      app_id: 'expense-report',
-      description: 'Submit an expense report',
-    });
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Expense Report',
+        app_id: 'expense-report',
+        description: 'Submit an expense report',
+      },
+      OWNER,
+    );
     expect(created.status).toBe(201);
+
+    // The audited history the publish delta is measured
+    // against: the creation plus the wizard's three
+    // section edits land before the publish entry.
+    const before = await audit.findAll();
 
     // The wizard's sections: triggers, forms, data-routing.
     for (const section of [
@@ -164,7 +174,6 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
       expect(patched.status).toBe(200);
     }
 
-    const before = await audit.findAll();
     const published = await call(
       'POST',
       `${baseUrl}/apps/expense-report/publish`,
@@ -176,13 +185,13 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     expect(published.body).toMatchObject({
       app_id: 'expense-report',
       lifecycle: 'published',
-      version: 4,
+      version: 5,
     });
     // BLD-06: the confirmation payload carries every changed row.
     const changeSummary = published.body['changeSummary'];
     expect(changeSummary).toEqual([
       { field: 'status', from: 'draft', to: 'published' },
-      { field: 'version', from: 'v3', to: 'v4' },
+      { field: 'version', from: 'v4', to: 'v5' },
       { field: 'form versions', from: 'current', to: 'pinned at link creation' },
       { field: 'indexes', from: '—', to: 'creation on expenses' },
       { field: 'triggers', from: 'none', to: '1 active' },
@@ -206,12 +215,17 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     expect(entries.length).toBe(before.length + 4); // 3 section edits + 1 publish
   });
 
-  it('a non-owner's publish is a 404 that leaks nothing', async () => {
-    const draft = await call('POST', `${baseUrl}/apps`, {
-      name: 'Private App',
-      app_id: 'private-app',
-      description: 'A private app',
-    });
+  it("a non-owner's publish is a 404 that leaks nothing", async () => {
+    const draft = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Private App',
+        app_id: 'private-app',
+        description: 'A private app',
+      },
+      OWNER,
+    );
     expect(draft.status).toBe(201);
 
     const refusal = await call(
@@ -247,7 +261,7 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     expect(republish.status).toBe(200);
     expect(republish.body).toMatchObject({
       lifecycle: 'published',
-      version: 4,
+      version: 5,
     });
     expect(republish.body['changeSummary']).toEqual([]);
     expect(republish.body['zero_change']).toBe(true);

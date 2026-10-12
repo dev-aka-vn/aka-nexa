@@ -19,9 +19,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { AppDefinitionDocument } from '../data-access/app-definition.repository.js';
-import { RuleBasedProvider } from '../../decision/rule-based.provider.js';
-import { RoutingOrchestrator } from '../../decision/routing-orchestrator.js';
+import type { AppDefinitionDocument } from './data-access/app-definition.repository.js';
+import { RuleBasedProvider } from '../decision/rule-based.provider.js';
+import { RoutingOrchestrator } from '../decision/routing-orchestrator.js';
 import type { RoutingOutcomeRecord } from './routing-share/routing-outcome.repository.js';
 import { PublishGateService } from './publish-gate.service.js';
 
@@ -130,7 +130,7 @@ function buildGate(opts: {
   const orchestrator =
     opts.orchestrator ??
     new RoutingOrchestrator([
-      new RuleBasedProvider(new Map([['expense-report', ['expense report', 'expense']])]),
+      new RuleBasedProvider(new Map([['expense-report', ['expense report', 'expense']]])),
     ]);
   return new PublishGateService(
     orchestrator,

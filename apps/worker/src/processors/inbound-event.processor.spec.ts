@@ -11,6 +11,7 @@ import {
   RoutingOrchestrator,
   ClarificationSessionService,
   type PublishedApp,
+  type RoutingOutcomeRepository,
 } from '@akane/domain';
 import type { JevRequest, JevResponse } from '@akane/contract';
 
@@ -116,7 +117,7 @@ async function buildProcessor(opts: {
     { deliverOtp: async () => {} },
   );
   const routingOutcomes = new FakeRoutingOutcomeRepository();
-  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes);
+  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as unknown as RoutingOutcomeRepository);
   return { processor, decideSpy, clarification, routingOutcomes };
 }
 
@@ -383,7 +384,7 @@ describe('InboundEventProcessor — clarification session wiring', () => {
         repo2,
         { deliverOtp: async () => {} },
       ),
-      routingOutcomes2,
+      routingOutcomes2 as unknown as RoutingOutcomeRepository,
     );
 
     const reply = await processor2.process({

@@ -164,7 +164,7 @@ describe('RoutingShareComputer', () => {
     expect(await computer.share('not-an-app', WINDOW_MS)).toBe(0);
   });
 
-  it('the gate's substrate: share over an explicit label set', async () => {
+  it("the gate's substrate: share over an explicit label set", async () => {
     const store = new FakeOutcomeStore();
     // The dry-run's domain: two labels, 3 routings total, 1 to hr-private.
     await store.record({
