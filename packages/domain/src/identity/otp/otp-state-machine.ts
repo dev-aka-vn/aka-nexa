@@ -14,12 +14,16 @@
  * is no poll.
  *
  * Every transition runs as one Lua script, so the
- * read-check-INCR-write that arms an attempt (and,
- * from plan 06-03 task 2, a lockout) is atomic
- * across instances: concurrent verifications can
- * never lose an attempt (T-06-10). The attempt
- * count itself is a Redis INCR — an integer, never
- * fractional.
+ * read-check-INCR-write that arms an attempt or a
+ * lockout is atomic across instances: concurrent
+ * verifications can never lose an attempt (T-06-10).
+ * The attempt count itself is a Redis INCR — an
+ * integer, never fractional. The third failed
+ * attempt arms the 30-minute lockout measured
+ * from that failure; a successful verify leaves a
+ * consumed tombstone for the original remaining
+ * window, so a replay is refused as consumed
+ * while a never-requested code is expired.
  *
  * Only the SHA-256 hash of the 6-digit code is
  * stored; the plaintext exists solely in the
@@ -120,11 +124,22 @@ return { 'ok' }
  * atomic attempt increment — runs in one script, so
  * two concurrent verifications of the same wrong
  * code count exactly two attempts.
+ *
+ * The third failed attempt is the last allowed: it
+ * arms the 30-minute lockout measured from that
+ * failure (not the first), and the fourth attempt
+ * is refused with the lockout active. A successful
+ * verify replaces the pending record with a short-
+ * lived consumed tombstone, so a replay is refused
+ * as consumed while a code that was never requested
+ * (or whose TTL elapsed) is refused as expired.
  */
 const VERIFY_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
 if not raw then
-  return { 'consumed' }
+  -- No record at all: never requested, or the structural
+  -- TTL already elapsed — either way the OTP is expired.
+  return { 'expired' }
 end
 local record = cjson.decode(raw)
 if record.status == 'consumed' then
@@ -142,17 +157,31 @@ if record.status == 'locked' and record.lockoutUntil ~= cjson.null
   return { 'locked', tonumber(record.lockoutUntil) }
 end
 if record.codeHash == ARGV[2] then
-  -- Single-use: the pending record and the counter are gone.
-  redis.call('DEL', KEYS[1])
+  -- Single-use: the pending record becomes a consumed tombstone
+  -- that outlives the verify by exactly the original remaining
+  -- window, so a replay is distinguished from a never-requested code.
+  local remaining = tonumber(record.expiresAt) - tonumber(ARGV[1])
+  if remaining < 1 then remaining = 1 end
+  record.status = 'consumed'
+  table.insert(record.transitions, { status = 'verified', attempts = tonumber(record.attempts), at = tonumber(ARGV[1]) })
+  redis.call('SET', KEYS[1], cjson.encode(record), 'PX', remaining)
   redis.call('DEL', KEYS[2])
   return { 'verified' }
 end
 local attempts = redis.call('INCR', KEYS[2])
-redis.call('PEXPIRE', KEYS[2], tonumber(ARGV[3]))
 record.attempts = attempts
 table.insert(record.transitions, { status = 'invalid', attempts = attempts, at = tonumber(ARGV[1]) })
-local remaining = tonumber(record.expiresAt) - tonumber(ARGV[1])
-redis.call('SET', KEYS[1], cjson.encode(record), 'PX', remaining)
+local locked = attempts >= tonumber(ARGV[5])
+local ttl = locked and tonumber(ARGV[4]) or (tonumber(record.expiresAt) - tonumber(ARGV[1]))
+if locked then
+  -- The third failed attempt is the last allowed: it arms the
+  -- lockout, measured from THIS failure, not the first.
+  record.status = 'locked'
+  record.lockoutUntil = tonumber(ARGV[1]) + tonumber(ARGV[4])
+  table.insert(record.transitions, { status = 'locked', attempts = attempts, at = tonumber(ARGV[1]) })
+end
+redis.call('PEXPIRE', KEYS[2], ttl)
+redis.call('SET', KEYS[1], cjson.encode(record), 'PX', ttl)
 return { 'invalid', attempts }
 `;
 

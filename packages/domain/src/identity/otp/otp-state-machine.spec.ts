@@ -104,8 +104,11 @@ describe('OtpStateMachine (IDN-05) — over real Redis', () => {
     const verified = await machine.verify('U-verify', code);
     expect(verified).toEqual({ status: 'verified' });
 
-    // Single-use: the pending record is gone after a successful verify.
-    expect(await redis.get('akane:otp:U-verify')).toBeNull();
+    // Single-use: the pending record becomes a consumed tombstone
+    // that outlives the verify by exactly the remaining window,
+    // and the attempt counter is gone.
+    const tombstone = JSON.parse((await redis.get('akane:otp:U-verify'))!);
+    expect(tombstone.status).toBe('consumed');
     expect(await redis.get('akane:otp:U-verify:attempts')).toBeNull();
   });
 
@@ -228,6 +231,8 @@ describe('OtpStateMachine (IDN-05) — policy edges', () => {
     const code = deliveredCode(await machine.request('U-lockout'));
 
     // Three failed attempts arm the lockout from the third failure.
+    clock += 60_000;
+    await machine.verify('U-lockout', otherCode(code));
     clock += 60_000;
     await machine.verify('U-lockout', otherCode(code));
     clock += 60_000;
