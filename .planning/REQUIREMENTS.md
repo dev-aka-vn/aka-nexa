@@ -174,11 +174,11 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **FRM-02**: Form schemas are versioned with an incrementing integer, and a submission records the `form_version` in effect when its link was issued
 - [ ] **FRM-03**: Editing a published form does not affect an in-flight submission
 - [x] **FRM-04**: The renderer pre-fills fields server-side from the resolved real-user profile
-- [ ] **FRM-05**: A form author can define conditional show/hide logic and validation rules (required, pattern, min/max, custom)
+- [x] **FRM-05**: A form author can define conditional show/hide logic and validation rules (required, pattern, min/max, custom)
 - [ ] **FRM-06**: The renderer is a separate stateless web app that authenticates by JWT in the URL and sets no cookies
 - [x] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
 - [x] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
-- [ ] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
+- [x] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
 
 ### Links & Token Security
 
@@ -298,7 +298,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
 - [ ] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
 - [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
-- [ ] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
+- [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
 - [ ] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
 - [ ] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
 - [ ] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
@@ -510,7 +510,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BLD-01 | Phase 6 | Pending |
 | BLD-02 | Phase 6 | Pending |
 | BLD-03 | Phase 6 | Pending |
-| BLD-04 | Phase 6 | Pending |
+| BLD-04 | Phase 6 | Complete |
 | BLD-05 | Phase 6 | Pending |
 | BLD-06 | Phase 6 | Pending |
 | BLD-07 | Phase 6 | Pending |
@@ -525,8 +525,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | APP-07 | Phase 6 | Pending |
 | APP-08 | Phase 6 | Pending |
 | APP-09 | Phase 6 | Pending |
-| FRM-05 | Phase 6 | Pending |
-| FRM-09 | Phase 6 | Pending |
+| FRM-05 | Phase 6 | Complete |
+| FRM-09 | Phase 6 | Complete |
 | IDN-05 | Phase 6 | Pending |
 | IDN-08 | Phase 6 | Pending |
 | ACL-05 | Phase 6 | Pending |
