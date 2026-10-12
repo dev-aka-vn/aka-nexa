@@ -77,6 +77,26 @@ export { SeedSavedQueryLookup } from './links/seed-saved-query.lookup.js';
 export { PermissionCheckService } from './authz/permission-check.service.js';
 export { RbacService } from './authz/rbac.service.js';
 export { RbacCacheService } from './authz/rbac-cache.service.js';
+// The self-service builder's per-app ability factory
+// (ACL-01/02/03/04/07/08/10, BLD-03, BLD-11) — the
+// @casl/ability rule set the builder's surfaces and the
+// API's enforcement both derive from.
+export {
+  APP_SECTION_PERMISSIONS,
+  APP_SUBJECT,
+  DEFAULT_BUILDER_ROLES,
+  OWNERSHIP_SUBJECT,
+  appOwners,
+  canAssignOwner,
+  canUnassignOwner,
+  createBuilderAbility,
+  isDefaultRole,
+  viewerRoles,
+  type AppRoleAssignment,
+  type AppSectionPermission,
+  type BuilderAbility,
+  type DefaultBuilderRole,
+} from './authz/builder-ability.js';
 export { DslService } from './dsl/dsl.service.js';
 export type { DslCompileResult } from './dsl/dsl.service.js';
 export type { CompiledQuery, MongoFilter, QueryCtx } from './dsl/ast.js';

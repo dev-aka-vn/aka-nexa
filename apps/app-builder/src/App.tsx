@@ -56,6 +56,8 @@ import { InlineError } from './error/InlineError.js';
 import { Skeleton } from './ui/Skeleton.js';
 import { WizardPage } from './wizard/WizardPage.js';
 import { FormDesignerPage } from './form-designer/FormDesignerPage.js';
+import { RolesPage } from './roles/RolesPage.js';
+import { EditorPage } from './editor/EditorPage.js';
 import { FormioBuilderField } from './form-designer/FormioBuilderField';
 import type { FormioBuilderHandle } from './form-designer/FormioBuilderField';
 import {
@@ -637,6 +639,10 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
       return <WizardPage />;
     case 'designer':
       return <FormDesignerPage appId={route.appId ?? ''} />;
+    case 'roles':
+      return <RolesPage appId={route.appId ?? ''} />;
+    case 'editor':
+      return <EditorPage appId={route.appId ?? ''} />;
     case 'apps':
     case 'unknown':
     default:

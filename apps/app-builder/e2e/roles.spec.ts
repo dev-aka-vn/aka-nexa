@@ -247,10 +247,16 @@ test('the permission matrix renders every app permission and saves a non-empty c
 
   expect(patches).toHaveLength(1);
   expect(patches[0]['section']).toBe('roles-permissions');
-  const patch = patches[0]['patch'] as Record<string, unknown>;
-  expect(patch['roles_permissions']).toEqual({
-    support: ['general', 'metadata'],
-  });
+  // The section patch replaces the permission map
+  // wholesale; the saved custom role carries exactly
+  // the checked subset.
+  const permissions = patches[0]['patch'] as {
+    roles_permissions: Record<string, string[]>;
+  };
+  expect(permissions['roles_permissions']['support']).toEqual([
+    'general',
+    'metadata',
+  ]);
 });
 
 test('saving a custom role with an empty permission subset is refused inline, naming the requirement (BLD-03)', async ({
