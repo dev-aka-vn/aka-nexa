@@ -45,6 +45,7 @@ import {
   AuditRepository,
   ConnectorRequestRepository,
   ConnectorRequestService,
+  FieldMappingService,
   PublishGateService,
   ProviderHealthService,
   ProviderRegistry,
@@ -194,6 +195,19 @@ import { PublishController } from './publish.controller.js';
       ],
     },
     {
+      // BLD-05: the field-mapping store — the
+      // data-routing tab's form-field →
+      // connector-field mapping, on the
+      // definition's field-mapping section.
+      provide: FieldMappingService,
+      useFactory: (
+        definitions: AppDefinitionRepository,
+        audit: AuditRepository,
+      ): FieldMappingService =>
+        new FieldMappingService(definitions, audit),
+      inject: [AppDefinitionRepository, AuditRepository],
+    },
+    {
       provide: PublishGateService,
       inject: [
         RoutingOrchestrator,
@@ -207,6 +221,17 @@ import { PublishController } from './publish.controller.js';
       ): PublishGateService =>
         new PublishGateService(orchestrator, outcomes, definitions),
     },
+  ],
+  // The surfaces other modules compose against: the
+  // definition store and the audit trail the
+  // submissions viewer (BLD-08) and the field-
+  // mapping endpoint (BLD-05) share.
+  exports: [
+    AuditRepository,
+    AppDefinitionRepository,
+    ConnectorRequestRepository,
+    ConnectorRequestService,
+    FieldMappingService,
   ],
 })
 export class AppBuilderModule {}

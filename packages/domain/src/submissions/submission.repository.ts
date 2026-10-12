@@ -52,6 +52,19 @@ export interface QueryPage {
 }
 
 /**
+ * The viewer's filter set (BLD-08): one app,
+ * narrowed by status, date range, and form.
+ * Soft-deleted rows are always invisible (D-78).
+ */
+export interface SubmissionListFilter {
+  readonly app_id: string;
+  readonly status?: Submission['status'];
+  readonly from?: Date;
+  readonly to?: Date;
+  readonly form_id?: string;
+}
+
+/**
  * Submission data access (DAT-10, DAT-11).
  *
  * ## Why this is not a MongoDB direct import
@@ -129,6 +142,49 @@ export class SubmissionRepository {
       return null;
     }
     return submission;
+  }
+
+  /**
+   * Fetch a submission by its document identity alone — no
+   * ownership check. The **caller** owns the authorization:
+   * the builder's submissions viewer scopes by the app's
+   * owner (BLD-08), not by the submitting `real_user_id`
+   * (which is the read-link path's D-79 rule). A controller
+   * that forgets the app-ownership check turns this into a
+   * cross-owner leak, so every consumer routes through the
+   * owner-scoped endpoints.
+   */
+  async findById(submissionId: string): Promise<Submission | null> {
+    return this.submissions.get(submissionId) ?? null;
+  }
+
+  /**
+   * The viewer's list (BLD-08): one app's live submissions,
+   * narrowed by the composed filters (status, date range,
+   * form), newest first. Soft-deleted rows are invisible
+   * (D-78) — the same rule the DSL executor applies.
+   */
+  async listByApp(
+    filter: SubmissionListFilter,
+  ): Promise<Submission[]> {
+    const fromTime = filter.from?.getTime();
+    const toTime = filter.to?.getTime();
+    const matched = [...this.submissions.values()].filter(
+      (doc) =>
+        doc.app_id === filter.app_id &&
+        doc.deleted_at == null &&
+        (filter.status === undefined ||
+          doc.status === filter.status) &&
+        (filter.form_id === undefined ||
+          doc.form_id === filter.form_id) &&
+        (fromTime === undefined ||
+          doc.created_at.getTime() >= fromTime) &&
+        (toTime === undefined || doc.created_at.getTime() <= toTime),
+    );
+    // Newest first — the viewer's default order.
+    return matched.sort(
+      (a, b) => b.created_at.getTime() - a.created_at.getTime(),
+    );
   }
 
   /**

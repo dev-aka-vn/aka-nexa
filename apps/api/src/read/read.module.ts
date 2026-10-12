@@ -169,10 +169,51 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
     // queryWithDsl compiles through the one DSL entry point (DAT-10/11);
     // without this provider SubmissionRepository cannot be constructed.
     DslService,
-    SubmissionRepository,
-    SubmissionRevisionsRepository,
+    {
+      // The submission store's constructor takes the
+      // `DslService` — an explicit token, because an
+      // undecorated class carries no `design:paramtypes`
+      // metadata (tsc and the test runner's transform
+      // both omit it), so a bare-class provider would
+      // instantiate with `undefined` deps. Explicit
+      // tokens make the graph identical in the test
+      // runner and in production.
+      provide: SubmissionRepository,
+      useFactory: (dsl: DslService): SubmissionRepository =>
+        new SubmissionRepository(dsl),
+      inject: [DslService],
+    },
+    {
+      // The revisions store's constructor takes the
+      // `MongoService` — same explicit-token rule.
+      provide: SubmissionRevisionsRepository,
+      useFactory: (
+        mongo: MongoService,
+      ): SubmissionRevisionsRepository =>
+        new SubmissionRevisionsRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      // The data router's constructor takes the
+      // `MongoService` — same explicit-token rule.
+      provide: DataRouterService,
+      useFactory: (mongo: MongoService): DataRouterService =>
+        new DataRouterService(mongo),
+      inject: [MongoService],
+    },
+    {
+      // The permission checker's constructor takes the
+      // RBAC service and its cache — same explicit-token
+      // rule.
+      provide: PermissionCheckService,
+      useFactory: (
+        rbac: RbacService,
+        cache: RbacCacheService,
+      ): PermissionCheckService =>
+        new PermissionCheckService(rbac, cache),
+      inject: [RbacService, RbacCacheService],
+    },
     LinkTokenStore,
-    DataRouterService,
     SignatureFailureLimiter,
     {
       provide: 'READ_SIGNATURE_BLOCKS',
@@ -232,6 +273,15 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
         LinkTokenStore,
       ],
     },
+  ],
+  // The submissions viewer (BLD-08) composes the
+  // read path's submission stores — exported so the
+  // SubmissionsModule queries the *same* in-memory
+  // store the read link serves, never a second one.
+  exports: [
+    DslService,
+    SubmissionRepository,
+    SubmissionRevisionsRepository,
   ],
 })
 export class ReadModule {}

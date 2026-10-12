@@ -86,6 +86,7 @@ export type {
   QueryRow,
   QueryWithDslResult,
   Submission,
+  SubmissionListFilter,
 } from './submissions/submission.repository.js';
 export { SubmissionRevisionsRepository } from './submissions/data-access/submission-revisions.repository.js';
 export type {
@@ -208,6 +209,15 @@ export {
   registerRoutingShareMetrics,
   ROUTING_SHARE_METRIC,
 } from './builder/routing-share/routing-share.metrics.js';
+// Field mapping (BLD-05) — the data-routing
+// tab's mapping store on the app definition,
+// beside the definition surfaces that own the
+// section it writes.
+export {
+  FieldMappingService,
+  FieldMappingValidationError,
+  type FieldMappingRecord,
+} from './builder/data-routing/field-mapping.service.js';
 export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,

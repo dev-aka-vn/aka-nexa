@@ -19,6 +19,7 @@ import { ReadModule } from './read/read.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { AppBuilderModule } from './app-builder/app-builder.module.js';
+import { SubmissionsModule } from './submissions/submissions.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
 /**
@@ -77,6 +78,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     AuthModule,
     UsersModule,
     AppBuilderModule,
+    SubmissionsModule,
   ],
   controllers: [HealthController],
   providers: [

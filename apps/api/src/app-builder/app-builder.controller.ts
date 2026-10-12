@@ -11,6 +11,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Req,
   UseFilters,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import {
   AppDefinitionService,
   AppDefinitionValidationError,
   BuilderError,
+  FieldMappingService,
   TemplateSeed,
   type AppDefinitionDocument,
 } from '@akane/domain';
@@ -82,6 +84,7 @@ export class AppBuilderController {
   constructor(
     private readonly definitions: AppDefinitionService,
     private readonly templates: TemplateSeed,
+    private readonly fieldMapping: FieldMappingService,
   ) {}
 
   /** Create the wizard's step-1 draft. */
@@ -211,6 +214,49 @@ export class AppBuilderController {
     const archived = await this.definitions.archive(appId, actorOf(req));
     return toDefinitionResponse(archived);
   }
+
+  /**
+   * The BLD-05 field mapping — the visual
+   * mapping's data contract. The stored
+   * form-field → connector-field mapping
+   * (an empty record until the routing tab
+   * saves one), served with the definition
+   * version it landed on. Owner-scoped,
+   * fail-closed: a non-owner gets the same
+   * 404 as a missing app.
+   */
+  @Get('apps/:id/routing/mapping')
+  async getMapping(
+    @Param('id') appId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.fieldMapping.getMapping(
+      appId,
+      actorOf(req),
+    );
+  }
+
+  /**
+   * The BLD-05 field mapping write — the
+   * routing tab's save. Validated against
+   * the contract (a string→string record),
+   * stored on the definition's
+   * `field-mapping` section (version-bumped,
+   * APP-03), and audited (D-86).
+   */
+  @Put('apps/:id/routing/mapping')
+  @HttpCode(200)
+  async putMapping(
+    @Param('id') appId: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.fieldMapping.storeMapping(
+      appId,
+      actorOf(req),
+      body,
+    );
+  }
 }
 
 /**
@@ -238,6 +284,7 @@ export function builderErrorStatus(error: BuilderError): HttpStatus {
     case 'CONNECTOR_REQUEST_ILLEGAL_TRANSITION':
       return HttpStatus.CONFLICT;
     case 'CONNECTOR_REQUEST_NOT_FOUND':
+    case 'SUBMISSION_NOT_FOUND':
       return HttpStatus.NOT_FOUND;
     default:
       return HttpStatus.BAD_REQUEST;

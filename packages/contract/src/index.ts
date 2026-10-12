@@ -196,6 +196,19 @@ export {
   type ConnectorRequestState,
 } from './builder/connector-request.contract.js';
 
+// Field-mapping contracts (BLD-05) — the
+// data-routing tab's form-field →
+// connector-field mapping, beside the frozen
+// contracts.
+export {
+  FieldMappingPutSchema,
+  type FieldMappingPut,
+  FieldMappingResponseSchema,
+  type FieldMappingRecord,
+  FieldMappingSchema,
+  type FieldMapping,
+} from './builder/field-mapping.contract.js';
+
 // OTP self-onboarding contracts (IDN-05) — the
 // chat ↔ worker payloads for the unmapped-
 // employee flow, beside the frozen contracts.
@@ -205,3 +218,16 @@ export {
   OtpOnboardingOutcomeSchema,
 } from './identity/otp.contract.js';
 export type { OtpCode, OtpOnboardingOutcome } from './identity/otp.contract.js';
+
+// Submissions-viewer contracts (BLD-08, D-111) —
+// the owner-scoped viewer's filters and the
+// projected row (the export's field allowlist),
+// beside the frozen contracts.
+export {
+  SubmissionStatusSchema,
+  type SubmissionStatus,
+  SubmissionViewerRowSchema,
+  type SubmissionViewerRow,
+  SubmissionsFilterSchema,
+  type SubmissionsFilter,
+} from './submissions/submissions.contract.js';
