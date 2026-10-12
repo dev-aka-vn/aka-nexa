@@ -33,17 +33,23 @@
  * the task-2 extension of this file.
  */
 
+import { createSign, createVerify, generateKeyPairSync } from 'node:crypto';
 import { createServer, type AddressInfo } from 'node:net';
 
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   AppDefinitionService,
   AuditRepository,
+  PermissionCheckService,
   PublishedAppLoader,
+  ReadVerifierService,
+  RbacCacheService,
+  RbacService,
   type PublishedApp,
+  type ReadLinkJwtVerifier,
 } from '@akane/domain';
 import { ConfigModule, MongoService } from '@akane/platform';
 
@@ -84,6 +90,141 @@ async function call(
     parsed = { raw: text };
   }
   return { status: res.status, body: parsed };
+}
+
+// ─── Real ES256 read-link minting (the APP-06 proof) ──────────────────
+//
+// The read path is deliberately unchanged by archiving (APP-06), so the
+// proof needs a genuinely signed view link: an ES256 JWT minted with
+// Node's built-in crypto — no jose import (R2 boundary) — verified by a
+// NodeCryptoJwtVerifier that performs real public-key verification, the
+// same shape the platform crypto module owns in production.
+
+const { privateKey: READ_LINK_PRIVATE_KEY, publicKey: READ_LINK_PUBLIC_KEY } =
+  generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const READ_LINK_PUBLIC_PEM = READ_LINK_PUBLIC_KEY.export({
+  type: 'spki',
+  format: 'pem',
+}) as string;
+const READ_LINK_PRIVATE_PEM = READ_LINK_PRIVATE_KEY.export({
+  type: 'sec1',
+  format: 'pem',
+}) as string;
+
+/** The renderer origin the deployment issues links for. */
+const READ_LINK_ISSUER = 'https://akane.test';
+const READ_LINK_AUDIENCE = 'https://renderer.akane.test';
+
+/** Sign a view-link payload with the deployment's ES256 key. */
+function signReadLink(payload: Record<string, unknown>): string {
+  const header = { alg: 'ES256', typ: 'JWT', kid: 'read-link-1' };
+  const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const signer = createSign('SHA256');
+  signer.update(signingInput);
+  const signature = signer.sign(
+    { key: READ_LINK_PRIVATE_PEM, dsaEncoding: 'ieee-p1363' },
+  );
+  return `${signingInput}.${signature.toString('base64url')}`;
+}
+
+/**
+ * Real ES256 verification with the public key alone — the
+ * production-verification path, re-implemented over node:crypto so the
+ * spec never reaches jose (R2).
+ */
+class NodeCryptoReadLinkVerifier implements ReadLinkJwtVerifier {
+  async verify(token: string): Promise<Record<string, unknown>> {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('bad_signature');
+    }
+    const [headerB64, payloadB64, sigB64] = parts;
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const signature = Buffer.from(sigB64, 'base64url');
+    const verifier = createVerify('SHA256');
+    verifier.update(signingInput);
+    if (
+      !verifier.verify(
+        { key: READ_LINK_PUBLIC_PEM, dsaEncoding: 'ieee-p1363' },
+        signature,
+      )
+    ) {
+      throw new Error('bad_signature');
+    }
+    const payload = JSON.parse(
+      Buffer.from(payloadB64, 'base64url').toString(),
+    ) as Record<string, unknown>;
+    if (payload.iss !== READ_LINK_ISSUER || payload.aud !== READ_LINK_AUDIENCE) {
+      throw new Error('bad_signature');
+    }
+    return payload;
+  }
+}
+
+/** The frozen D-21 view-link claim set for one submission. */
+function viewLinkClaims(input: {
+  jti: string;
+  sub: string;
+  appId: string;
+  targetId: string;
+}): Record<string, unknown> {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    iss: READ_LINK_ISSUER,
+    aud: READ_LINK_AUDIENCE,
+    sub: input.sub,
+    jti: input.jti,
+    iat: now,
+    nbf: now,
+    exp: now + 3600,
+    action: 'view',
+    app_id: input.appId,
+    form_id: `${input.appId}-form`,
+    form_version: 1,
+    app_version: 1,
+    perm_version: 1,
+    query_version: 1,
+    target_id: input.targetId,
+  };
+}
+
+/**
+ * A ReadVerifierService over the real permission check — the same
+ * composition the read path uses, with the RBAC seam stubbed to allow
+ * (the permission policy itself is the authz element's concern, not the
+ * lifecycle's).
+ */
+function readVerifierFor(sub: string): ReadVerifierService {
+  const rbac = new RbacService();
+  const cache = new RbacCacheService();
+  vi.spyOn(rbac, 'hasPermission').mockResolvedValue(true);
+  // The permission check caches the granted-permission list after
+  // the first allow (PermissionCheckService.check) — the grant list
+  // must carry the view permission or the cached hit denies.
+  vi.spyOn(rbac, 'getPermissions').mockResolvedValue([
+    'asset-request:view',
+  ]);
+  return new ReadVerifierService(
+    new NodeCryptoReadLinkVerifier(),
+    new PermissionCheckService(rbac, cache),
+    {
+      // The submission record written before the archive — the link's
+      // target keeps resolving because the verifier does not consume
+      // lifecycle state.
+      async findByIdOwned(submissionId: string, realUserId: string) {
+        return {
+          _id: submissionId,
+          real_user_id: realUserId,
+          app_id: 'asset-request',
+          form_id: 'asset-request-form',
+          form_version: 1,
+          data: { asset: 'laptop-042' },
+        };
+      },
+    },
+  );
 }
 
 describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
@@ -273,5 +414,95 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     await expect(service.assertAcceptsSubmissions('leave-request')).rejects.toThrow(
       /SUBMISSION_REFUSED_ARCHIVED/,
     );
+  });
+
+  it('APP-05: a deprecated app stays functional — notice served, triggers unchanged, no NEW trigger registration', async () => {
+    // A fresh app with a declared trigger.
+    await call('POST', `${baseUrl}/apps`, {
+      name: 'Expense Report',
+      app_id: 'expense-report',
+      description: 'Report an expense',
+    });
+    await call('PATCH', `${baseUrl}/apps/expense-report`, {
+      section: 'triggers',
+      patch: {
+        triggers: [{ id: 'expense', type: 'slash', command: '/expense' }],
+      },
+    });
+    await call('POST', `${baseUrl}/apps/expense-report/publish`);
+
+    const deprecated = await call('POST', `${baseUrl}/apps/expense-report/deprecate`, {
+      notice: 'Use the finance portal from Q3',
+    });
+
+    expect(deprecated.status).toBe(200);
+    expect(deprecated.body).toMatchObject({
+      lifecycle: 'deprecated',
+      deprecation_notice: 'Use the finance portal from Q3',
+    });
+
+    // The served definition still carries its trigger list —
+    // deprecation changes no behavior, only the notice.
+    const fetched = await call('GET', `${baseUrl}/apps/expense-report`);
+    expect(fetched.body).toMatchObject({ lifecycle: 'deprecated' });
+    expect((fetched.body as { triggers: unknown[] }).triggers).toEqual([
+      { id: 'expense', type: 'slash', command: '/expense' },
+    ]);
+
+    // A deprecated app still accepts submissions (APP-05:
+    // "stays functional")...
+    await expect(
+      service.assertAcceptsSubmissions('expense-report'),
+    ).resolves.toBeUndefined();
+
+    // ...but the trigger-registration path refuses it.
+    await expect(
+      service.assertRegistersTriggers('expense-report'),
+    ).rejects.toThrow(/TRIGGER_REGISTER_REFUSED_DEPRECATED/);
+  });
+
+  it('APP-06 both ways: an archived app refuses new submissions while a pre-archived view link still resolves', async () => {
+    await call('POST', `${baseUrl}/apps`, {
+      name: 'Asset Request',
+      app_id: 'asset-request',
+      description: 'Request an asset',
+    });
+    await call('POST', `${baseUrl}/apps/asset-request/publish`);
+
+    // A view link, minted and verified BEFORE the archive — the
+    // submission it points at was written while the app was live.
+    const token = signReadLink(
+      viewLinkClaims({
+        jti: 'jti-asset-1',
+        sub: OWNER,
+        appId: 'asset-request',
+        targetId: 'sub-asset-1',
+      }),
+    );
+    const verifier = readVerifierFor(OWNER);
+    const before = await verifier.verify(token);
+    expect(before.ok).toBe(true);
+
+    // Archive the app.
+    const archived = await call('POST', `${baseUrl}/apps/asset-request/archive`);
+    expect(archived.status).toBe(200);
+    expect(archived.body).toMatchObject({ lifecycle: 'archived' });
+
+    // Way 1 — the submission-creation seam refuses: an archived
+    // app accepts no new submissions.
+    await expect(
+      service.assertAcceptsSubmissions('asset-request'),
+    ).rejects.toThrow(/SUBMISSION_REFUSED_ARCHIVED/);
+
+    // Way 2 — the pre-archived view link STILL resolves through
+    // the unchanged ReadVerifierService: the verifier consumes
+    // signature, claims, ownership, and permissions — not the
+    // lifecycle field — so already-issued links keep working.
+    const after = await verifier.verify(token);
+    expect(after.ok).toBe(true);
+    if (after.ok) {
+      expect(after.claims.app_id).toBe('asset-request');
+      expect(after.submission?.app_id).toBe('asset-request');
+    }
   });
 });
