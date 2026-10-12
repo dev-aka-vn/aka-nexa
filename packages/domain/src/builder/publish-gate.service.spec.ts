@@ -23,7 +23,10 @@ import type { AppDefinitionDocument } from './data-access/app-definition.reposit
 import { RuleBasedProvider } from '../decision/rule-based.provider.js';
 import { RoutingOrchestrator } from '../decision/routing-orchestrator.js';
 import type { RoutingOutcomeRecord } from './routing-share/routing-outcome.repository.js';
-import { PublishGateService } from './publish-gate.service.js';
+import {
+  descriptionsCollide,
+  PublishGateService,
+} from './publish-gate.service.js';
 
 // ─── In-memory doubles ──────────────────────────────────
 //
@@ -457,5 +460,86 @@ describe('PublishGateService.evaluate — the APP-07 share-drop boundary', () =>
       'expense',
       'expense',
     ]);
+  });
+});
+
+describe('PublishGateService.evaluate — the APP-08 collision and the BLD-06 summary', () => {
+  it('blocks a description case-folded equal to a published app\'s, naming the colliding app', async () => {
+    const definitions = new FakeDefinitions();
+    // The published app shares none of the candidate's
+    // labels — the collision is the only blocker, and
+    // the check runs against published apps only.
+    definitions.seed(
+      definition({
+        app_id: 'existing-expense',
+        name: 'Existing Expense',
+        // The candidate's description, upper-cased:
+        // case-folded, the two are equal.
+        description: 'SUBMIT AN EXPENSE REPORT',
+        lifecycle: 'published',
+        triggers: [
+          {
+            id: 'existing',
+            type: 'slash',
+            command: '/existing',
+            intents: ['existing intent'],
+            aliases: ['existing intent'],
+          },
+        ],
+      }),
+    );
+    definitions.seed(definition());
+    const gate = buildGate({ definitions, outcomes: new FakeOutcomeStore() });
+
+    const result = await gate.evaluate('expense-report', 'user-1');
+
+    expect(result.allowed).toBe(false);
+    expect(result.descriptionCollisionWith).toBe('existing-expense');
+    expect(result.shareDrops).toEqual([]);
+  });
+
+  it('blocks a description at a 0.90 token Jaccard and passes one at 0.89', () => {
+    // Ten tokens against the same nine: intersection 9,
+    // union 10 — exactly the 0.90 the rule blocks.
+    const ten =
+      'alpha beta gamma delta epsilon zeta eta theta iota kappa';
+    const nine = 'alpha beta gamma delta epsilon zeta eta theta iota';
+    expect(descriptionsCollide(ten, nine)).toBe(true);
+    // Nine tokens against the same eight: intersection 8,
+    // union 9 — 0.89, one hundredth inside the rule.
+    const eight = 'alpha beta gamma delta epsilon zeta eta theta';
+    expect(descriptionsCollide(nine, eight)).toBe(false);
+  });
+
+  it('an already-published app is a zero-change publish: allowed with an empty summary', async () => {
+    const definitions = new FakeDefinitions();
+    definitions.seed(definition({ lifecycle: 'published' }));
+    const gate = buildGate({ definitions, outcomes: new FakeOutcomeStore() });
+
+    const result = await gate.evaluate('expense-report', 'user-1');
+
+    // The short-circuit: no dry-run runs, no drop is
+    // measurable, and the summary is empty — named
+    // inline, never a generic confirmation.
+    expect(result).toEqual({
+      allowed: true,
+      shareDrops: [],
+      descriptionCollisionWith: null,
+      changeSummary: [],
+    });
+  });
+
+  it("the summary's version row is the version the publish commits", async () => {
+    const definitions = new FakeDefinitions();
+    definitions.seed(definition({ version: 7 }));
+    const gate = buildGate({ definitions, outcomes: new FakeOutcomeStore() });
+
+    const result = await gate.evaluate('expense-report', 'user-1');
+
+    expect(result.changeSummary).toContainEqual({
+      field: 'version',
+      from: 'v7',
+      to: 'v8',
+    });
   });
 });

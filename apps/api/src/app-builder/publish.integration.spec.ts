@@ -403,4 +403,128 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     ).toHaveLength(0);
     expect(entries.length).toBe(before.length);
   });
+
+  it('a description colliding with a published app\'s is refused, naming the colliding app', async () => {
+    const published = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Collision Source',
+        app_id: 'collision-source',
+        // Distinct from every description the
+        // earlier tests published — the collision
+        // under test is the candidate's, not this
+        // app's own.
+        description: 'Process expense claims',
+      },
+      OWNER,
+    );
+    expect(published.status).toBe(201);
+    const publishedNow = await call(
+      'POST',
+      `${baseUrl}/apps/collision-source/publish`,
+      undefined,
+      OWNER,
+    );
+    expect(publishedNow.status).toBe(200);
+
+    // Differing only in case: case-folded, the two
+    // descriptions are equal — the collision the
+    // rule blocks, and the colliding app is named.
+    const created = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Collision Candidate',
+        app_id: 'collision-candidate',
+        description: 'PROCESS EXPENSE CLAIMS',
+      },
+      OWNER,
+    );
+    expect(created.status).toBe(201);
+
+    const refusal = await call(
+      'POST',
+      `${baseUrl}/apps/collision-candidate/publish`,
+      undefined,
+      OWNER,
+    );
+
+    expect(refusal.status).toBe(409);
+    expect(refusal.body).toMatchObject({
+      error: {
+        code: 'PUBLISH_REFUSED',
+        message: expect.stringContaining('collision-source'),
+      },
+    });
+  });
+
+  it('a description at a 0.90 token Jaccard with a published app\'s is refused; 0.89 publishes cleanly', async () => {
+    const published = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Jaccard Source',
+        app_id: 'jaccard-source',
+        description:
+          'alpha beta gamma delta epsilon zeta eta theta iota',
+      },
+      OWNER,
+    );
+    expect(published.status).toBe(201);
+    const publishedNow = await call(
+      'POST',
+      `${baseUrl}/apps/jaccard-source/publish`,
+      undefined,
+      OWNER,
+    );
+    expect(publishedNow.status).toBe(200);
+
+    // The nine shared tokens plus one: intersection
+    // 9, union 10 — exactly the 0.90 the rule blocks.
+    const blocked = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Jaccard Blocked',
+        app_id: 'jaccard-blocked',
+        description:
+          'alpha beta gamma delta epsilon zeta eta theta iota kappa',
+      },
+      OWNER,
+    );
+    expect(blocked.status).toBe(201);
+    const refusal = await call(
+      'POST',
+      `${baseUrl}/apps/jaccard-blocked/publish`,
+      undefined,
+      OWNER,
+    );
+    expect(refusal.status).toBe(409);
+    expect(
+      (refusal.body.error as { message: string }).message,
+    ).toContain('jaccard-source');
+
+    // Eight of the nine shared tokens: intersection
+    // 8, union 9 — 0.89, one hundredth inside the rule.
+    const allowed = await call(
+      'POST',
+      `${baseUrl}/apps`,
+      {
+        name: 'Jaccard Allowed',
+        app_id: 'jaccard-allowed',
+        description: 'alpha beta gamma delta epsilon zeta eta theta',
+      },
+      OWNER,
+    );
+    expect(allowed.status).toBe(201);
+    const clean = await call(
+      'POST',
+      `${baseUrl}/apps/jaccard-allowed/publish`,
+      undefined,
+      OWNER,
+    );
+    expect(clean.status).toBe(200);
+    expect(clean.body).toMatchObject({ lifecycle: 'published' });
+  });
 });
