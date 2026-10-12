@@ -290,10 +290,14 @@ describe('audit browse (AUD-01, D-43, T-06-32)', () => {
     });
 
     expect(response.status).toBe(403);
+    // The rendered message carries the code prefix —
+    // the BuilderError discipline every builder
+    // refusal follows (`${code}: ${message}`).
     expect(response.body).toEqual({
       error: {
         code: 'GLOBAL_ADMIN_REQUIRED',
-        message: 'global-admin session required',
+        message:
+          'GLOBAL_ADMIN_REQUIRED: global-admin session required',
       },
     });
   });
@@ -304,7 +308,8 @@ describe('audit browse (AUD-01, D-43, T-06-32)', () => {
     expect(response.body).toEqual({
       error: {
         code: 'GLOBAL_ADMIN_REQUIRED',
-        message: 'global-admin session required',
+        message:
+          'GLOBAL_ADMIN_REQUIRED: global-admin session required',
       },
     });
   });

@@ -140,15 +140,26 @@ async function stubDesignerApi(
   // The FRM-09 tripwire: the preview's sandbox
   // submissions must never reach a submissions
   // endpoint. Fulfill (so a stray call would not
-  // hang the page) and count.
-  await page.route('**/submissions**', (route: Route) => {
-    submissionsRequests.push(route.request().url());
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: '[]',
-    });
-  });
+  // hang the page) and count. The stub matches
+  // the API surface only (the request path
+  // starts with /api/submissions): the SPA's
+  // own module URLs carry the same path segment
+  // (the dev server serves /src/api/submissions.ts),
+  // and a glob would answer a module script with
+  // JSON — a MIME-type load error that blanks the
+  // whole app.
+  await page.route(
+    (url: URL) =>
+      url.pathname.startsWith('/api/submissions'),
+    (route: Route) => {
+      submissionsRequests.push(route.request().url());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      });
+    },
+  );
 
   // Every app path: the definition read, the
   // field-mapping read/write. `**` spans the

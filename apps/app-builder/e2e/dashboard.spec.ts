@@ -189,6 +189,18 @@ const AUDIT_ENTRIES = [
 let servedUrls: string[] = [];
 
 /**
+ * Delay a stub's fulfillment so the
+ * skeleton-then-data transition is
+ * observable (BLD-09): the in-flight
+ * state outlives the test's first
+ * assertions.
+ */
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
  * Stub the builder API the dashboard touches.
  * Every fulfillment is delayed so the
  * skeleton-then-data transition is
@@ -200,21 +212,23 @@ async function stubDashboardApi(
 ): Promise<void> {
   servedUrls = [];
 
-  await page.route('**/api/auth/me', (route: Route) =>
-    route.fulfill({
+  await page.route('**/api/auth/me', async (route: Route) => {
+    await delay(500);
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         real_user_id: 'usr_owner_1',
         mfa_at: '2026-10-12T10:00:00.000Z',
       }),
-    }),
-  );
+    });
+  });
 
   // The owner's app list — the merge source
   // for the recent-submissions widget.
-  await page.route('**/api/apps', (route: Route) => {
+  await page.route('**/api/apps', async (route: Route) => {
     servedUrls.push(route.request().url());
+    await delay(500);
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -224,25 +238,42 @@ async function stubDashboardApi(
 
   // The submissions viewer's list endpoint —
   // the same projection the submissions page
-  // lists (no separate dashboard source).
-  await page.route('**/api/submissions**', (route: Route) => {
-    const url = new URL(route.request().url());
-    servedUrls.push(url.pathname);
-    const appId = url.searchParams.get('app_id') ?? '';
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        submissions: SUBMISSIONS[appId] ?? [],
-      }),
-    });
-  });
+  // lists (no separate dashboard source). The
+  // stub matches the API surface only (the
+  // request path starts with /api/submissions):
+  // the dev server also serves the SPA's own
+  // /src/api/submissions.ts module, which a
+  // glob would answer with JSON — a MIME-type
+  // load error that blanks the app.
+  await page.route(
+    (url: URL) =>
+      url.pathname.startsWith('/api/submissions'),
+    async (route: Route) => {
+      const url = new URL(route.request().url());
+      servedUrls.push(url.pathname);
+      await delay(500);
+      const appId = url.searchParams.get('app_id') ?? '';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          submissions: SUBMISSIONS[appId] ?? [],
+        }),
+      });
+    },
+  );
 
   // The audit browse endpoint — the
   // recent-activity widget's live source.
-  await page.route('**/api/audit**', (route: Route) => {
-    servedUrls.push(route.request().url());
-    if (options.auditFails) {
+  // API-surface-only for the same reason as
+  // the submissions stub above (the SPA serves
+  // its own /src/api/audit.ts module).
+  await page.route(
+    (url: URL) => url.pathname.startsWith('/api/audit'),
+    async (route: Route) => {
+      servedUrls.push(route.request().url());
+      await delay(500);
+      if (options.auditFails) {
       return route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -278,32 +309,40 @@ test.describe('dashboard (D-112, OBS-05)', () => {
     await stubDashboardApi(page);
     await page.goto('/#/dashboard');
 
-    // Both live reads fired — OBS-05's
-    // "no static or fake dashboard data"
-    // proven by the network trace.
+    // Skeleton-then-data (BLD-09): every read
+    // is delayed, so the layout-shaped
+    // skeleton state is observable before any
+    // data renders — the session boot's
+    // skeleton first, then each widget's own
+    // skeleton while its read is in flight.
     await expect(
-      page.getByTestId('recent-submissions'),
+      page.getByTestId('session-boot'),
     ).toBeVisible({ timeout: 20_000 });
-    expect(
-      servedUrls.filter((url) =>
-        url.includes('/api/submissions'),
-      ),
-    ).not.toHaveLength(0);
-    expect(
-      servedUrls.filter((url) => url.includes('/api/audit')),
-    ).not.toHaveLength(0);
+    await expect(
+      page.getByTestId('recent-submissions')
+        .getByTestId('skeleton')
+        .first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByTestId('recent-activity')
+        .getByTestId('skeleton')
+        .first(),
+    ).toBeVisible({ timeout: 20_000 });
 
     // The submissions widget lists the merged,
     // most-recent-first projection of both
     // apps' submissions — the newest
     // (travel's sub_0005, 12:00) first.
+    // The data rows render only after the
+    // (delayed) reads land, so their
+    // visibility proves the reads fired.
     const submissionsWidget = page.getByTestId(
       'recent-submissions',
     );
     const rows = submissionsWidget.getByTestId(
       /^submission-row-/,
     );
-    await expect(rows).toHaveLength(5);
+    await expect(rows).toHaveCount(5);
     await expect(
       submissionsWidget.getByTestId('submission-row-sub_0005'),
     ).toBeVisible();
@@ -313,6 +352,18 @@ test.describe('dashboard (D-112, OBS-05)', () => {
       .locator('tbody tr')
       .first();
     await expect(firstRow).toHaveText(/sub_0005/);
+
+    // Both live reads fired — OBS-05's
+    // "no static or fake dashboard data"
+    // proven by the network trace.
+    expect(
+      servedUrls.filter((url) =>
+        url.includes('/api/submissions'),
+      ),
+    ).not.toHaveLength(0);
+    expect(
+      servedUrls.filter((url) => url.includes('/api/audit')),
+    ).not.toHaveLength(0);
 
     // The activity widget lists the newest
     // AUD-01 entries — the definition update
@@ -365,13 +416,20 @@ test.describe('dashboard (D-112, OBS-05)', () => {
     await stubDashboardApi(page, { auditFails: true });
     await page.goto('/#/dashboard');
 
-    // Skeletons render while the reads are in
-    // flight (the stubs answer immediately, so
-    // the skeleton state is asserted through the
-    // app-boot skeleton that always precedes
-    // data on a cold navigation).
+    // Each widget renders its layout-shaped
+    // skeleton while its read is in flight
+    // (BLD-09) — including the widget whose
+    // read will fail: the error replaces the
+    // skeleton, never a blank.
     await expect(
-      page.getByTestId('session-boot'),
+      page.getByTestId('recent-submissions')
+        .getByTestId('skeleton')
+        .first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByTestId('recent-activity')
+        .getByTestId('skeleton')
+        .first(),
     ).toBeVisible({ timeout: 20_000 });
 
     // The submissions widget rendered from its

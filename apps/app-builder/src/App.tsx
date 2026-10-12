@@ -10,13 +10,15 @@
  *    SPA holds no token, the httpOnly
  *    `__Host-` session cookie is the only
  *    credential (D-101).
- *  - **Routes**: `#/apps` (the caller's app
- *    list), `#/wizard` (the five-step create
- *    wizard), `#/apps/:id` (the tabbed editor,
- *    plan 07 task 3), `#/apps/:id/designer`
- *    (the form designer, plan 07 task 2),
- *    `#/apps/:id/roles` (the roles page, plan
- *    07 task 3).
+ *  - **Routes**: `#/dashboard` (the two
+ *    live widgets), `#/apps` (the caller's
+ *    app list), `#/wizard` (the five-step
+ *    create wizard), `#/apps/:id` (the
+ *    tabbed editor, plan 07 task 3),
+ *    `#/apps/:id/designer` (the form
+ *    designer, plan 07 task 2),
+ *    `#/apps/:id/roles` (the roles page,
+ *    plan 07 task 3).
  *  - **`#/spike`**: the S1 spike surface —
  *    the FormIO 5.6.1 builder verification
  *    harness. Dev-only, deliberately
@@ -55,6 +57,7 @@ import { useApiClient } from './apiHooks.js';
 import { InlineError } from './error/InlineError.js';
 import { Skeleton } from './ui/Skeleton.js';
 import { WizardPage } from './wizard/WizardPage.js';
+import { DashboardPage } from './dashboard/DashboardPage.js';
 import { FormDesignerPage } from './form-designer/FormDesignerPage.js';
 import { RolesPage } from './roles/RolesPage.js';
 import { EditorPage } from './editor/EditorPage.js';
@@ -85,6 +88,7 @@ function useHashRoute(): string {
 
 /** The parsed route. */
 type RouteName =
+  | 'dashboard'
   | 'apps'
   | 'wizard'
   | 'editor'
@@ -104,6 +108,9 @@ function parseRoute(route: string): ParsedRoute {
     return { name: 'apps' };
   }
   const [head, param, sub] = segments;
+  if (head === 'dashboard') {
+    return { name: 'dashboard' };
+  }
   if (head === 'wizard') {
     return { name: 'wizard' };
   }
@@ -599,6 +606,13 @@ export function App(): ReactElement {
             <nav className="od-row" style={{ '--od-gap': '4px' } as never}>
               <a
                 className="btn btn-ghost btn-sm"
+                href="#/dashboard"
+                data-testid="nav-dashboard"
+              >
+                Dashboard
+              </a>
+              <a
+                className="btn btn-ghost btn-sm"
                 href="#/apps"
                 data-testid="nav-apps"
               >
@@ -635,6 +649,8 @@ export function App(): ReactElement {
 /** The routed page. Unknown routes fall back to the app list. */
 function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
   switch (route.name) {
+    case 'dashboard':
+      return <DashboardPage />;
     case 'wizard':
       return <WizardPage />;
     case 'designer':

@@ -286,6 +286,14 @@ export function builderErrorStatus(error: BuilderError): HttpStatus {
     case 'CONNECTOR_REQUEST_NOT_FOUND':
     case 'SUBMISSION_NOT_FOUND':
       return HttpStatus.NOT_FOUND;
+    case 'GLOBAL_ADMIN_REQUIRED':
+      // The global-admin surfaces (the audit
+      // browse, T-06-32; the transfer
+      // approvals, ACL-05) refuse a
+      // non-admin with the named 403 — the
+      // same posture the users surface
+      // answers with (D-110).
+      return HttpStatus.FORBIDDEN;
     default:
       return HttpStatus.BAD_REQUEST;
   }
