@@ -160,13 +160,13 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 - [ ] **APP-01**: An app moves through `draft` → `published` → `deprecated` → `archived`
 - [ ] **APP-02**: A draft app is not reachable by any link, trigger, or route
-- [ ] **APP-03**: An app definition is versioned and the last 20 versions are retained for rollback
+- [x] **APP-03**: An app definition is versioned and the last 20 versions are retained for rollback
 - [ ] **APP-04**: A published app declares intents and slash commands that activate it
-- [ ] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
-- [ ] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
+- [x] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
+- [x] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
 - [ ] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
 - [ ] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
-- [ ] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
+- [x] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
 
 ### Form Engine & Renderer
 
@@ -296,7 +296,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### App Builder
 
 - [ ] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
-- [ ] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
+- [x] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
 - [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
 - [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
 - [ ] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
@@ -508,7 +508,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LNK-02 | Phase 5 | Complete |
 | OBS-04 | Phase 5 | Complete (OBS-04) |
 | BLD-01 | Phase 6 | Pending |
-| BLD-02 | Phase 6 | Pending |
+| BLD-02 | Phase 6 | Complete |
 | BLD-03 | Phase 6 | Pending |
 | BLD-04 | Phase 6 | Complete |
 | BLD-05 | Phase 6 | Pending |
@@ -519,12 +519,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BLD-10 | Phase 6 | Pending |
 | BLD-11 | Phase 6 | Pending |
 | BLD-12 | Phase 6 | Complete |
-| APP-03 | Phase 6 | Pending |
-| APP-05 | Phase 6 | Pending |
-| APP-06 | Phase 6 | Pending |
+| APP-03 | Phase 6 | Complete |
+| APP-05 | Phase 6 | Complete |
+| APP-06 | Phase 6 | Complete |
 | APP-07 | Phase 6 | Pending |
 | APP-08 | Phase 6 | Pending |
-| APP-09 | Phase 6 | Pending |
+| APP-09 | Phase 6 | Complete |
 | FRM-05 | Phase 6 | Complete |
 | FRM-09 | Phase 6 | Complete |
 | IDN-05 | Phase 6 | Complete |

@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 6
 current_phase_name: Self-Service App Builder
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-10-12T06:21:34.416Z"
-state_head: 2cedc020f8dbbdb7cde253173a5b69a8a3db2260
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-10-12T08:22:49.748Z"
+state_head: dd17daaad8a32dd13ad9f4da13479761cf391725
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 45
-  completed_plans: 40
+  completed_plans: 41
   percent: 50
 last_activity: 2026-10-11
 last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
@@ -20,15 +20,15 @@ last_activity_desc: Phase 05 plans all executed; a verification pass ran and rec
 ## Current Position
 
 Phase: 6 (Self-Service App Builder) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
-Current Plan: 4
+Current Plan: 5
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T06:21:33.932Z
-**Stopped at:** Completed 06-03-PLAN.md
+**Last session:** 2026-10-12T08:22:49.330Z
+**Stopped at:** Completed 06-04-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -50,6 +50,7 @@ Total Plans in Phase: 8
 | Phase 06-self-service-app-builder P01 | 74min | 2 tasks | 18 files |
 | Phase 06 P02 | 90min | 3 tasks | 25 files |
 | Phase 06 P03 | 61min | 2 tasks | 12 files |
+| Phase 6 P04 | 95min | 3 tasks | 33 files |
 
 ## Decisions
 
@@ -85,6 +86,12 @@ Total Plans in Phase: 8
 - [Phase 06]: IDN-05: lockout arms on the THIRD failed attempt (not the first) and lasts exactly 30 minutes from that failure; third attempt returns invalid with attemptsRemaining: 0, fourth returns locked
 - [Phase 06]: IDN-05: successful verify leaves a consumed tombstone (TTL = remaining window) so replay is refused OTP_CONSUMED, distinct from OTP_EXPIRED
 - [Phase 06]: IDN-05: plaintext OTP code never persists — only SHA-256 hash; OtpDeliveryService logs the chat identity, never the code (T-06-13)
+- [Phase 6]: Repository under builder/data-access/ — R3 boundary rule restricts mongodb driver imports to platform/src/mongo/** and domain/src/**/data-access/** (matches datarouter/submissions precedents)
+- [Phase 6]: All DI providers are factory providers with explicit inject — vitest esbuild emits no design:paramtypes, bare-class providers inject undefined and 500
+- [Phase 6]: Transition endpoints (publish/deprecate/archive) return 200; only POST /apps and POST /templates/:id/fork return 201
+- [Phase 6]: Template fork writes through AppDefinitionRepository.createDraft — inherits unique-app_id guard + audited creation; structuredClone guarantees no shared reference with the platform record (D-108)
+- [Phase 6]: Boot steps in main.ts — TemplateSeed.load() and saved-query backfill run at api composition root; both idempotent so rolling deploys are safe
+- [Phase 6]: SeedSavedQueryLookup retained, unwired — G-11 swap changes only the read.module.ts provider; backfill reads the frozen seed JSON directly
 
 ## Blockers/Concerns
 
