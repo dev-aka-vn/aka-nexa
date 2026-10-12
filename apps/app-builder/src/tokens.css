@@ -1,0 +1,53 @@
+/**
+ * The design-token set, copied verbatim from the
+ * prototype's `:root` (prototypes/mockup.html:47-84).
+ *
+ * AGENTS.md rule 1: reuse the mockup's token set —
+ * do not introduce a second palette. Every custom
+ * property the mockup declares is declared here,
+ * with the same values, so a later surface built
+ * on these tokens renders identically to the
+ * prototype. The font pipeline lives in index.html
+ * (the mockup's head mechanism: preconnects + the
+ * Google Fonts stylesheet) — this file is the
+ * tokens only.
+ */
+
+:root{
+  --ink:#0e1420;
+  --ink-2:#151d2e;
+  --ink-3:#1e283c;
+  --canvas:#f6f8fa;
+  --surface:#ffffff;
+  --surface-2:#f0f3f7;
+  --line:#e2e8f0;
+  --line-strong:#cbd5e1;
+  --text:#101828;
+  --text-2:#475467;
+  --muted:#667085;
+  --accent:#0f9d8f;
+  --accent-strong:#0b7d72;
+  --accent-soft:#e4f5f2;
+  --amber:#b7791f;
+  --amber-soft:#fdf5e6;
+  --red:#c0392b;
+  --red-soft:#fdecea;
+  --green:#2f855a;
+  --green-soft:#e8f5ee;
+  --blue:#2b6cb0;
+  --blue-soft:#eaf2fb;
+  --violet:#6b5bd2;
+  --violet-soft:#eeebfb;
+  --radius-xs:6px;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06);
+  --shadow:0 4px 14px rgba(16,24,40,.08);
+  --shadow-lg:0 24px 48px rgba(16,24,40,.20);
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --display:"Space Grotesk","IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --topbar-h:60px;
+  --side-w:250px;
+  --od-gap:8px;
+}

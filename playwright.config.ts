@@ -37,6 +37,22 @@ export default defineConfig({
       // fits the whole canvas.
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 1024 } },
     },
+    {
+      // BLD-09's responsive surface: every later UI
+      // plan runs its tablet specs against this
+      // project — 768x1024 with touch emulation.
+      // Chromium-backed (the installed browser); the
+      // iPad device preset is deliberately NOT
+      // spread here — its defaultBrowserType is
+      // webkit, which this environment cannot
+      // install (no OS-deps access).
+      name: 'tablet',
+      use: {
+        viewport: { width: 768, height: 1024 },
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
   ],
   webServer: {
     command: 'npx vite --config apps/app-builder/vite.config.ts',
