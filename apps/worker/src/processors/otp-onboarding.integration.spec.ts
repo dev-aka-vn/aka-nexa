@@ -184,4 +184,35 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
     expect(outcome).toEqual({ kind: 'skipped', reason: 'unknown_user' });
     expect(deliveries).toHaveLength(0);
   });
+
+  it('refuses the fourth wrong code with the lockout armed (IDN-05 policy)', async () => {
+    const deliveries: Array<{ chatUserId: string; code: string }> = [];
+    const { processor } = buildProcessor(deliveries);
+
+    const requested = await processor.process({
+      data: event({ text: 'onboard' }),
+    } as never);
+    expect(requested.kind).toBe('otp_requested');
+    const code = deliveries[0]!.code;
+
+    // Three wrong attempts exhaust the budget — the third arms the
+    // lockout, measured from that third failure.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const wrong = await processor.process({
+        data: event({ text: otherCode(code) }),
+      } as never);
+      expect(wrong.kind).toBe('otp_invalid');
+    }
+
+    // The fourth is refused with the lockout active, the remaining
+    // minutes named inline.
+    const fourth = await processor.process({
+      data: event({ text: otherCode(code) }),
+    } as never);
+    expect(fourth.kind).toBe('otp_locked');
+    if (fourth.kind === 'otp_locked') {
+      expect(fourth.remainingMinutes).toBeGreaterThan(0);
+      expect(fourth.remainingMinutes).toBeLessThanOrEqual(30);
+    }
+  });
 });
