@@ -229,7 +229,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: 7/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -254,7 +254,7 @@ Plans:
 - [x] 06-07-PLAN.md — SPA core: 5-step wizard (BLD-01), tabbed editor (BLD-02), FormIO designer with undo/redo + conditional/validate + sandbox preview (BLD-04/FRM-05/FRM-09), roles + autocomplete + @casl/ability (BLD-03/ACL-10/BLD-11), skeletons + inline errors (BLD-07/BLD-09)
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
+- [x] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
 
 **UI hint**: yes
 **Notes**: Highest-value, lowest-risk slice: by now the APIs are stable, so this is a CRUD skin rather than a design against moving targets. Research explicitly resolved the DH-2 tension by **not** moving the builder earlier. The pre-builder story is made credible by shipping the **~10-app seed template gallery plus tag filtering** (`APP-09`) — do not drop it. Editing a published form must not disturb an in-flight submission.
@@ -351,7 +351,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
-| 6. Self-Service App Builder | 7/8 | In Progress|  |
+| 6. Self-Service App Builder | 8/8 | In Progress|  |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |
 

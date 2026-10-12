@@ -134,7 +134,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **ACL-02**: Roles are assignable only to `real_user_id`; no group or attribute-based assignment exists
 - [ ] **ACL-03**: Every app ships with the default roles `owner`, `admin`, `manager`, and `user`
 - [ ] **ACL-04**: An app has exactly one `owner` at all times
-- [ ] **ACL-05**: Ownership transfer requires global admin approval and auto-cancels after 7 days if unapproved
+- [x] **ACL-05**: Ownership transfer requires global admin approval and auto-cancels after 7 days if unapproved
 - [ ] **ACL-06**: A user's permissions are checked twice per request — once to filter the tool list before any decision-model call, and again at the execution boundary
 - [ ] **ACL-07**: Any permission change bumps a per-user-per-app `perm_version` epoch, and the epoch is embedded in the RBAC cache key
 - [ ] **ACL-08**: A stale cached permission entry is never served after an epoch bump, with or without a Pub/Sub message
@@ -529,7 +529,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FRM-09 | Phase 6 | Complete |
 | IDN-05 | Phase 6 | Complete |
 | IDN-08 | Phase 6 | Complete |
-| ACL-05 | Phase 6 | Pending |
+| ACL-05 | Phase 6 | Complete |
 | ACL-10 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
 | IM-10 | Phase 7 | Pending |

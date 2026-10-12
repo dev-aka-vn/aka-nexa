@@ -3,15 +3,15 @@ gsd_state_version: "1.0"
 current_phase: 6
 current_phase_name: Self-Service App Builder
 current_plan: 8
-status: executing
-stopped_at: Completed 06-07-PLAN.md
-last_updated: "2026-10-12T16:40:14.833Z"
-state_head: 21facfe5226953cb5005bcb6722a6b394c9d547d
+status: verifying
+stopped_at: Completed 06-08-PLAN.md
+last_updated: "2026-10-12T22:07:28.026Z"
+state_head: 35e1c49b340b50897a02d08e4e8700754013edaf
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 45
-  completed_plans: 44
+  completed_plans: 45
   percent: 50
 last_activity: 2026-10-11
 last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
@@ -21,14 +21,14 @@ last_activity_desc: Phase 05 plans all executed; a verification pass ran and rec
 
 Phase: 6 (Self-Service App Builder) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Current Plan: 8
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T16:40:14.375Z
-**Stopped at:** Completed 06-07-PLAN.md
+**Last session:** 2026-10-12T22:06:17.637Z
+**Stopped at:** Completed 06-08-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -54,6 +54,7 @@ Total Plans in Phase: 8
 | Phase 6 P05 | 129min | 3 tasks | 28 files |
 | Phase 06-self-service-app-builder P06 | 96min | 3 tasks | 28 files |
 | Phase 06 P06-07 | 10369 | 3 tasks | 39 files |
+| Phase 06 P06-08 | 4h 49m | 3 tasks | 48 files |
 
 ## Decisions
 
@@ -109,6 +110,13 @@ Total Plans in Phase: 8
 - [Phase 06]: FRM-09 sandbox isolation is structural: form.nosubmit + diverted submit event to an in-memory buffer — the sandbox has no HTTP surface (06-07)
 - [Phase 06]: SPA-side API responses validated by hand-written structural schemas (parse(data): T), not Zod (06-07)
 - [Phase 06]: Playwright specs stub the builder API via page.route with one method+URL dispatch route for all **/api/apps/** paths (06-07)
+- [Phase 06]: ACL-05 transfer: one pending transfer per app is a Mongo partial unique index (partialFilterExpression {state: pending}); owner requests, global admin approves/rejects with route+service defense-in-depth guards, 7-day TTL, hourly idempotent auto-cancel Job Scheduler + worker processor, AUD-01 per transition
+- [Phase 06]: Audit browse GET /audit is global-admin-only, paginated (default 20/max 100), newest-first, projected through the D-43 field allowlist before serialization — ip and non-allowlisted keys are unreachable by construction
+- [Phase 06]: Dashboard (D-112) ships exactly two live widgets (recent submissions via per-app GET /submissions merge, recent audit activity via GET /audit?limit=5); the connector-health card is deliberately absent
+- [Phase 06]: The SPA never imports @akane/domain — frozen vocabularies (PLATFORM_TAGS, transfer states, SSO mappings) ride as structural copies with the domain package as source of truth, keeping the Mongo driver out of the browser bundle
+- [Phase 06]: The plan's single transfer.controller.ts was split into transfer-request.controller.ts (owner) + transfer-approval.controller.ts (global-admin) — the two RBAC roles own distinct route trees
+- [Phase 06]: Rule 1 fix: the app-shell header row wraps at narrow widths — the 8-link nav's min-content width (~865px) exceeded the 768px tablet layout viewport, widening the document and breaking Playwright click hit-testing on wide tables (13 tablet e2e timeouts); proven causal by a stash-and-compare geometry probe
+- [Phase 06]: Settings page is a deliberate read-only stub (D-109): it names the deferred JEV-chain/decision-cache/circuit-breaker knobs as platform-admin territory; no fake inputs
 
 ## Blockers/Concerns
 
