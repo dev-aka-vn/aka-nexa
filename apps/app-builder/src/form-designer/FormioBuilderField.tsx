@@ -75,6 +75,18 @@ export interface FormioBuilderFieldProps {
   schema: Record<string, unknown>;
   /** Called with the current schema on every builder change. */
   onChange?: (schema: Record<string, unknown>) => void;
+  /**
+   * Called whenever the undo/redo availability
+   * changes: after a captured change (always
+   * undoable — `undo()` flushes the pending
+   * snapshot — and redo-invalidated), and after
+   * every undo/redo. The shell's toolbar renders
+   * these as the buttons' disabled states.
+   */
+  onHistoryChange?: (state: {
+    canUndo: boolean;
+    canRedo: boolean;
+  }) => void;
   /** React 19: `ref` is a regular prop on function components. */
   ref?: Ref<FormioBuilderHandle>;
 }
@@ -82,6 +94,7 @@ export interface FormioBuilderFieldProps {
 export function FormioBuilderField({
   schema,
   onChange,
+  onHistoryChange,
   ref,
 }: FormioBuilderFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,6 +122,10 @@ export function FormioBuilderField({
   /** Latest-callback ref so the mount-once effect always calls the current handler. */
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  /** Latest-callback ref for the history-availability handler. */
+  const onHistoryChangeRef = useRef(onHistoryChange);
+  onHistoryChangeRef.current = onHistoryChange;
 
   /**
    * Restores `snapshot` through the documented
@@ -143,7 +160,14 @@ export function FormioBuilderField({
       return false;
     }
     const snapshot = history.undo(builder.schema);
-    return snapshot === null ? false : restore(snapshot);
+    if (snapshot === null) {
+      return false;
+    }
+    onHistoryChangeRef.current?.({
+      canUndo: history.canUndo(),
+      canRedo: history.canRedo(),
+    });
+    return restore(snapshot);
   }, [history, restore]);
 
   const redo = useCallback(async (): Promise<boolean> => {
@@ -152,7 +176,14 @@ export function FormioBuilderField({
       return false;
     }
     const snapshot = history.redo(builder.schema);
-    return snapshot === null ? false : restore(snapshot);
+    if (snapshot === null) {
+      return false;
+    }
+    onHistoryChangeRef.current?.({
+      canUndo: history.canUndo(),
+      canRedo: history.canRedo(),
+    });
+    return restore(snapshot);
   }, [history, restore]);
 
   useImperativeHandle(
@@ -212,6 +243,13 @@ export function FormioBuilderField({
         }
         const current = builder.schema as Record<string, unknown>;
         history.capture(current);
+        // A captured change is always undoable (undo
+        // flushes the pending snapshot) and always
+        // invalidates the redo branch.
+        onHistoryChangeRef.current?.({
+          canUndo: true,
+          canRedo: false,
+        });
         onChangeRef.current?.(current);
       });
     })();

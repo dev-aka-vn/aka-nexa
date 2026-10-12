@@ -35,16 +35,13 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from 'react';
 import type { ReactElement, Ref } from 'react';
 
 import {
-  createApiClient,
   SessionAuthError,
-  type ApiClient,
 } from './api/client.js';
 import {
   AppsListSchema,
@@ -53,13 +50,12 @@ import {
 import {
   fetchSessionUser,
 } from './auth/session.client.js';
-import {
-  redirectToOidcBegin,
-} from './auth/oidc-redirect.js';
 import type { SessionMeResponse } from '@akane/contract';
+import { useApiClient } from './apiHooks.js';
 import { InlineError } from './error/InlineError.js';
 import { Skeleton } from './ui/Skeleton.js';
 import { WizardPage } from './wizard/WizardPage.js';
+import { FormDesignerPage } from './form-designer/FormDesignerPage.js';
 import { FormioBuilderField } from './form-designer/FormioBuilderField';
 import type { FormioBuilderHandle } from './form-designer/FormioBuilderField';
 import {
@@ -122,14 +118,6 @@ function parseRoute(route: string): ParsedRoute {
     return { name: 'editor', appId: param };
   }
   return { name: 'unknown' };
-}
-
-/** One api client per surface — the 401 hook fires once. */
-function useApiClient(): ApiClient {
-  return useMemo(
-    () => createApiClient({ onUnauthorized: redirectToOidcBegin }),
-    [],
-  );
 }
 
 /** The session boot's three states. */
@@ -647,6 +635,8 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
   switch (route.name) {
     case 'wizard':
       return <WizardPage />;
+    case 'designer':
+      return <FormDesignerPage appId={route.appId ?? ''} />;
     case 'apps':
     case 'unknown':
     default:
