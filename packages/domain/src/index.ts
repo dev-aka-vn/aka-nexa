@@ -141,6 +141,30 @@ export {
 export { AuditRepository, type AuditEntry } from './audit/audit.repository.js';
 export { AppRepository, type AppDocument } from './registry/app.repository.js';
 export {
+  AppDefinitionRepository,
+  AppIdInUseError,
+  AppNotFoundError,
+  VersionConflictError,
+  applySectionPatch,
+  type AppDefinitionDocument,
+  type AppDataMode,
+  type VersionSnapshotDocument,
+} from './builder/data-access/app-definition.repository.js';
+export {
+  AppLifecycle,
+  BuilderError,
+  LifecycleTransitionError,
+  SubmissionRefusedError,
+  TriggerRegisterRefusedError,
+  APP_LIFECYCLE_STATES,
+  type AppLifecycleState,
+} from './builder/app-lifecycle.js';
+export {
+  AppDefinitionValidationError,
+  AppDefinitionService,
+  RETAINED_VERSIONS,
+} from './builder/app-definition.service.js';
+export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,
 } from './connectors/data-access/connector-credentials.repository.js';
