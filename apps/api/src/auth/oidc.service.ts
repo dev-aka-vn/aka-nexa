@@ -465,6 +465,20 @@ export class OidcService {
   }
 
   /**
+   * `POST /auth/logout` — destroy the server-side session
+   * record. The cookie is cleared by the controller; this
+   * removes the record the cookie resolves, so a stolen
+   * cookie copy answers 401 from here on.
+   */
+  async destroySession(req: Request): Promise<void> {
+    const sessionId = readSessionId(req);
+    if (sessionId === null) {
+      return;
+    }
+    await this.sessions.destroy(sessionId);
+  }
+
+  /**
    * Exchange the server-stored refresh token for a fresh IdP
    * session (D-103's silent renewal).
    *

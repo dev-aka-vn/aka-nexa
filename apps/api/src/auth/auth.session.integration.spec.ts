@@ -85,37 +85,6 @@ function sidFromCookie(cookie: string): string {
   return value;
 }
 
-/**
- * Rewrite the authenticated session record behind a cookie
- * directly in Redis — the specs drive D-103's lifetime
- * legs (expired, renewal window) by backdating the
- * record the callback wrote, not by waiting on a clock.
- */
-async function forceSessionRecord(
-  sid: string,
-  overrides: Partial<AuthenticatedSession>,
-  ttlSeconds = 3600,
-): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-  const record: AuthenticatedSession = {
-    stage: 'authenticated',
-    oidcSub: SUBJECT,
-    realUserId: 'forced-real-user',
-    role: 'global-admin',
-    idpSessionIssuedAt: now - 60,
-    idpSessionExp: now + 3600,
-    mfaAt: new Date().toISOString(),
-    refreshToken: '',
-    ...overrides,
-  };
-  await redis.set(
-    `${SESSION_KEY_PREFIX}${sid}`,
-    JSON.stringify(record),
-    'EX',
-    ttlSeconds,
-  );
-}
-
 /** The five attributes D-101 mandates on the session cookie. */
 function expectFiveCookieAttributes(setCookie: string): void {
   expect(setCookie).toContain(`${SESSION_COOKIE_NAME}=`);
@@ -520,6 +489,37 @@ describe('builder auth session (BLD-12, D-101/D-102/D-103/D-104)', () => {
     });
     expect(me.status).toBe(401);
   });
+
+  /**
+   * Rewrite the authenticated session record behind a cookie
+   * directly in Redis — the specs drive D-103's lifetime
+   * legs (expired, renewal window) by backdating the
+   * record the callback wrote, not by waiting on a clock.
+   */
+  async function forceSessionRecord(
+    sid: string,
+    overrides: Partial<AuthenticatedSession>,
+    ttlSeconds = 3600,
+  ): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    const record: AuthenticatedSession = {
+      stage: 'authenticated',
+      oidcSub: SUBJECT,
+      realUserId: 'forced-real-user',
+      role: 'global-admin',
+      idpSessionIssuedAt: now - 60,
+      idpSessionExp: now + 3600,
+      mfaAt: new Date().toISOString(),
+      refreshToken: '',
+      ...overrides,
+    };
+    await redis.set(
+      `${SESSION_KEY_PREFIX}${sid}`,
+      JSON.stringify(record),
+      'EX',
+      ttlSeconds,
+    );
+  }
 
   /**
    * Drive a full login and return the authenticated session's

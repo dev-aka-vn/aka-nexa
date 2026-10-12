@@ -10,12 +10,16 @@
  * subject, never PII.
  */
 
-import { Controller, Get, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 import { SessionMeResponseSchema } from '@akane/contract';
 
-import { OidcService } from './oidc.service.js';
+import {
+  OidcService,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_ATTRIBUTES,
+} from './oidc.service.js';
 
 @Controller('auth')
 export class AuthController {
@@ -49,20 +53,42 @@ export class AuthController {
 
   /**
    * `GET /auth/me` — the session's own view of its
-   * owner. No cookie, no session: 401.
+   * owner. The session middleware has already resolved
+   * `req.user` (or answered 401); this only renders it.
+   * No cookie, no session: 401.
    */
   @Get('me')
   async me(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const session = await this.oidc.readSession(req);
-    if (session === null) {
+    const user = req.user;
+    if (user === undefined) {
+      // Defensive: the middleware answers 401 before the
+      // route runs, so this branch is the fail-closed
+      // backstop, not a reachable path.
       res.status(401).json({ error: 'SESSION_MISSING' });
       return;
     }
     res.status(200).json(
       SessionMeResponseSchema.parse({
-        real_user_id: session.realUserId,
-        mfa_at: session.mfaAt,
+        real_user_id: user.realUserId,
+        mfa_at: user.mfaAt,
       }),
     );
+  }
+
+  /**
+   * `POST /auth/logout` — end the session: destroy the
+   * Redis record and clear the `__Host-` cookie with the
+   * same attributes it was set with (`Max-Age=0` — the
+   * directive every browser honors for deletion). The CSRF
+   * origin check in the session middleware has already run.
+   */
+  @Post('logout')
+  async logout(@Req() req: Request, @Res() res: Response): Promise<void> {
+    await this.oidc.destroySession(req);
+    res.cookie(SESSION_COOKIE_NAME, '', {
+      ...SESSION_COOKIE_ATTRIBUTES,
+      maxAge: 0,
+    });
+    res.status(200).json({ ok: true });
   }
 }

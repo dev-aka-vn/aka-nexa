@@ -33,6 +33,21 @@ declare module 'express' {
     protocol: string;
     query: Record<string, string | string[] | undefined>;
     get(field: string): string | undefined;
+    /**
+     * The session principal the builder session middleware
+     * resolves (D-101): the opaque `realUserId`, the OIDC
+     * subject linkage, the role and the MFA timestamp —
+     * server-side values only, never a token.
+     */
+    user?: SessionUser;
+  }
+
+  /** The principal the builder session middleware sets on `Request#user`. */
+  export interface SessionUser {
+    realUserId: string;
+    oidcSub: string;
+    role: string;
+    mfaAt: string;
   }
 
   export interface Response {

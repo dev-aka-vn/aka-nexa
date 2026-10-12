@@ -20,7 +20,11 @@
  * replacement, not this module's concern.
  */
 
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  RequestMethod,
+} from '@nestjs/common';
 import * as oidcClient from 'openid-client';
 
 import {
@@ -31,6 +35,7 @@ import {
 import { redisCacheProvider } from '@akane/platform';
 
 import { AuthController } from './auth.controller.js';
+import { SessionMiddleware } from './session.middleware.js';
 import {
   BuilderSessionStore,
   discoverOidcClient,
@@ -70,4 +75,22 @@ import {
     },
   ],
 })
-export class AuthModule {}
+export class AuthModule {
+  /**
+   * Guard every builder-facing route with the session
+   * middleware (T-06-04, D-103). The two OIDC login
+   * routes are excluded — they *create* the session,
+   * so guarding them would deadlock the login flow
+   * itself; the callback's own fail-closed checks
+   * (state, PKCE, MFA gate) cover them.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(SessionMiddleware)
+      .exclude(
+        { path: 'auth/oidc/begin', method: RequestMethod.GET },
+        { path: 'auth/oidc/callback', method: RequestMethod.GET },
+      )
+      .forRoutes('*');
+  }
+}
