@@ -35,7 +35,7 @@
 import type {
   SavedQueryLookup,
   SavedQueryRecord,
-} from '../../links/read-verifier.service.js';
+} from '../links/read-verifier.service.js';
 import type { MongoService } from '@akane/platform';
 
 export class RepositorySavedQueryLookup

@@ -133,7 +133,7 @@ export function applySectionPatch(
   }
   updated['version'] = nextVersion;
   updated['updatedAt'] = new Date();
-  return updated as AppDefinitionDocument;
+  return updated as unknown as AppDefinitionDocument;
 }
 
 /** The unique `app_id` is already taken (the duplicate-create guard). */

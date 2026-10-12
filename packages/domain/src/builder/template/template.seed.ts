@@ -50,17 +50,18 @@ import { createHash } from 'node:crypto';
 
 import { z } from 'zod';
 
-import {
-  AppDefinitionValidationError,
-  type AppDefinitionDocument,
-} from '../app-definition.service.js';
+import { AppDefinitionValidationError } from '../app-definition.service.js';
+import type {
+  AppDataMode,
+  AppDefinitionDocument,
+} from '../data-access/app-definition.repository.js';
 import { BuilderError } from '../app-lifecycle.js';
 import type { AppDefinitionRepository } from '../data-access/app-definition.repository.js';
 import { AuditRepository } from '../../audit/audit.repository.js';
 import { AppIdSchema } from '@akane/contract';
 import type { MongoService } from '@akane/platform';
 
-import { assertCuratedTags, type AppDataMode } from './tag-set.js';
+import { assertCuratedTags } from './tag-set.js';
 
 import leaveRequest from './seeds/leave-request.json' with {
   type: 'json',
@@ -137,7 +138,7 @@ const TemplateSeedSchema = z
     // Only the curated vocabulary (D-107, T-06-16).
     tags: z.array(z.string()).min(1),
     data_mode: z.enum(['internal', 'external', 'hybrid']),
-    connector_ref: z.string().min(1).nullable().optional(),
+    connector_ref: z.string().min(1).nullable().default(null),
     form_schema: z.record(z.string(), z.unknown()),
     roles: z.record(z.string(), z.unknown()),
     triggers: z.array(z.record(z.string(), z.unknown())),
@@ -174,7 +175,7 @@ export const TEMPLATE_SEEDS: readonly TemplateSeedInput[] =
     expenseReport,
     redmineIssue,
     crmContact,
-  ]);
+  ]) as readonly TemplateSeedInput[];
 
 /** sha256 over the seed content — the idempotency guard. */
 export function templateContentHash(seed: TemplateSeedInput): string {

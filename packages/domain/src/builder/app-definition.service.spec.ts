@@ -88,6 +88,12 @@ class FakeRepository {
       field_mapping: null,
       retention_policy: null,
       deprecation_notice: null,
+      lifecycle_prefs: null,
+      jev_behavior: null,
+      role_assignments: null,
+      roles_permissions: null,
+      versioning_policy: null,
+      metadata: null,
       createdBy: input.createdBy,
       createdAt: new Date(),
     };

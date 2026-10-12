@@ -12,9 +12,10 @@ import {
   Patch,
   Post,
   Req,
-  Request,
   UseFilters,
 } from '@nestjs/common';
+
+import type { Request, Response } from 'express';
 
 import {
   AppDefinitionService,
@@ -231,8 +232,8 @@ export class AppBuilderController {
  * the session middleware attached to the request.
  */
 function actorOf(req: Request): string {
-  const user = (req as Request & { user?: { real_user_id?: string } }).user;
-  return user?.real_user_id ?? 'anonymous';
+  const user = (req as Request & { user?: { realUserId?: string } }).user;
+  return user?.realUserId ?? 'anonymous';
 }
 
 /** Map a domain refusal to its HTTP status. The code is the contract. */

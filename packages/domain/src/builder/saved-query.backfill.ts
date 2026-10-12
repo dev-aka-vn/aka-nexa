@@ -21,7 +21,7 @@
 import seed from '../seeds/saved-queries.seed.json' with {
   type: 'json',
 };
-import type { SavedQueryRecord } from '../../links/read-verifier.service.js';
+import type { SavedQueryRecord } from '../links/read-verifier.service.js';
 import type { MongoService } from '@akane/platform';
 
 /**

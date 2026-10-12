@@ -41,7 +41,7 @@ import seed from '../seeds/saved-queries.seed.json' with {
 
 import { backfillSavedQueries } from './saved-query.backfill.js';
 import { RepositorySavedQueryLookup } from './saved-query.repository.js';
-import type { SavedQueryRecord } from '../../links/read-verifier.service.js';
+import type { SavedQueryRecord } from '../links/read-verifier.service.js';
 import type { MongoService } from '@akane/platform';
 
 // ─── In-memory collection double ─────────────────────────
