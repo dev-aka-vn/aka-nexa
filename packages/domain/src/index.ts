@@ -13,6 +13,22 @@ export {
   OidcProvisionService,
   type OidcProvisionOutcome,
 } from './identity/oidc-provision.service.js';
+export {
+  OtpOnboardingService,
+  type OtpRequestResult,
+  type OtpVerifyResult,
+} from './identity/otp/otp-onboarding.service.js';
+export type { OtpDeliveryPort } from './identity/otp/otp-delivery.port.js';
+export {
+  OTP_LOCKOUT_MS,
+  OTP_MAX_ATTEMPTS,
+  OTP_TTL_MS,
+  OtpStateMachine,
+  type OtpRecord,
+  type OtpRequestDecision,
+  type OtpTransition,
+  type OtpVerifyDecision,
+} from './identity/otp/otp-state-machine.js';
 export { ProfileRepository } from './identity/profile.repository.js';
 export type { Profile } from './identity/profile.repository.js';
 export { SsoMappingService } from './identity/sso-mapping.service.js';

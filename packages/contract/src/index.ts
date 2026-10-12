@@ -156,3 +156,13 @@ export type {
   SortDirection,
   SortSpec,
 } from './dsl/query-dsl.js';
+
+// OTP self-onboarding contracts (IDN-05) — the
+// chat ↔ worker payloads for the unmapped-
+// employee flow, beside the frozen contracts.
+export {
+  OTP_ONBOARDING_INTENT,
+  OtpCodeSchema,
+  OtpOnboardingOutcomeSchema,
+} from './identity/otp.contract.js';
+export type { OtpCode, OtpOnboardingOutcome } from './identity/otp.contract.js';

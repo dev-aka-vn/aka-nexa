@@ -3,15 +3,19 @@ import {
   IdentityMappingRepository,
   IdentityService,
   LinkIssuerService,
+  OtpOnboardingService,
+  OtpStateMachine,
   PublishedAppLoader,
   ProviderHealthService,
   ProviderRegistry,
   RuleBasedProvider,
   RoutingOrchestrator,
   ClarificationSessionService,
+  type OtpDeliveryPort,
 } from '@akane/domain';
 import { REDIS_CACHE } from '@akane/platform';
 import { InboundEventProcessor } from './processors/inbound-event.processor.js';
+import { OtpDeliveryService } from './processors/otp-delivery.service.js';
 
 /**
  * Composition of the inbound routing path. The in-memory catalogue/authorize
@@ -73,6 +77,36 @@ import { InboundEventProcessor } from './processors/inbound-event.processor.js';
       inject: [REDIS_CACHE],
       useFactory: (redis: import('ioredis').Redis) =>
         new ClarificationSessionService(redis),
+    },
+    // IDN-05 — the OTP self-onboarding wiring. The
+    // state machine shares the cache connection
+    // (one ioredis client across BullMQ, sessions
+    // and OTP state, STACK §4.4); the delivery
+    // port is the chat-pipeline seam the live
+    // Slack leg plugs into (the manual-verify
+    // item in 06-VALIDATION.md).
+    {
+      provide: OtpStateMachine,
+      inject: [REDIS_CACHE],
+      useFactory: (redis: import('ioredis').Redis) => new OtpStateMachine(redis),
+    },
+    {
+      provide: 'OTP_DELIVERY_PORT',
+      useFactory: (): OtpDeliveryPort => new OtpDeliveryService(),
+    },
+    {
+      provide: OtpOnboardingService,
+      inject: [
+        OtpStateMachine,
+        IdentityMappingRepository,
+        { token: 'OTP_DELIVERY_PORT', optional: false },
+      ],
+      useFactory: (
+        stateMachine: OtpStateMachine,
+        mappings: IdentityMappingRepository,
+        delivery: OtpDeliveryPort,
+      ): OtpOnboardingService =>
+        new OtpOnboardingService(stateMachine, mappings, delivery),
     },
     InboundEventProcessor,
   ],

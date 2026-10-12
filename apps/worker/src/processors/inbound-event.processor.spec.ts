@@ -4,6 +4,8 @@ import {
   IdentityMappingRepository,
   IdentityService,
   LinkIssuerService,
+  OtpOnboardingService,
+  OtpStateMachine,
   PublishedAppLoader,
   RuleBasedProvider,
   RoutingOrchestrator,
@@ -73,7 +75,16 @@ async function buildProcessor(opts: {
   const decideSpy = vi.spyOn(provider, 'decide');
   const orchestrator = new RoutingOrchestrator([provider]);
   const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
-  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification);
+  // These specs' users are all mapped (U1 → usr_1), so the OTP
+  // onboarding path is never exercised here; the service is wired
+  // with in-memory seams so the processor composes exactly as
+  // the worker module composes it.
+  const onboarding = new OtpOnboardingService(
+    new OtpStateMachine(new FakeRedis() as unknown as Redis),
+    repo,
+    { deliverOtp: async () => {} },
+  );
+  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding);
   return { processor, decideSpy, clarification };
 }
 
@@ -328,7 +339,18 @@ describe('InboundEventProcessor — clarification session wiring', () => {
     const authorizeIds2 = new Set(['leave-request']);
     const loader2 = new PublishedAppLoader(CATALOG, async (appId) => authorizeIds2.has(appId));
     const orchestrator2 = new RoutingOrchestrator([provider]);
-    const processor2 = new InboundEventProcessor(identity2, loader2, orchestrator2, new LinkIssuerService(), clarification);
+    const processor2 = new InboundEventProcessor(
+      identity2,
+      loader2,
+      orchestrator2,
+      new LinkIssuerService(),
+      clarification,
+      new OtpOnboardingService(
+        new OtpStateMachine(new FakeRedis() as unknown as Redis),
+        repo2,
+        { deliverOtp: async () => {} },
+      ),
+    );
 
     const reply = await processor2.process({
       data: event({ action: 'interaction', text: '1' }),

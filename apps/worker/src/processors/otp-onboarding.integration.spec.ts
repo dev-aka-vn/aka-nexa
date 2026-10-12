@@ -98,8 +98,9 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       },
     };
     const mappings = new IdentityMappingRepository();
+    const stateMachine = new OtpStateMachine(redis);
     const onboarding = new OtpOnboardingService(
-      new OtpStateMachine(redis),
+      stateMachine,
       mappings,
       delivery,
     );
@@ -113,12 +114,12 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       new ClarificationSessionService(redis),
       onboarding,
     );
-    return { processor, mappings };
+    return { processor, mappings, stateMachine };
   }
 
   it('self-onboards an unmapped employee end-to-end (ROADMAP SC#3)', async () => {
     const deliveries: Array<{ chatUserId: string; code: string }> = [];
-    const { processor, mappings } = buildProcessor(deliveries);
+    const { processor, mappings, stateMachine } = buildProcessor(deliveries);
 
     // 1. The onboarding intent from an unmapped chat identity.
     const requested = await processor.process({
@@ -165,11 +166,11 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       expect(next.url).toContain(mapping!.real_user_id);
     }
 
-    // 5. The consumed code is single-use: replaying it is refused.
-    const replay = await processor.process({
-      data: event({ text: code }),
-    } as never);
-    expect(replay.kind).toBe('otp_consumed');
+    // 5. The consumed code is single-use. The user is now mapped,
+    //    so the OTP state itself is the thing that refuses the
+    //    replay — over the same Redis the processor used.
+    const replay = await stateMachine.verify(NEWCOMER, code);
+    expect(replay).toEqual({ status: 'consumed' });
   });
 
   it('routes a non-onboarding message from an unmapped identity to unknown_user', async () => {

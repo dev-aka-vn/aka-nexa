@@ -12,8 +12,13 @@ import {
   PublishedAppLoader,
   RoutingOrchestrator,
   ClarificationSessionService,
+  OtpOnboardingService,
   redact,
 } from '@akane/domain';
+import {
+  OTP_ONBOARDING_INTENT,
+  OtpCodeSchema,
+} from '@akane/contract';
 
 /** Absolute chat-to-link budget; `occurred_at` seeds it, never per-provider (T-03-04). */
 const ROUTING_BUDGET_MS = 2000;
@@ -41,7 +46,17 @@ function detectLocale(text: string): string {
 export type ProcessorOutcome =
   | { readonly kind: 'link'; readonly appId: string; readonly url: string }
   | { readonly kind: 'clarify'; readonly toolIds: readonly string[] }
-  | { readonly kind: 'skipped'; readonly reason: string };
+  | { readonly kind: 'skipped'; readonly reason: string }
+  // IDN-05 — OTP self-onboarding outcomes. The chat
+  // adapter renders these as the employee's reply;
+  // `attemptsRemaining` and `remainingMinutes` are
+  // the BLD-07 actionable counts named inline.
+  | { readonly kind: 'otp_requested' }
+  | { readonly kind: 'otp_verified'; readonly realUserId: string }
+  | { readonly kind: 'otp_invalid'; readonly attemptsRemaining: number }
+  | { readonly kind: 'otp_locked'; readonly remainingMinutes: number }
+  | { readonly kind: 'otp_expired' }
+  | { readonly kind: 'otp_consumed' };
 
 @Injectable()
 @Processor('inbound-events')
@@ -52,6 +67,7 @@ export class InboundEventProcessor extends WorkerHost {
     private readonly orchestrator: RoutingOrchestrator,
     private readonly linkIssuer: LinkIssuerService,
     private readonly clarificationSession: ClarificationSessionService,
+    private readonly onboarding: OtpOnboardingService,
   ) {
     super();
   }
@@ -88,7 +104,7 @@ export class InboundEventProcessor extends WorkerHost {
    */
   private async handleInteraction(event: InboundEvent): Promise<ProcessorOutcome> {
     const chat = await this.identity.resolveChat(event.platform, event.chat_user_id);
-    if (!chat) return { kind: 'skipped', reason: 'unknown_user' };
+    if (!chat) return this.handleUnmappedOnboarding(event);
 
     const outcome = await this.processClarificationReply(chat.real_user_id, event);
     if (outcome) return outcome;
@@ -103,7 +119,7 @@ export class InboundEventProcessor extends WorkerHost {
    */
   private async handleMessage(event: InboundEvent): Promise<ProcessorOutcome> {
     const chat = await this.identity.resolveChat(event.platform, event.chat_user_id);
-    if (!chat) return { kind: 'skipped', reason: 'unknown_user' };
+    if (!chat) return this.handleUnmappedOnboarding(event);
 
     const clarificationOutcome = await this.processClarificationReply(chat.real_user_id, event);
     if (clarificationOutcome) return clarificationOutcome;
@@ -156,6 +172,66 @@ export class InboundEventProcessor extends WorkerHost {
     }
 
     return { kind: 'clarify', toolIds: outcome.toolIds };
+  }
+
+  /**
+   * IDN-05 — the unmapped-user path.
+   *
+   * An employee with no CSV/SSO mapping self-onboards
+   * by OTP: the onboarding keyword (the IDN-04
+   * prompt's expected reply) requests a code, a
+   * 6-digit reply verifies it. A verified onboarding
+   * creates the identity mapping, so the next
+   * inbound event resolves the user with no further
+   * onboarding (ROADMAP SC#3). Anything else from
+   * an unmapped identity stays `unknown_user`.
+   *
+   * Only messages and interaction replies carry the
+   * onboarding flow — a slash command from an
+   * unmapped identity is still unknown_user.
+   */
+  private async handleUnmappedOnboarding(event: InboundEvent): Promise<ProcessorOutcome> {
+    if (event.action !== 'message' && event.action !== 'interaction') {
+      return { kind: 'skipped', reason: 'unknown_user' };
+    }
+    const text = event.text.trim();
+    // A 6-digit reply is a code verification; the keyword
+    // is a fresh onboarding request. The code is checked
+    // first — a code reply never reads as a keyword.
+    const code = OtpCodeSchema.safeParse(text);
+    if (code.success) return this.handleOtpVerify(event, code.data);
+    if (OTP_ONBOARDING_INTENT.test(text)) return this.handleOtpRequest(event);
+    return { kind: 'skipped', reason: 'unknown_user' };
+  }
+
+  /** The onboarding intent: create the OTP state and deliver the code. */
+  private async handleOtpRequest(event: InboundEvent): Promise<ProcessorOutcome> {
+    const result = await this.onboarding.requestOtp(event.chat_user_id);
+    if (result.status === 'locked') {
+      return { kind: 'otp_locked', remainingMinutes: result.remainingMinutes };
+    }
+    return { kind: 'otp_requested' };
+  }
+
+  /** A code reply: verify it, creating the identity mapping on success. */
+  private async handleOtpVerify(event: InboundEvent, code: string): Promise<ProcessorOutcome> {
+    const result = await this.onboarding.verifyOtp(
+      event.platform,
+      event.chat_user_id,
+      code,
+    );
+    switch (result.status) {
+      case 'verified':
+        return { kind: 'otp_verified', realUserId: result.realUserId };
+      case 'invalid':
+        return { kind: 'otp_invalid', attemptsRemaining: result.attemptsRemaining };
+      case 'locked':
+        return { kind: 'otp_locked', remainingMinutes: result.remainingMinutes };
+      case 'expired':
+        return { kind: 'otp_expired' };
+      case 'consumed':
+        return { kind: 'otp_consumed' };
+    }
   }
 
   /**
