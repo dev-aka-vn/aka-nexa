@@ -8,6 +8,13 @@
 export { IdentityService } from './identity/identity.service.js';
 export { IdentityMappingRepository } from './identity/identity-mapping.repository.js';
 export type { IdentityMapping } from './identity/identity-mapping.repository.js';
+export {
+  OIDC_PLATFORM,
+  OidcProvisionService,
+  type OidcProvisionOutcome,
+} from './identity/oidc-provision.service.js';
+export { ProfileRepository } from './identity/profile.repository.js';
+export type { Profile } from './identity/profile.repository.js';
 export { LinkIssuerService } from './links/link-issuer.service.js';
 export type { IssueLinkInput } from './links/link-issuer.service.js';
 export { ReadDenyService } from './links/read-deny.service.js';

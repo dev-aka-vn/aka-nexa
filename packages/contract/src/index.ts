@@ -117,6 +117,21 @@ export type { ImPlatform, InboundAction, InboundEvent } from './events/inbound-e
 export { OutboundActionSchema, OutboundMessageSchema } from './events/outbound-message.js';
 export type { OutboundAction, OutboundMessage } from './events/outbound-message.js';
 
+// Builder auth contracts (BLD-12, D-110/IDN-08) — added beside the
+// frozen contracts, never modifying them.
+export {
+  SessionMeResponseSchema,
+  SsoMappingCreateSchema,
+  SsoMappingErrorSchema,
+  SsoMappingSchema,
+} from './auth/session.contract.js';
+export type {
+  SessionMeResponse,
+  SsoMapping,
+  SsoMappingCreate,
+  SsoMappingError,
+} from './auth/session.contract.js';
+
 export {
   DEFAULT_QUERY_LIMIT,
   DSL_OPERATORS,

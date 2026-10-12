@@ -296,6 +296,13 @@ function buildClosure(entry: string): Closure {
  * `@Res()`, and that controller *is* reached from `main.ts`. Counting the
  * declaration as an orphan would assert something no correct codebase can
  * satisfy; what the test is for is dead *runtime* modules.
+ *
+ * `*.stub.ts` is excluded for the same class of reason: a stub is a
+ * test-only artifact (an in-spec OIDC issuer, a fake third-party
+ * endpoint) that production code must never import — reachability from
+ * `main.ts` is the wrong question for it, exactly as for a spec. It is
+ * still asserted by the boundary lint rules, which do not care how a
+ * file is named.
  */
 function appSourceFiles(app: AppName): string[] {
   const out: string[] = [];
@@ -303,7 +310,12 @@ function appSourceFiles(app: AppName): string[] {
     for (const entry of readdirSync(dir).sort()) {
       const full = path.join(dir, entry);
       if (statSync(full).isDirectory()) walk(full);
-      else if (full.endsWith('.ts') && !full.endsWith('.spec.ts') && !full.endsWith('.d.ts')) {
+      else if (
+        full.endsWith('.ts') &&
+        !full.endsWith('.spec.ts') &&
+        !full.endsWith('.d.ts') &&
+        !full.endsWith('.stub.ts')
+      ) {
         out.push(full);
       }
     }

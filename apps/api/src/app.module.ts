@@ -16,6 +16,7 @@ import {
 } from '@akane/platform';
 
 import { ReadModule } from './read/read.module.js';
+import { AuthModule } from './auth/auth.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
 /**
@@ -37,8 +38,10 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
  * `ConfigModule`, `CryptoModule`, `MongoModule`, the two Redis providers,
  * `TerminusModule`, `MetricsModule`, `HealthController`, the boundary guard
  * runner. The only per-process differences are the two extra readiness
- * indicators `worker` and `scheduler` contribute. A difference that is not a
- * readiness check is the drift FND-03 exists to prevent, so it should show up as
+ * indicators `worker` and `scheduler` contribute, and the `api`'s request-path
+ * modules (`ReadModule`, `AuthModule` — the builder's OIDC session surface,
+ * BLD-12). A difference that is not a readiness check is the drift FND-03
+ * exists to prevent, so it should show up as
  * a diff here rather than as a production surprise.
  *
  * ## Why `CryptoModule` is here with no consumer of it
@@ -67,6 +70,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     TerminusModule.forRoot(),
     MetricsModule,
     ReadModule,
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [

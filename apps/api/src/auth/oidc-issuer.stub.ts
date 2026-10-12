@@ -118,8 +118,21 @@ export class StubOidcIssuer {
     this.refuseRefresh = refuse;
   }
 
-  /** Start the issuer on an ephemeral loopback port. */
-  async start(): Promise<void> {
+  /**
+   * Start a fresh issuer on an ephemeral loopback port.
+   *
+   * Static factory form: the spec wants `await StubOidcIssuer.start()`
+   * and a handle it can `stop()` in `afterAll`, mirroring how
+   * `startThreeContainers()` hands back live containers.
+   */
+  static async start(): Promise<StubOidcIssuer> {
+    const issuer = new StubOidcIssuer();
+    await issuer.listen();
+    return issuer;
+  }
+
+  /** Bind the loopback server. */
+  private async listen(): Promise<void> {
     const keyPair = await generateKeyPair('ES256');
     this.privateKey = keyPair.privateKey;
     const publicJwk = await exportJWK(keyPair.publicKey);

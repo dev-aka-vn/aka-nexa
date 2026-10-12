@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   IdentityMappingRepository,
+  OidcProvisionService,
   ProfileRepository,
 } from '@akane/domain';
 
@@ -26,7 +27,6 @@ import {
   BuilderSessionStore,
   OIDC_CLIENT,
   OIDC_CONFIG_KEYS,
-  OidcProvisionService,
   OidcService,
   readOidcConfig,
 } from './oidc.service.js';
@@ -42,6 +42,15 @@ describe('AuthModule wiring (BLD-12)', () => {
     []) as ProviderShape[];
   const controllers = (Reflect.getMetadata('controllers', AuthModule) ??
     []) as unknown[];
+
+  /**
+   * NestJS stores factory providers as `{ provide, useFactory, inject }`
+   * objects but bare class providers as the class itself, so a guard
+   * over the raw metadata must accept both shapes to ask "is this
+   * token declared?".
+   */
+  const declared = (token: unknown): boolean =>
+    providers.some((p) => p === token || p?.provide === token);
 
   it('declares the controller', () => {
     expect(controllers).toContain(AuthController);
@@ -95,8 +104,7 @@ describe('AuthModule wiring (BLD-12)', () => {
   });
 
   it('binds the Redis-backed session store over the cache connection', () => {
-    const store = providers.find((p) => p.provide === BuilderSessionStore);
-    expect(store).toBeDefined();
+    expect(declared(BuilderSessionStore)).toBe(true);
   });
 
   it('binds the OIDC service with its config, client, store and provisioner', () => {
@@ -111,11 +119,9 @@ describe('AuthModule wiring (BLD-12)', () => {
   });
 
   it('binds the D-104 auto-provision service and its repositories', () => {
-    expect(providers.some((p) => p.provide === OidcProvisionService)).toBe(true);
-    expect(providers.some((p) => p.provide === IdentityMappingRepository)).toBe(
-      true,
-    );
-    expect(providers.some((p) => p.provide === ProfileRepository)).toBe(true);
+    expect(declared(OidcProvisionService)).toBe(true);
+    expect(declared(IdentityMappingRepository)).toBe(true);
+    expect(declared(ProfileRepository)).toBe(true);
   });
 
   it('provisions against the real repository shape', async () => {
