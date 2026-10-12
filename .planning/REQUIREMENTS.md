@@ -139,7 +139,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **ACL-07**: Any permission change bumps a per-user-per-app `perm_version` epoch, and the epoch is embedded in the RBAC cache key
 - [ ] **ACL-08**: A stale cached permission entry is never served after an epoch bump, with or without a Pub/Sub message
 - [ ] **ACL-09**: A permission denial returns a clear user-facing message naming the missing permission, not a generic error
-- [ ] **ACL-10**: An app owner can view and modify all role assignments in their app except ownership transfer
+- [x] **ACL-10**: An app owner can view and modify all role assignments in their app except ownership transfer
 - [ ] **ACL-11**: There is no superuser bypass for app-level permissions; only platform operations use global admin
 
 ### Routing Decision
@@ -295,17 +295,17 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### App Builder
 
-- [ ] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
+- [x] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
 - [x] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
-- [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
+- [x] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
 - [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
 - [x] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
 - [x] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
-- [ ] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
+- [x] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
 - [x] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
-- [ ] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
+- [x] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
 - [x] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
-- [ ] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
+- [x] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
 - [x] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
 
 ### Notifications & Two-Way Sync
@@ -507,17 +507,17 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CON-10 | Phase 5 | Complete |
 | LNK-02 | Phase 5 | Complete |
 | OBS-04 | Phase 5 | Complete (OBS-04) |
-| BLD-01 | Phase 6 | Pending |
+| BLD-01 | Phase 6 | Complete |
 | BLD-02 | Phase 6 | Complete |
-| BLD-03 | Phase 6 | Pending |
+| BLD-03 | Phase 6 | Complete |
 | BLD-04 | Phase 6 | Complete |
 | BLD-05 | Phase 6 | Complete |
 | BLD-06 | Phase 6 | Complete |
-| BLD-07 | Phase 6 | Pending |
+| BLD-07 | Phase 6 | Complete |
 | BLD-08 | Phase 6 | Complete |
-| BLD-09 | Phase 6 | Pending |
+| BLD-09 | Phase 6 | Complete |
 | BLD-10 | Phase 6 | Complete |
-| BLD-11 | Phase 6 | Pending |
+| BLD-11 | Phase 6 | Complete |
 | BLD-12 | Phase 6 | Complete |
 | APP-03 | Phase 6 | Complete |
 | APP-05 | Phase 6 | Complete |
@@ -530,7 +530,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IDN-05 | Phase 6 | Complete |
 | IDN-08 | Phase 6 | Complete |
 | ACL-05 | Phase 6 | Pending |
-| ACL-10 | Phase 6 | Pending |
+| ACL-10 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
 | IM-10 | Phase 7 | Pending |
 | NOT-01 | Phase 7 | Pending |
