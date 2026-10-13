@@ -43,21 +43,26 @@ import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
 import { TagFilter } from './TagFilter.js';
 
-/** The lifecycle badge tone, the mockup's status vocabulary. */
+/**
+ * The lifecycle badge class — the mockup's
+ * statusBadge vocabulary (badge-published /
+ * draft / deprecated / archived), not the
+ * icon-tile tones.
+ */
 function lifecycleTone(
   lifecycle: AppDefinition['lifecycle'],
 ): string {
   switch (lifecycle) {
     case 'published':
-      return 'it-teal';
+      return 'badge-published';
     case 'draft':
-      return 'it-amber';
+      return 'badge-draft';
     case 'deprecated':
-      return 'it-violet';
+      return 'badge-deprecated';
     case 'archived':
-      return 'it-red';
+      return 'badge-archived';
     default:
-      return 'it-amber';
+      return 'badge-draft';
   }
 }
 
