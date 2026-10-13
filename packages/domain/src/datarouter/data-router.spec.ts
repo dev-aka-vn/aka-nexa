@@ -1,6 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { DataRouterService } from './data-router.service.js';
+import type { AppDefinitionService } from '../builder/app-definition.service.js';
 import { MongoService } from '@akane/platform';
+
+/**
+ * APP-06's lifecycle guard runs at
+ * the seam; this spec's subject is
+ * mode behavior, so the definition
+ * store is a pass-through double.
+ * The guard itself is proven on the
+ * real path in the app-definition
+ * integration spec.
+ */
+const definitions = {
+  assertAcceptsSubmissions: async (): Promise<void> => undefined,
+} as unknown as AppDefinitionService;
 
 describe('data router - mode behavior', () => {
   it('hybrid: revision + outbox both committed', async () => {
@@ -23,7 +37,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-1',
@@ -60,7 +77,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-2',
@@ -95,7 +115,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-3',
@@ -129,7 +152,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-4',
@@ -164,7 +190,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-5',
@@ -198,7 +227,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     const result = await service.routeSubmission(
       {
         submissionId: 'sub-6',
@@ -231,7 +263,10 @@ describe('data router - mode behavior', () => {
       }),
     } as unknown as MongoService;
 
-    const service = new DataRouterService(mockMongoService);
+    const service = new DataRouterService(
+      mockMongoService,
+      definitions,
+    );
     await service.routeSubmission(
       {
         submissionId: 'sub-7',

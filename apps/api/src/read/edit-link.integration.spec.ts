@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  AppDefinitionService,
   DataRouterService,
   LinkTokenStore,
   SubmissionRevisionsRepository,
@@ -63,7 +64,20 @@ describe('edit-link integration (LNK-02, SC#4)', () => {
     await mongo.db().createCollection('outbox');
 
     revisions = new SubmissionRevisionsRepository(mongo);
-    router = new DataRouterService(mongo);
+    // APP-06's lifecycle guard runs at the
+    // seam; this spec's subject is the
+    // edit link's single-use semantics, so
+    // the definition store is a pass-through
+    // double. The guard itself is proven on
+    // the real path in the app-definition
+    // integration spec.
+    router = new DataRouterService(
+      mongo,
+      {
+        assertAcceptsSubmissions: async (): Promise<void> =>
+          undefined,
+      } as unknown as AppDefinitionService,
+    );
     tokens = new LinkTokenStore(redis as unknown as RedisStructuralSeam);
 
     // Create the partial unique index on `edit_jti` the way production does — as a

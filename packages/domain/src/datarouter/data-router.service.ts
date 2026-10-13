@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { MongoService } from '@akane/platform';
 
+import { AppDefinitionService } from '../builder/app-definition.service.js';
+
 export type RoutingMode = 'internal' | 'external' | 'hybrid';
 
 export interface RouteSubmissionInput {
@@ -31,7 +33,10 @@ export interface RouteEditInput {
 
 @Injectable()
 export class DataRouterService {
-  constructor(private readonly mongo: MongoService) {}
+  constructor(
+    private readonly mongo: MongoService,
+    private readonly definitions: AppDefinitionService,
+  ) {}
 
   async routeSubmission(input: RouteSubmissionInput, mode: RoutingMode): Promise<RouteSubmissionResult> {
     if (mode !== 'internal' && mode !== 'external' && mode !== 'hybrid') {
@@ -58,6 +63,14 @@ export class DataRouterService {
         revision,
       };
     }
+
+    // APP-06 — the submission-creation
+    // seam's lifecycle guard. An archived
+    // app accepts no new submissions: the
+    // refusal precedes every write, so
+    // nothing is inserted and no caller
+    // of this seam can bypass it.
+    await this.definitions.assertAcceptsSubmissions(input.appId);
 
     const session = this.mongo.client.startSession();
 
@@ -107,6 +120,16 @@ export class DataRouterService {
   }
 
   async routeEdit(input: RouteEditInput): Promise<RouteSubmissionResult> {
+    // APP-06 — the same lifecycle guard
+    // on the edit-link path: an edit link
+    // issued while the app was published
+    // still refuses once the app is
+    // archived. The refusal precedes the
+    // transaction, so no revision, no
+    // outbox row, and no edit-jti claim
+    // exists after it.
+    await this.definitions.assertAcceptsSubmissions(input.appId);
+
     const revision = input.revision ?? 1; // edits create a new revision
     const payload = input.data ?? {};
     const session = this.mongo.client.startSession();

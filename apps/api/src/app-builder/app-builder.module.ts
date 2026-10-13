@@ -264,6 +264,7 @@ import { TransferRequestController } from './transfer-request.controller.js';
   // submissions viewer (BLD-08) and the field-
   // mapping endpoint (BLD-05) share.
   exports: [
+    AppDefinitionService,
     AuditRepository,
     AppDefinitionRepository,
     ConnectorRequestRepository,

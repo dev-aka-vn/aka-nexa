@@ -161,6 +161,15 @@ export const ALLOWED_EDGES = Object.freeze({
     'registry',
     'connectors',
     'audit',
+    // Pattern 7 — the data router consults
+    // the builder-owned lifecycle at the
+    // submission-creation seam (APP-06):
+    // an archived app refuses new
+    // submissions, so the write path reads
+    // the definition the builder element
+    // owns. Deliberate, reviewed change —
+    // same class as Pattern 6.
+    'builder',
   ]),
   // adapters → contract: inbound + outbound event shapes only. NOTHING else.
   adapters: Object.freeze(['platform', 'kernel', 'contract']),

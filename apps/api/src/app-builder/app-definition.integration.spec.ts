@@ -48,6 +48,8 @@ import {
   ReadVerifierService,
   RbacCacheService,
   RbacService,
+  Submission,
+  SubmissionRepository,
   TemplateSeed,
   type PublishedApp,
   type ReadLinkJwtVerifier,
@@ -57,6 +59,7 @@ import { ConfigModule, MongoService } from '@akane/platform';
 import { startThreeContainers, type ThreeContainers } from '../../../../tooling/containers.js';
 
 import { AppBuilderModule } from './app-builder.module.js';
+import { ReadModule } from '../read/read.module.js';
 
 const OWNER = 'user-0001';
 
@@ -116,9 +119,26 @@ const READ_LINK_PRIVATE_PEM = READ_LINK_PRIVATE_KEY.export({
 const READ_LINK_ISSUER = 'https://akane.test';
 const READ_LINK_AUDIENCE = 'https://renderer.akane.test';
 
-/** Sign a view-link payload with the deployment's ES256 key. */
-function signReadLink(payload: Record<string, unknown>): string {
-  const header = { alg: 'ES256', typ: 'JWT', kid: 'read-link-1' };
+/**
+ * Sign a read-link payload with the deployment's
+ * ES256 key. The header carries the deployment's
+ * key id by default; `{ kidless: true }` omits
+ * it — the verifier's kid-keyed lookup then
+ * falls through to its per-key try path
+ * (jwt-verifier.ts), the shape a single-key
+ * deployment's links take.
+ */
+function signReadLink(
+  payload: Record<string, unknown>,
+  opts: { kidless?: boolean } = {},
+): string {
+  const header: Record<string, string> = {
+    alg: 'ES256',
+    typ: 'JWT',
+  };
+  if (!opts.kidless) {
+    header.kid = 'read-link-1';
+  }
   const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signingInput = `${headerB64}.${payloadB64}`;
@@ -192,6 +212,41 @@ function viewLinkClaims(input: {
 }
 
 /**
+ * The frozen D-21 edit-link claim set for one
+ * submission — the view set with the `edit`
+ * action discriminant (D-40). `permVersion`
+ * is the epoch the link was minted at; two
+ * links minted at different epochs keep the
+ * permission cache's key distinct.
+ */
+function editLinkClaims(input: {
+  jti: string;
+  sub: string;
+  appId: string;
+  targetId: string;
+  permVersion?: number;
+}): Record<string, unknown> {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    iss: READ_LINK_ISSUER,
+    aud: READ_LINK_AUDIENCE,
+    sub: input.sub,
+    jti: input.jti,
+    iat: now,
+    nbf: now,
+    exp: now + 3600,
+    action: 'edit',
+    app_id: input.appId,
+    form_id: `${input.appId}-form`,
+    form_version: 1,
+    app_version: 1,
+    perm_version: input.permVersion ?? 1,
+    query_version: 1,
+    target_id: input.targetId,
+  };
+}
+
+/**
  * A ReadVerifierService over the real permission check — the same
  * composition the read path uses, with the RBAC seam stubbed to allow
  * (the permission policy itself is the authz element's concern, not the
@@ -236,6 +291,8 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
   let service: AppDefinitionService;
   let audit: AuditRepository;
   let templateSeed: TemplateSeed;
+  let submissionStore: SubmissionRepository;
+  let rbacCache: RbacCacheService;
 
   beforeAll(async () => {
     containers = await startThreeContainers();
@@ -246,15 +303,32 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     process.env.MONGO_URL = containers.urls.mongo;
     process.env.REDIS_CACHE_URL = containers.urls.cache;
     process.env.REDIS_QUEUE_URL = containers.urls.queue;
+    // The read surface (mounted below for the APP-06
+    // real-path proof) reads its link-verification
+    // config from the process environment at module
+    // initialization — the same four keys README's
+    // "Read-link verification" section documents.
+    process.env.JWT_ISSUER = READ_LINK_ISSUER;
+    process.env.JWT_AUDIENCE = READ_LINK_AUDIENCE;
+    process.env.JWT_READ_PUBLIC_KEY = READ_LINK_PUBLIC_PEM;
+    process.env.RENDERER_ORIGIN = 'https://renderer.akane.test';
 
     const port = await reservePort();
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule, AppBuilderModule],
+      // ReadModule is mounted for the APP-06
+      // real-path proof: the archived-submission
+      // refusal is asserted through the same
+      // POST /l/edit/:jti the renderer's form
+      // submit fires, not through a direct
+      // service call.
+      imports: [ConfigModule, AppBuilderModule, ReadModule],
     }).compile();
 
     service = moduleRef.get(AppDefinitionService);
     audit = moduleRef.get(AuditRepository);
     templateSeed = moduleRef.get(TemplateSeed);
+    submissionStore = moduleRef.get(SubmissionRepository);
+    rbacCache = moduleRef.get(RbacCacheService);
 
     // D-105: the gallery loads at boot (main.ts does this
     // step in production; the spec runs it directly).
@@ -468,13 +542,51 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     ).rejects.toThrow(/TRIGGER_REGISTER_REFUSED_DEPRECATED/);
   });
 
-  it('APP-06 both ways: an archived app refuses new submissions while a pre-archived view link still resolves', async () => {
+  it('APP-06 both ways: an archived app refuses new submissions on the real path while a pre-archived view link still resolves', async () => {
     await call('POST', `${baseUrl}/apps`, {
       name: 'Asset Request',
       app_id: 'asset-request',
       description: 'Request an asset',
     });
     await call('POST', `${baseUrl}/apps/asset-request/publish`);
+
+    // The submission the edit links target. The read path's
+    // submission store is the in-memory seam the IN-01 deferral
+    // records; seeding it here is the same write the provisioner
+    // performs when a chat-driven submission lands.
+    submissionStore.upsert({
+      _id: 'sub-asset-1',
+      real_user_id: OWNER,
+      app_id: 'asset-request',
+      form_id: 'asset-request-form',
+      form_version: 1,
+      form_schema: {},
+      data: { asset: 'laptop-042' },
+      created_at: new Date(),
+      status: 'completed',
+    });
+
+    // Control — the real submission path works while the app is
+    // published: a POST /l/edit/:jti (the same request the
+    // renderer's form submit fires) is accepted and writes the
+    // revision carrying its edit jti.
+    const liveToken = signReadLink(
+      editLinkClaims({
+        jti: 'jti-edit-live',
+        sub: OWNER,
+        appId: 'asset-request',
+        targetId: 'sub-asset-1',
+        permVersion: 1,
+      }),
+      { kidless: true },
+    );
+    const live = await call(
+      'POST',
+      `${baseUrl}/l/edit/jti-edit-live?token=${encodeURIComponent(liveToken)}`,
+      { subject: 'edited while live' },
+    );
+    expect(live.status).toBe(200);
+    expect(live.body).toMatchObject({ status: 'accepted' });
 
     // A view link, minted and verified BEFORE the archive — the
     // submission it points at was written while the app was live.
@@ -495,12 +607,59 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     expect(archived.status).toBe(200);
     expect(archived.body).toMatchObject({ lifecycle: 'archived' });
 
-    // Way 1 — the submission-creation seam refuses: an archived
-    // app accepts no new submissions.
-    await expect(
-      service.assertAcceptsSubmissions('asset-request'),
-    ).rejects.toThrow(/SUBMISSION_REFUSED_ARCHIVED/);
+    // Way 1 — the real path now refuses: an edit link issued
+    // while the app was published still submits through the same
+    // POST /l/edit/:jti, and the submission-creation seam's
+    // lifecycle guard (APP-06) answers 409
+    // SUBMISSION_REFUSED_ARCHIVED. (The second link is minted at
+    // a later perm_version epoch so the permission check's cache
+    // key stays distinct from the control's.)
+    const refusedToken = signReadLink(
+      editLinkClaims({
+        jti: 'jti-edit-refused',
+        sub: OWNER,
+        appId: 'asset-request',
+        targetId: 'sub-asset-1',
+        permVersion: 2,
+      }),
+      { kidless: true },
+    );
+    const refused = await call(
+      'POST',
+      `${baseUrl}/l/edit/jti-edit-refused?token=${encodeURIComponent(refusedToken)}`,
+      { subject: 'edited after archive' },
+    );
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      error: 'SUBMISSION_REFUSED_ARCHIVED',
+    });
 
+    // The refusal wrote nothing: the submission's only revision
+    // is the pre-archive one, carrying the control's edit jti.
+    const revisions = await mongo
+      .db()
+      .collection('submission_revisions')
+      .find({ submission_id: 'sub-asset-1' })
+      .toArray();
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]?.edit_jti).toBe('jti-edit-live');
+
+    // The refusal consumed no token: the same link retries to
+    // the same 409, never a replay of a recorded outcome.
+    // (The permission cache is invalidated first: the
+    // RbacService stub's grant list is a fixed
+    // ['leave:request'] that does not carry the view
+    // permission, so its cache would poison a second
+    // check on the same key — a stub artifact, not the
+    // production behavior, where the cached grant list
+    // is the list the check tests against.)
+    rbacCache.invalidate('asset-request', OWNER, 2);
+    const retry = await call(
+      'POST',
+      `${baseUrl}/l/edit/jti-edit-refused?token=${encodeURIComponent(refusedToken)}`,
+      { subject: 'edited after archive, again' },
+    );
+    expect(retry.status).toBe(409);
     // Way 2 — the pre-archived view link STILL resolves through
     // the unchanged ReadVerifierService: the verifier consumes
     // signature, claims, ownership, and permissions — not the

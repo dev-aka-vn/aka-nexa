@@ -47,6 +47,7 @@ import {
   sectionValue,
 } from '../sections.js';
 import { AppTabs } from './AppTabs.js';
+import { isPublishShortcut } from './publishShortcut.js';
 
 export interface EditorPageProps {
   appId: string;
@@ -86,6 +87,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [published, setPublished] = useState(false);
 
   // The data-routing tab's provisioned-connector
   // read (the app's connector-request queue).
@@ -129,6 +131,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       setActiveSection(section);
       setSaveError(null);
       setSaved(false);
+      setPublished(false);
       if (isJsonSection(section) && definition !== null) {
         setJsonText(
           formatJson(sectionValue(section as never, definition)),
@@ -222,6 +225,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   const save = useCallback(async (): Promise<void> => {
     setSaveError(null);
     setSaved(false);
+    setPublished(false);
 
     let patch: Record<string, unknown>;
     if (activeSection === 'general') {
@@ -282,6 +286,63 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     dataMode,
     jsonText,
   ]);
+
+  /**
+   * Publish the app (APP-07, BLD-06). The
+   * publish gate runs server-side before
+   * any state change; a refusal
+   * (PUBLISH_REFUSED) is surfaced inline,
+   * verbatim, like a section-save refusal
+   * (BLD-07). The response is the same
+   * definition projection a section save
+   * returns, plus the change summary the
+   * AUD-01 entry retains.
+   */
+  const publish = useCallback(async (): Promise<void> => {
+    setSaveError(null);
+    setSaved(false);
+    setPublished(false);
+
+    setSaving(true);
+    try {
+      const response = await client.post(
+        `/apps/${appId}/publish`,
+        undefined,
+        AppDefinitionSchema,
+      );
+      setDefinition(response);
+      setName(response.name);
+      setDescription(response.description);
+      setTagsText(response.tags.join(', '));
+      setDataMode(response.data_mode);
+      setPublished(true);
+    } catch (error) {
+      // BLD-07: the API's named refusal, verbatim.
+      setSaveError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [client, appId]);
+
+  // BLD-06 — the keyboard shortcut for
+  // publish. The shortcut triggers the
+  // same POST /apps/:id/publish the
+  // publish surface triggers — one
+  // endpoint, so the two cannot diverge
+  // (06-05's contract).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!isPublishShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      void publish();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [publish]);
 
   /* ======================= The loading states ======================= */
 
@@ -365,6 +426,24 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             }}
           >
             {sectionLabel(activeSection)} saved — version{' '}
+            {definition.version}.
+          </div>
+        ) : null}
+
+        {published ? (
+          <div
+            data-testid="editor-published"
+            style={{
+              border: '1px solid var(--green)',
+              background: 'var(--green-soft)',
+              borderRadius: 'var(--radius)',
+              padding: '10px 14px',
+              color: 'var(--green)',
+              fontSize: 14,
+              marginBottom: 16,
+            }}
+          >
+            {definition.name} published — version{' '}
             {definition.version}.
           </div>
         ) : null}

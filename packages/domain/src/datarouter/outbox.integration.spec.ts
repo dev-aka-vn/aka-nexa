@@ -2,8 +2,22 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { MongoClient } from 'mongodb';
 import { DataRouterService } from './data-router.service.js';
 import { OutboxRepository } from './data-access/outbox.repository.js';
+import type { AppDefinitionService } from '../builder/app-definition.service.js';
 import { MongoService } from '@akane/platform';
 import { startThreeContainers, ThreeContainers } from '../../../../tooling/containers.js';
+
+/**
+ * APP-06's lifecycle guard runs at the
+ * seam; this spec's subject is the
+ * outbox's transaction atomicity, so the
+ * definition store is a pass-through
+ * double. The guard itself is proven on
+ * the real path in the app-definition
+ * integration spec.
+ */
+const definitions = {
+  assertAcceptsSubmissions: async (): Promise<void> => undefined,
+} as unknown as AppDefinitionService;
 
 describe('outbox integration - transaction atomicity', () => {
   let containers: ThreeContainers;
@@ -25,7 +39,7 @@ describe('outbox integration - transaction atomicity', () => {
   });
 
   it('transaction atomicity: both revision and outbox committed in hybrid mode', async () => {
-    const router = new DataRouterService(mongoService);
+    const router = new DataRouterService(mongoService, definitions);
     const result = await router.routeSubmission(
       {
         submissionId: 'sub-atomic-1',
@@ -49,7 +63,7 @@ describe('outbox integration - transaction atomicity', () => {
 
   it('transaction atomicity: rollback leaves neither document on forced error', async () => {
     // Create a router that will throw after first insert by monkeypatching
-    const router = new DataRouterService(mongoService);
+    const router = new DataRouterService(mongoService, definitions);
 
     // Simulate by doing it manually with a session and forced throw
     const session = mongoService.client.startSession();

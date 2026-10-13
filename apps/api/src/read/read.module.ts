@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import {
+  AppDefinitionService,
   DslService,
   PermissionCheckService,
   ReadVerifierService,
@@ -17,6 +18,7 @@ import {
 } from '@akane/domain';
 import { MongoModule, MongoService, redisCacheProvider, verifyReadLinkJwt } from '@akane/platform';
 
+import { AppBuilderModule } from '../app-builder/app-builder.module.js';
 import { ReadController } from './read.controller.js';
 import {
   registerReadDenyMetrics,
@@ -144,7 +146,13 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
  * cannot verify without a key.
  */
 @Module({
-  imports: [MongoModule],
+  // AppBuilderModule: the data
+  // router's APP-06 lifecycle guard
+  // reads the builder-owned
+  // definition, so the read path
+  // composes the builder's exported
+  // services.
+  imports: [MongoModule, AppBuilderModule],
   controllers: [ReadController],
   providers: [
     redisCacheProvider,
@@ -194,12 +202,19 @@ export class ReadLinkJwtVerifierImpl implements ReadLinkJwtVerifier {
       inject: [MongoService],
     },
     {
-      // The data router's constructor takes the
-      // `MongoService` — same explicit-token rule.
+      // The data router's constructor takes
+      // the `MongoService` and the
+      // `AppDefinitionService` (APP-06's
+      // lifecycle guard at the
+      // submission-creation seam) — same
+      // explicit-token rule.
       provide: DataRouterService,
-      useFactory: (mongo: MongoService): DataRouterService =>
-        new DataRouterService(mongo),
-      inject: [MongoService],
+      useFactory: (
+        mongo: MongoService,
+        definitions: AppDefinitionService,
+      ): DataRouterService =>
+        new DataRouterService(mongo, definitions),
+      inject: [MongoService, AppDefinitionService],
     },
     {
       // The permission checker's constructor takes the

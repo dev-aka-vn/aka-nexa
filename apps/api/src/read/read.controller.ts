@@ -7,6 +7,7 @@ import {
   type ReadVerifyResult,
   SubmissionRepository,
   SubmissionRevisionsRepository,
+  SubmissionRefusedError,
   LinkTokenStore,
   DataRouterService,
   SignatureFailureLimiter,
@@ -266,6 +267,20 @@ export class ReadController {
           });
           return;
         }
+      }
+      // APP-06 — the app was archived after
+      // the edit link was issued: the seam's
+      // lifecycle guard refused the write.
+      // Nothing was inserted and the token is
+      // not consumed, so the refusal is a
+      // client-visible state conflict (409),
+      // not a server fault — the form
+      // surfaces the named error inline.
+      if (error instanceof SubmissionRefusedError) {
+        res.status(409).json({
+          error: 'SUBMISSION_REFUSED_ARCHIVED',
+        });
+        return;
       }
       // Re-throw other errors (transaction failed - should not consume token)
       throw error;
