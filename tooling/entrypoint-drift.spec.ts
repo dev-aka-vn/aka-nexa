@@ -510,10 +510,15 @@ describe('entrypoint import closure — three processes that cannot drift (FND-0
     // (D-08x async execution): the outbox relay and the reconciliation sweep.
     // `connector-delivery.processor.ts` extends `@nestjs/bullmq`'s `WorkerHost`
     // (binding `WorkerHost`, not `Worker`) and is therefore not a site here.
+    // Phase 6 added the fourth raw-`Worker` site: the hourly transfer
+    // auto-cancel consumer (ACL-05, T-06-31) — a standalone Job Scheduler
+    // consumer in the platform-heartbeat shape (its own blocking connection,
+    // prefix-pinned, lifecycle-owned), not a `WorkerHost`.
     expect(workerBindingSites('worker')).toEqual([
       'apps/worker/src/processors/outbox-relay.processor.ts -> bullmq',
       'apps/worker/src/processors/platform-heartbeat.processor.ts -> bullmq',
       'apps/worker/src/processors/reconciliation.processor.ts -> bullmq',
+      'apps/worker/src/processors/transfer-auto-cancel.processor.ts -> bullmq',
     ]);
   });
 
