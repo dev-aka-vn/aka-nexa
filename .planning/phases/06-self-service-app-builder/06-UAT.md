@@ -3,15 +3,15 @@ status: testing
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-13T08:48:15Z
+updated: 2026-10-13T14:40:19Z
 ---
 
 ## Current Test
 
-number: 1
-name: "Live OTP delivery through the chat pipeline (IDN-05): trigger the onboarding keyword from an unmapped Slack identity, receive the 6-digit code in Slack, reply, and confirm the identity mapping is created and the granted app becomes usable"
+number: 2
+name: "Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation"
 expected: |
-  The code arrives via Slack DM within seconds; the reply verifies, creates the mapping, and the next inbound event resolves the user
+  Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
 awaiting: user response
 
 ## Tests
@@ -24,7 +24,7 @@ why_human: >-
   logging the chat identity only — the real Slack DM leg is deliberately not wired
   until staging. Everything else (state machine, timing, lockout, single-use, mapping
   creation, pipeline wiring) is implemented and integration-tested over real Redis.
-result: pending
+result: pass
 
 ### 2. Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation
 expected: Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
@@ -66,9 +66,9 @@ result: pending
 ## Summary
 
 total: 5
-passed: 0
+passed: 1
 issues: 0
-pending: 5
+pending: 4
 skipped: 0
 blocked: 0
 
