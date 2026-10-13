@@ -414,14 +414,16 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             </a>
             <span className="pill-mono">{appId}</span>
             <span className="pill-mono">v{definition.version}</span>
-            <span className="spacer" />
             {/*
               BLD-06 — the publish surface.
               The button and the Ctrl/Cmd+S
               shortcut fire the same publish
               callback — one endpoint, so
               the two cannot diverge
-              (06-05's contract).
+              (06-05's contract). The
+              auto margin right-aligns the
+              pair: `.spacer` only flexes
+              under `.card-head`.
             */}
             <button
               type="button"
@@ -429,6 +431,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
               data-testid="editor-publish"
               onClick={() => void publish()}
               disabled={saving}
+              style={{ marginLeft: 'auto' }}
             >
               Publish
             </button>
