@@ -52,6 +52,24 @@ const isChoiceComponent = (type: string | undefined): boolean =>
   type === 'radio' || type === 'selectboxes';
 
 /**
+ * Escape a value interpolated into a
+ * double-quoted HTML attribute. The
+ * tooltip is owner-authored schema
+ * content: escaping the quote (and the
+ * ampersand that could build an entity)
+ * keeps the text inside the attribute —
+ * a quote in the tooltip cannot break
+ * out into the markup (T-06-01's XSS
+ * posture).
+ */
+const escapeHtmlAttribute = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+/**
  * The ported `label` template (form mode). Bootstrap 4's
  * `sr-only` is Bootstrap 5's `visually-hidden`; every other
  * line is the 4.x markup unchanged.
@@ -98,7 +116,7 @@ export function portedLabelForm(ctx: LabelTemplateContext): string {
   }
   if (ctx.component.tooltip && !ctx.label.hidden) {
     const iconClass = ctx.iconClass?.('question-sign') ?? '';
-    markup += `<i ref="tooltip" tabindex="0" class="${iconClass} text-muted" data-tooltip="${ctx.component.tooltip}"></i>\n  `;
+    markup += `<i ref="tooltip" tabindex="0" class="${iconClass} text-muted" data-tooltip="${escapeHtmlAttribute(ctx.component.tooltip)}"></i>\n  `;
   }
   markup += '</label>\n';
   if (showRequired) {

@@ -42,7 +42,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { ReactElement, Ref } from 'react';
+import type { ReactElement } from 'react';
 
 import {
   type ApiClient,

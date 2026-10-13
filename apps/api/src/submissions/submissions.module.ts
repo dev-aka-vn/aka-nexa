@@ -32,7 +32,6 @@
 import { Module } from '@nestjs/common';
 
 import {
-  AppDefinitionRepository,
   AuditRepository,
   SubmissionRepository,
   SubmissionRevisionsRepository,

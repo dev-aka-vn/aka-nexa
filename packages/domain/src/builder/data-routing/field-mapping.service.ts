@@ -34,6 +34,7 @@ import { FieldMappingPutSchema } from '@akane/contract';
 
 import {
   AppNotFoundError,
+  type AppDefinitionDocument,
   type AppDefinitionRepository,
 } from '../data-access/app-definition.repository.js';
 import { AuditRepository, type AuditEntry } from '../../audit/audit.repository.js';
@@ -139,9 +140,7 @@ export class FieldMappingService {
   private async assertOwner(
     appId: string,
     actor: string,
-  ): Promise<
-    Awaited<ReturnType<AppDefinitionRepository['findByAppId']>>
-  > {
+  ): Promise<AppDefinitionDocument> {
     const definition = await this.definitions.findByAppId(appId);
     if (definition === null || definition.createdBy !== actor) {
       throw new AppNotFoundError(appId);

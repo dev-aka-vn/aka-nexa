@@ -29,11 +29,17 @@ import {
   SsoMappingSchema,
 } from '@akane/contract';
 
-import { SsoMappingService } from '@akane/domain';
+import { ProfileRepository, SsoMappingService } from '@akane/domain';
+
+/** The directory search's result cap — the autocomplete is a prefix list, not an export. */
+const USER_SEARCH_LIMIT = 50;
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly ssoMappings: SsoMappingService) {}
+  constructor(
+    private readonly ssoMappings: SsoMappingService,
+    private readonly profiles: ProfileRepository,
+  ) {}
 
   /**
    * The D-110 gate: only a global-admin
@@ -132,5 +138,52 @@ export class UsersController {
 
     const mappings = await this.ssoMappings.listByEmail(email);
     res.status(200).json(SsoMappingSchema.array().parse(mappings));
+  }
+
+  /**
+   * `GET /users/search?q=<prefix>` — the
+   * role-assignment autocomplete (ACL-02,
+   * BLD-03): the identity directory by name or
+   * email **prefix**, every entry resolved to its
+   * opaque `real_user_id` — the only assignment
+   * target the platform supports. The response
+   * contract structurally cannot carry a group or
+   * attribute target: `users` is the only
+   * collection in it. Same global-admin surface
+   * as the rest of the Users page (D-110).
+   */
+  @Get('search')
+  async searchUsers(
+    @Req() req: Request,
+    @Query('q') q: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!this.assertGlobalAdmin(req, res)) {
+      return;
+    }
+
+    if (q === undefined || q.trim() === '') {
+      res.status(400).json({
+        error: 'QUERY_REQUIRED',
+        field: 'q',
+        message: 'q query parameter is required',
+      });
+      return;
+    }
+
+    const needle = q.trim().toLowerCase();
+    const users = (await this.profiles.findAll())
+      .filter(
+        (profile) =>
+          (profile.name ?? '').toLowerCase().startsWith(needle) ||
+          profile.email.toLowerCase().startsWith(needle),
+      )
+      .slice(0, USER_SEARCH_LIMIT)
+      .map((profile) => ({
+        real_user_id: profile.real_user_id,
+        name: profile.name ?? '',
+        email: profile.email,
+      }));
+    res.status(200).json({ users });
   }
 }

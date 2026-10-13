@@ -35,6 +35,7 @@ import {
   DslService,
   SubmissionRepository,
   type Submission,
+  type SubmissionRevisionDocument,
 } from '@akane/domain';
 
 import { projectSubmissionStatus } from '../read/status-projection.js';
@@ -48,23 +49,27 @@ import {
 
 /** The revisions store's read surface the export composes with. */
 class FakeRevisions implements SubmissionRevisionLookup {
-  private readonly latest = new Map<string, unknown>();
+  private readonly latest = new Map<string, SubmissionRevisionDocument>();
 
+  /**
+   * Accepts an out-of-band `outbound` value: the "weird"
+   * case deliberately drives the projection's fallback
+   * branch with a state outside the domain's `OutboundState`
+   * union — a bounced delivery that still reached the store.
+   */
   setLatest(
     submissionId: string,
-    revision: Record<string, unknown>,
+    revision: Omit<SubmissionRevisionDocument, 'outbound'> & {
+      outbound: string;
+    },
   ): void {
-    this.latest.set(submissionId, revision);
+    this.latest.set(submissionId, revision as SubmissionRevisionDocument);
   }
 
   async findLatest(
     submissionId: string,
-  ): Promise<Record<string, unknown> | null> {
-    return (
-      (this.latest.get(submissionId) as
-        | Record<string, unknown>
-        | undefined) ?? null
-    );
+  ): Promise<SubmissionRevisionDocument | null> {
+    return this.latest.get(submissionId) ?? null;
   }
 }
 

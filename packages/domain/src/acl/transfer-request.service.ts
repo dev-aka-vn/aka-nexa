@@ -50,7 +50,7 @@ import {
 
 import { AppNotFoundError } from '../builder/data-access/app-definition.repository.js';
 import type { AppDefinitionRepository } from '../builder/data-access/app-definition.repository.js';
-import { AuditRepository } from '../../audit/audit.repository.js';
+import { AuditRepository } from '../audit/audit.repository.js';
 
 import {
   GlobalAdminRequiredError,
@@ -155,15 +155,15 @@ export class TransferRequestService {
 
     const current = await this.assertPending(transferId);
 
-    // Ownership moves in the same transition
-    // that resolves the request: the
-    // definition's owner is the target user
-    // once this method returns.
-    await this.definitions.transferOwnership(
-      current.app_id,
-      current.to_user_id,
-    );
-
+    // Resolve the request record FIRST: the
+    // guarded transition is the atomic gate — a
+    // concurrent second approval fails here (the
+    // record is no longer `pending`) and changes
+    // nothing, so ownership can never move for an
+    // approval that did not land. Ownership then
+    // moves inside the same transition that
+    // resolves the request: the definition's owner
+    // is the target user once this method returns.
     const approved = await this.repository.transition(
       transferId,
       'approved',
@@ -171,6 +171,11 @@ export class TransferRequestService {
     if (approved === null) {
       throw new TransferNotFoundError(transferId);
     }
+
+    await this.definitions.transferOwnership(
+      current.app_id,
+      current.to_user_id,
+    );
 
     await this.audit.append({
       timestamp: new Date(),

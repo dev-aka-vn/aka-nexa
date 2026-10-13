@@ -39,7 +39,6 @@ export interface StatusProjectionInput {
     form_id?: string;
     created_at?: Date | string;
     status?: string;
-    [key: string]: unknown;
   };
   queryRow?: QueryRow;
   latestRevision: SubmissionRevisionDocument | null;

@@ -56,6 +56,10 @@ declare module 'express' {
     redirect(status: number, url: string): void;
     /** Used by the AUD-10 rate-limit branch to set `Retry-After`. */
     set(field: string, value: string): this;
+    /** The CSV export sets its content headers. */
+    setHeader(name: string, value: string): this;
+    /** The CSV export writes the serialized rows. */
+    send(body: string): void;
     /** Used by the D-101 session cookie issuance. */
     cookie(name: string, value: string, options?: CookieOptions): this;
     /** Used by the builder logout (clear the `__Host-` session cookie). */

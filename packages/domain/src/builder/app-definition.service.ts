@@ -134,7 +134,7 @@ export class AppDefinitionService {
     if (!parsed.success) {
       throw new AppDefinitionValidationError(parsed.error.issues);
     }
-    await this.assertExists(appId);
+    await this.assertOwner(appId, actor);
     // D-107 (T-06-16): the metadata tab carries the app's
     // tags, and tags are the curated platform vocabulary —
     // an out-of-vocabulary tag is refused inline, naming
@@ -251,10 +251,7 @@ export class AppDefinitionService {
     actor: string,
     version: number,
   ): Promise<AppDefinitionDocument> {
-    const current = await this.repository.findByAppId(appId);
-    if (current === null) {
-      throw new AppNotFoundError(appId);
-    }
+    const current = await this.assertOwner(appId, actor);
 
     const retained = await this.repository.findVersion(appId, version);
     if (retained === null) {
@@ -348,6 +345,46 @@ export class AppDefinitionService {
   }
 
   /**
+   * The owner gate (BLD-11, T-06-27): every
+   * mutating seam and every owner-surface read
+   * resolves the definition and refuses a caller
+   * who does not own it — fail-closed as the
+   * same 404 a missing app answers with (the
+   * BLD-08 posture), so a foreign `app_id` is
+   * indistinguishable from a missing one. The
+   * actor is the session's `real_user_id` the
+   * controller resolved; the definition's owner
+   * is the `createdBy` the draft was created
+   * under (ownership moves only through the
+   * ACL-05 transfer flow).
+   */
+  private async assertOwner(
+    appId: string,
+    actor: string,
+  ): Promise<AppDefinitionDocument> {
+    const definition = await this.repository.findByAppId(appId);
+    if (definition === null || definition.createdBy !== actor) {
+      throw new AppNotFoundError(appId);
+    }
+    return definition;
+  }
+
+  /**
+   * The owner-scoped single-definition read —
+   * the builder's edit surface. A non-owner and
+   * a missing app answer the same 404, so the
+   * definition's triggers, role assignments,
+   * routing config, and field mapping are never
+   * readable by another builder.
+   */
+  async findByAppIdForOwner(
+    appId: string,
+    actor: string,
+  ): Promise<AppDefinitionDocument> {
+    return this.assertOwner(appId, actor);
+  }
+
+  /**
    * The shared check-then-write body for every
    * lifecycle transition: re-read, re-check the
    * transition table against the *current* state, then
@@ -369,6 +406,13 @@ export class AppDefinitionService {
      */
     auditExtra: Record<string, unknown> = {},
   ): Promise<AppDefinitionDocument> {
+    // The owner gate fires once, before the
+    // check-then-write loop: ownership cannot
+    // change mid-transition (it moves only
+    // through the ACL-05 flow), while the
+    // lifecycle table is re-checked against the
+    // fresh state on every attempt below.
+    await this.assertOwner(appId, actor);
     for (let attempt = 0; attempt < MAX_TRANSITION_ATTEMPTS; attempt++) {
       const current = await this.repository.findByAppId(appId);
       if (current === null) {

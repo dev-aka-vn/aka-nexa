@@ -115,7 +115,7 @@ describe('submissions viewer + export (BLD-08, D-111)', () => {
   let baseUrl: string;
   let audit: AuditRepository;
   let submissions: SubmissionRepository;
-  let keyDir: string;
+  let keyDir: string | undefined;
 
   beforeAll(async () => {
     containers = await startThreeContainers();

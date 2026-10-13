@@ -27,10 +27,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 
-import {
-  createApiClient,
-  type ApiClient,
-} from '../api/client.js';
+import { createApiClient } from '../api/client.js';
 import {
   AppDefinitionSchema,
   type AppDefinition,

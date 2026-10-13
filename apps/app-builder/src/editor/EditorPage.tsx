@@ -41,7 +41,6 @@ import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
 import {
-  APP_SECTIONS,
   SECTION_FIELDS,
   sectionLabel,
   sectionPatch,

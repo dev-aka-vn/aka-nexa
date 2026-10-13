@@ -278,6 +278,29 @@ export class BuilderSessionStore {
     );
   }
 
+  /**
+   * Single-flight renewal guard: a per-session lock so a
+   * burst of requests inside the renewal window does not
+   * each fire a refresh grant. The IdP rotates the refresh
+   * token on every grant, so a second concurrent use of
+   * the same token fails the grant and its request is
+   * refused with a spurious forced re-login. The lock
+   * carries a short PX TTL — a crashed holder expires it
+   * on its own — and a failed acquisition means *another
+   * request is already renewing*: the caller proceeds on
+   * the record that renewal is extending.
+   */
+  async renewLock(id: string, ttlMs: number): Promise<boolean> {
+    const acquired = await this.redis.set(
+      `${SESSION_KEY_PREFIX}${id}:renew`,
+      '1',
+      'PX',
+      ttlMs,
+      'NX',
+    );
+    return acquired === 'OK';
+  }
+
   /** Destroy a session record. */
   async destroy(id: string): Promise<void> {
     await this.redis.del(`${SESSION_KEY_PREFIX}${id}`);
@@ -414,8 +437,15 @@ export class OidcService {
     // a mapping key, never a token claim (PII-in-JWT).
     const oidcSub = String(claims['sub']);
     const email = typeof claims['email'] === 'string' ? claims['email'] : undefined;
+    // The profile scope's display-name claim — the name
+    // half of the directory search (ACL-02).
+    const name = typeof claims['name'] === 'string' ? claims['name'] : undefined;
     const role = typeof claims['role'] === 'string' ? claims['role'] : 'owner';
-    const { realUserId } = await this.provision.upsertFromOidc(oidcSub, email);
+    const { realUserId } = await this.provision.upsertFromOidc(
+      oidcSub,
+      email,
+      name,
+    );
 
     // D-103: the session lifetime is the IdP session lifetime.
     // A token response that carries no expiry cannot be

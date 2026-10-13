@@ -33,11 +33,9 @@ import {
 import type { ReactElement } from 'react';
 
 import { AppDefinitionSchema, type AppDefinition } from '../api/definition.js';
-import type { ApiClient } from '../api/client.js';
 import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
-import { sectionLabel } from '../sections.js';
 import type { DirectoryUser } from '../api/users.js';
 import { PermissionMatrix } from './PermissionMatrix.js';
 import { UserAutocomplete } from './UserAutocomplete.js';

@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import {
   APP_SECTION_PERMISSIONS,
   createBuilderAbility,
+  type AppSectionPermission,
   type AppRoleAssignment,
 } from './builder-ability.js';
 
@@ -28,7 +29,7 @@ const VIEWER = 'usr_viewer_1';
 
 /** Build an assignment list from `[real_user_id, role, permissions?]` rows. */
 function assignments(
-  ...rows: Array<[string, string, string[]?]>
+  ...rows: Array<[string, string, AppSectionPermission[]?]>
 ): AppRoleAssignment[] {
   return rows.map(([real_user_id, role, permissions]) => ({
     real_user_id,

@@ -69,6 +69,15 @@ const STATE_CHANGING_METHODS = new Set([
  */
 const RENEWAL_FRACTION = 0.5;
 
+/**
+ * How long the single-flight renewal lock (see
+ * `BuilderSessionStore.renewLock`) is held: long enough
+ * to cover one refresh grant, short enough that a
+ * crashed holder cannot strand the session inside the
+ * renewal window.
+ */
+const RENEW_LOCK_TTL_MS = 10_000;
+
 @Injectable()
 export class SessionMiddleware implements NestMiddleware {
   constructor(
@@ -130,17 +139,37 @@ export class SessionMiddleware implements NestMiddleware {
       // and extend the Redis TTL to the refreshed IdP
       // session lifetime. A failed exchange means the IdP
       // session has ended — force a full re-login.
-      const renewed = await this.oidc.refreshAuthenticated(session);
-      if (renewed === null) {
-        res.status(401).json({ error: 'SESSION_EXPIRED' });
-        return;
-      }
-      await this.sessions.extend(
+      //
+      // Single-flight: only the request that acquires the
+      // renewal lock fires the grant. A concurrent burst
+      // would each present the same refresh token, and the
+      // IdP's rotation makes every loser's grant fail — a
+      // spurious forced re-login for a live session. A lost
+      // lock means another request is renewing this same
+      // session right now, so this request proceeds on the
+      // record that renewal is extending.
+      const renewing = await this.sessions.renewLock(
         sessionId,
-        renewed,
-        renewed.idpSessionExp - now,
+        RENEW_LOCK_TTL_MS,
       );
-      authenticated = renewed;
+      if (renewing) {
+        const renewed = await this.oidc.refreshAuthenticated(session);
+        if (renewed === null) {
+          res.status(401).json({ error: 'SESSION_EXPIRED' });
+          return;
+        }
+        // The extended TTL is measured from the refreshed
+        // session's own clock, not the request's start —
+        // the grant consumed time, and the lifetime must
+        // not silently under-count it.
+        const renewedAt = Math.floor(Date.now() / 1000);
+        await this.sessions.extend(
+          sessionId,
+          renewed,
+          renewed.idpSessionExp - renewedAt,
+        );
+        authenticated = renewed;
+      }
     }
 
     req.user = {

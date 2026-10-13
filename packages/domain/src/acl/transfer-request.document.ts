@@ -20,6 +20,8 @@ export type TransferState =
 
 /** One ownership-transfer request. */
 export interface TransferRequestDocument {
+  /** MongoDB document `_id` — present on read, absent on write. */
+  readonly _id?: string;
   /** The transfer's immutable identity. */
   readonly transfer_id: string;
   /** The app whose ownership is requested. */

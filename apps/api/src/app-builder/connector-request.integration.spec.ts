@@ -55,7 +55,7 @@ import {
 import { ConfigModule, LocalKeyProvider, MongoService } from '@akane/platform';
 
 import { startThreeContainers, type ThreeContainers } from '../../../../tooling/containers.js';
-import { provisionConnectorRequests } from '../../../../packages/cli/provision.js';
+import { provisionConnectorRequests } from '@akane/cli/provision';
 
 import { AppBuilderModule } from './app-builder.module.js';
 

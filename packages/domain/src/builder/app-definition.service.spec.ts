@@ -286,6 +286,52 @@ describe('AppDefinitionService (BLD-02, APP-03, D-86)', () => {
     ).rejects.toThrow(/not found/i);
   });
 
+  it('refuses a section update from a non-owner — the actor is the authorization, not just the audit (CR-01, T-06-27)', async () => {
+    const { service, audit, repository } = setup();
+
+    await service.createDraft(VALID_INPUT, OWNER);
+    const before = await audit.findAll();
+
+    // A non-owner and a missing app are the same refusal:
+    // 404, never a 403 that would leak the app's existence.
+    await expect(
+      service.updateSection(
+        'leave-request',
+        'user-0002',
+        'general',
+        { name: 'Attacker rewrite' },
+      ),
+    ).rejects.toThrow(/not found/i);
+
+    // The refusal wrote nothing — no version bump, no
+    // audit row, no rewritten definition.
+    expect((await audit.findAll()).length).toBe(before.length);
+    const stored = repository.docs.get('leave-request');
+    expect(stored?.version).toBe(1);
+    expect(stored?.name).toBe(VALID_INPUT.name);
+  });
+
+  it('refuses a lifecycle transition from a non-owner — publish, deprecate, and archive are owner-only (CR-01)', async () => {
+    const { service, repository } = setup();
+
+    await service.createDraft(VALID_INPUT, OWNER);
+
+    await expect(
+      service.commitPublish('leave-request', 'user-0002'),
+    ).rejects.toThrow(/not found/i);
+    await expect(
+      service.deprecate('leave-request', 'user-0002', 'Maintenance window'),
+    ).rejects.toThrow(/not found/i);
+    await expect(
+      service.archive('leave-request', 'user-0002'),
+    ).rejects.toThrow(/not found/i);
+
+    // Nothing moved: the definition is still the owner's draft.
+    const stored = repository.docs.get('leave-request');
+    expect(stored?.lifecycle).toBe('draft');
+    expect(stored?.version).toBe(1);
+  });
+
   it('commitPublish moves draft → published through the transition table', async () => {
     const { service, audit } = setup();
 

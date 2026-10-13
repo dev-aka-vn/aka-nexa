@@ -34,7 +34,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  HttpStatus,
   Param,
   Post,
   Req,
@@ -48,10 +47,7 @@ import {
   type ConnectorRequestDocument,
 } from '@akane/domain';
 
-import {
-  BuilderExceptionFilter,
-  errorBody,
-} from './app-builder.controller.js';
+import { BuilderExceptionFilter } from './app-builder.controller.js';
 
 @Controller('apps/:id/connector-requests')
 @UseFilters(new BuilderExceptionFilter())

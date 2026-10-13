@@ -41,7 +41,11 @@ export class OidcProvisionService {
 
   /**
    * Resolve the OIDC subject to its `real_user_id`, creating
-   * both on first login.
+   * both on first login. The IdP's profile-scope `name`
+   * claim is stored alongside the email — it is the
+   * display name the directory search (ACL-02) matches
+   * on; a subject with no name claim provisions with an
+   * empty name, never a fabricated one.
    *
    * The subject is the identity key: two subjects sharing an
    * email address are two users, and every login for one
@@ -51,6 +55,7 @@ export class OidcProvisionService {
   async upsertFromOidc(
     oidcSub: string,
     email?: string,
+    name?: string,
   ): Promise<OidcProvisionOutcome> {
     const existing = await this.mappings.findByChat(OIDC_PLATFORM, oidcSub);
     if (existing !== null) {
@@ -72,6 +77,7 @@ export class OidcProvisionService {
       employee_code: `oidc-${oidcSub}`,
       department: 'unassigned',
       email: email ?? '',
+      name: name ?? '',
     });
 
     return { realUserId, provisioned: true };

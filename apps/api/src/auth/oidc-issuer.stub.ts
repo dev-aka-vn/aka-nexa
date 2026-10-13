@@ -42,6 +42,9 @@ export const DEFAULT_STUB_AMR = 'mfa';
 /** The email the stub issues when the authorization request carries none. */
 export const DEFAULT_STUB_EMAIL = 'admin@example.com';
 
+/** The display name the stub issues when the authorization request carries none. */
+export const DEFAULT_STUB_NAME = 'Stub Admin';
+
 /** Seconds an issued access token (and therefore the IdP session) lives. */
 const STUB_EXPIRES_IN_SECONDS = 3600;
 
@@ -64,6 +67,7 @@ interface IssuedCode {
   readonly acr: string;
   readonly amr: readonly string[];
   readonly email: string;
+  readonly name: string;
   consumed: boolean;
 }
 
@@ -244,6 +248,7 @@ export class StubOidcIssuer {
       acr: params.get('stub_acr') ?? DEFAULT_STUB_ACR,
       amr: (params.get('stub_amr') ?? DEFAULT_STUB_AMR).split(','),
       email: params.get('stub_email') ?? DEFAULT_STUB_EMAIL,
+      name: params.get('stub_name') ?? DEFAULT_STUB_NAME,
       consumed: false,
     };
     this.codes.set(issued.code, issued);
@@ -362,6 +367,7 @@ export class StubOidcIssuer {
       amr: issued.amr,
       role: issued.role,
       email: issued.email,
+      name: issued.name,
     })
       .setProtectedHeader({ alg: 'ES256', kid: STUB_KEY_ID })
       .sign(this.privateKey as Parameters<SignJWT['sign']>[0]);

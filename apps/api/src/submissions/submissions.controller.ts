@@ -57,15 +57,13 @@ import {
   AppDefinitionRepository,
   AppNotFoundError,
   BuilderError,
+  SubmissionListFilter,
   SubmissionRepository,
   SubmissionRevisionsRepository,
 } from '@akane/domain';
-import {
-  SubmissionsFilterSchema,
-  type SubmissionsFilter,
-} from '@akane/contract';
+import { SubmissionsFilterSchema } from '@akane/contract';
 
-import { BuilderExceptionFilter, errorBody } from '../app-builder/app-builder.controller.js';
+import { BuilderExceptionFilter } from '../app-builder/app-builder.controller.js';
 import {
   SubmissionExportService,
 } from './submission-export.service.js';
@@ -165,7 +163,7 @@ export class SubmissionsController {
   }
 
   /** Parse and validate the filter set, naming the offending field. */
-  private parseFilter(query: unknown): SubmissionsFilter {
+  private parseFilter(query: unknown): SubmissionListFilter {
     const parsed = SubmissionsFilterSchema.safeParse(
       query ?? {},
     );

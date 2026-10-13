@@ -7,7 +7,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -25,6 +24,7 @@ import {
   FieldMappingService,
   TemplateSeed,
   type AppDefinitionDocument,
+  type FieldMappingRecord,
 } from '@akane/domain';
 import {
   ForkTemplateSchema,
@@ -101,15 +101,16 @@ export class AppBuilderController {
     return toDefinitionResponse(draft);
   }
 
-  /** Fetch one definition by its immutable `app_id`. */
+  /** Fetch one definition by its immutable `app_id` — owner-scoped, fail-closed. */
   @Get('apps/:id')
-  async getApp(@Param('id') appId: string): Promise<Record<string, unknown>> {
-    const definition = await this.definitions.findByAppId(appId);
-    if (definition === null) {
-      throw new NotFoundException(
-        errorBody('APP_NOT_FOUND', `app not found: ${appId}`),
-      );
-    }
+  async getApp(
+    @Param('id') appId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const definition = await this.definitions.findByAppIdForOwner(
+      appId,
+      actorOf(req),
+    );
     return toDefinitionResponse(definition);
   }
 
@@ -229,7 +230,7 @@ export class AppBuilderController {
   async getMapping(
     @Param('id') appId: string,
     @Req() req: Request,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<FieldMappingRecord> {
     return this.fieldMapping.getMapping(
       appId,
       actorOf(req),
@@ -250,7 +251,7 @@ export class AppBuilderController {
     @Param('id') appId: string,
     @Body() body: unknown,
     @Req() req: Request,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<FieldMappingRecord> {
     return this.fieldMapping.storeMapping(
       appId,
       actorOf(req),

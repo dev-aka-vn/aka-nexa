@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NextFunction, Request, Response } from 'express';
 
 import { otelBootstrapConfigFromEnv, startOtel } from '@akane/platform/otel';
 
@@ -48,6 +49,25 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // T-06-01: the CSP posture the
+  // FormIO-rendering surface carries —
+  // `script-src 'self'` and nothing
+  // else. Every dependency bundles from
+  // npm (no CDN, no remote script
+  // anywhere in the tree), so 'self' is
+  // the complete allowlist. The header
+  // rides every response this
+  // same-origin API serves, including
+  // the SPA surface the deployment
+  // serves from it (D-103) — an
+  // owner-authored FormIO schema can
+  // then never escalate into script
+  // execution.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Content-Security-Policy', "script-src 'self'");
+    next();
+  });
 
   // The two idempotent boot steps, after the graph is
   // wired and before the first request is served:
