@@ -163,6 +163,70 @@ export const AppDefinitionSchema = {
   },
 };
 
+/** One BLD-06 change-summary row: what changed, from what, to what. */
+export interface PublishChangeRow {
+  readonly field: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The publish response — the definition
+ * projection plus the change summary the
+ * publish gate computed and the AUD-01
+ * entry retains. A field that did not
+ * change is absent from the summary
+ * (06-05's contract).
+ */
+export interface PublishResult extends AppDefinition {
+  readonly changeSummary: PublishChangeRow[];
+  readonly zero_change: boolean;
+}
+
+/**
+ * The publish response's structural
+ * schema: the definition validates as
+ * a served definition, and the change
+ * summary is the row set the admin
+ * confirms — the same rows the audit
+ * trail retains (BLD-06 auditability).
+ */
+export const PublishResultSchema = {
+  parse: (data: unknown): PublishResult => {
+    const definition = AppDefinitionSchema.parse(data);
+    const doc = data as {
+      changeSummary?: unknown;
+      zero_change?: unknown;
+    } | null;
+    if (
+      !Array.isArray(doc?.changeSummary) ||
+      typeof doc?.zero_change !== 'boolean'
+    ) {
+      throw new Error('malformed publish result');
+    }
+    const changeSummary = doc.changeSummary.map(
+      (row): PublishChangeRow => {
+        const candidate = row as Partial<PublishChangeRow> | null;
+        if (
+          typeof candidate !== 'object' ||
+          candidate === null ||
+          typeof candidate.field !== 'string' ||
+          typeof candidate.from !== 'string' ||
+          typeof candidate.to !== 'string'
+        ) {
+          throw new Error('malformed change row');
+        }
+        return {
+          field: candidate.field,
+          from: candidate.from,
+          to: candidate.to,
+        };
+      },
+    );
+    return { ...definition, changeSummary, zero_change: doc.zero_change };
+  },
+};
+
 /** The apps-list response (`GET /apps`). */
 export interface AppsListResponse {
   apps: AppDefinition[];

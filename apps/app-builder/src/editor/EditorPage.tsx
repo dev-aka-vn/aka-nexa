@@ -32,6 +32,8 @@ import {
   AppDefinitionSchema,
   type AppDefinition,
   type AppDataMode,
+  type PublishChangeRow,
+  PublishResultSchema,
 } from '../api/definition.js';
 import {
   ConnectorRequestListSchema,
@@ -64,6 +66,17 @@ function formatJson(value: unknown): string {
 }
 
 /**
+ * The platform's chord for the publish
+ * shortcut (BLD-06) — the hint the
+ * editor shows beside the button.
+ */
+function saveShortcutHint(): string {
+  return /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? '⌘S'
+    : 'Ctrl+S';
+}
+
+/**
  * The editor page for one app.
  */
 export function EditorPage({ appId }: EditorPageProps): ReactElement {
@@ -88,6 +101,15 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(false);
+  /**
+   * The BLD-06 publish confirmation — the
+   * rows the admin sees are the rows the
+   * AUD-01 entry retains.
+   */
+  const [confirmation, setConfirmation] = useState<{
+    readonly rows: PublishChangeRow[];
+    readonly zeroChange: boolean;
+  } | null>(null);
 
   // The data-routing tab's provisioned-connector
   // read (the app's connector-request queue).
@@ -132,6 +154,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       setSaveError(null);
       setSaved(false);
       setPublished(false);
+      setConfirmation(null);
       if (isJsonSection(section) && definition !== null) {
         setJsonText(
           formatJson(sectionValue(section as never, definition)),
@@ -226,6 +249,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     setSaveError(null);
     setSaved(false);
     setPublished(false);
+    setConfirmation(null);
 
     let patch: Record<string, unknown>;
     if (activeSection === 'general') {
@@ -302,13 +326,14 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     setSaveError(null);
     setSaved(false);
     setPublished(false);
+    setConfirmation(null);
 
     setSaving(true);
     try {
       const response = await client.post(
         `/apps/${appId}/publish`,
         undefined,
-        AppDefinitionSchema,
+        PublishResultSchema,
       );
       setDefinition(response);
       setName(response.name);
@@ -316,6 +341,10 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       setTagsText(response.tags.join(', '));
       setDataMode(response.data_mode);
       setPublished(true);
+      setConfirmation({
+        rows: response.changeSummary,
+        zeroChange: response.zero_change,
+      });
     } catch (error) {
       // BLD-07: the API's named refusal, verbatim.
       setSaveError(
@@ -385,6 +414,27 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             </a>
             <span className="pill-mono">{appId}</span>
             <span className="pill-mono">v{definition.version}</span>
+            <span className="spacer" />
+            {/*
+              BLD-06 — the publish surface.
+              The button and the Ctrl/Cmd+S
+              shortcut fire the same publish
+              callback — one endpoint, so
+              the two cannot diverge
+              (06-05's contract).
+            */}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              data-testid="editor-publish"
+              onClick={() => void publish()}
+              disabled={saving}
+            >
+              Publish
+            </button>
+            <span className="helper" title="Keyboard shortcut">
+              {saveShortcutHint()}
+            </span>
           </div>
           <h1>{definition.name}</h1>
           <p className="sub">{definition.description}</p>
@@ -443,8 +493,44 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
               marginBottom: 16,
             }}
           >
-            {definition.name} published — version{' '}
-            {definition.version}.
+            <div style={{ fontWeight: 600 }}>
+              {definition.name} published — version{' '}
+              {definition.version}
+              {confirmation?.zeroChange
+                ? ' — no changes since the last publish'
+                : ''}
+              .
+            </div>
+            {confirmation !== null && !confirmation.zeroChange ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  marginTop: 8,
+                }}
+              >
+                {confirmation.rows.map((row) => (
+                  <div
+                    key={row.field}
+                    className="od-row"
+                    data-testid="publish-change-row"
+                    style={
+                      {
+                        '--od-gap': '10px',
+                        fontSize: 13,
+                      } as never
+                    }
+                  >
+                    <span>{row.field}</span>
+                    <span className="spacer" />
+                    <span className="pill-mono">{row.from}</span>
+                    <span style={{ color: 'var(--muted)' }}>→</span>
+                    <span className="pill-mono">{row.to}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
