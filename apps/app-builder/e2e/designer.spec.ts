@@ -54,6 +54,58 @@ import {
 const DEBOUNCE_WINDOW_MS = 300;
 const SETTLE_MS = DEBOUNCE_WINDOW_MS + 150;
 
+/**
+ * PreviewPane's own re-render debounce
+ * (`PREVIEW_DEBOUNCE_MS` in PreviewPane.tsx).
+ * The preview is scheduled this many ms after a
+ * `schema` change, so a change that lands right
+ * after the preview first mounts replaces the
+ * mounted form instance this long afterwards.
+ */
+const PREVIEW_DEBOUNCE_MS = 400;
+
+/**
+ * The per-test budget for this spec.
+ *
+ * Every test here mounts the real FormIO 5.6.1
+ * builder — the heaviest module graph the SPA
+ * loads. Against a COLD vite dev server (no
+ * listener on :5173, so Playwright starts one)
+ * the first execution additionally pays the dev
+ * server's on-demand transform of that graph
+ * plus the browser's parse and execution of it.
+ * Measured on this machine, the first execution
+ * of the :385 drag test lands at 20.8–26.5 s
+ * against Playwright's default 30 s per-test
+ * budget (69–88 % of the ceiling), and a slower
+ * run was observed to cross it — "Test timeout
+ * of 30000ms exceeded" at the undo click, 30.4 s
+ * total. A real drag + dialog save + undo + redo
+ * against a heavyweight builder needs headroom.
+ *
+ * 90 s is deliberately bounded at 3x the
+ * default: enough for the cold cost, nowhere
+ * near an unbounded wait. The spec is NOT given
+ * an endless timeout — a genuine hang, or any
+ * failed assertion, still fails the test, and
+ * every step keeps its own explicit wait (20 s
+ * visibility, 10 s dialog, the restore polls in
+ * the BLD-04 test).
+ */
+const DESIGNER_SPEC_TIMEOUT_MS = 90_000;
+
+/**
+ * Deterministic-wait budget for a builder
+ * restore. Undo/redo resolve through
+ * `builder.setForm()`; the polls in the BLD-04
+ * test wait for the restored schema to land
+ * instead of sleeping a fixed window. A poll
+ * still fails on timeout, so a restore that
+ * never lands is a red test rather than a slow
+ * one.
+ */
+const RESTORE_TIMEOUT_MS = 15_000;
+
 /** The served definition the stubbed GET /apps/:id answers with. */
 function designerDefinition(): Record<string, unknown> {
   return {
@@ -297,7 +349,85 @@ async function openComponentEditor(
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
 }
 
+/**
+ * Waits until the preview's mounted FormIO form
+ * instance has settled (FRM-09).
+ *
+ * The designer mounts the preview twice per page
+ * load: the builder normalises the served
+ * `form_schema` and round-trips it back through
+ * `handleSchemaChange`, which changes the `schema`
+ * prop and re-arms PreviewPane's `PREVIEW_DEBOUNCE_MS`
+ * (400 ms) timer. The first form instance is
+ * therefore destroyed and rebuilt ~400 ms after it
+ * first reports `data-ready="true"` — a value typed
+ * into it is discarded with the destroyed DOM (the
+ * remount clears the container and renders a new
+ * root).
+ *
+ * Rather than racing that remount, tag the mounted
+ * form root and require the tag to survive a full
+ * debounce window before typing. If the preview were
+ * ever re-mounted repeatedly — a real regression —
+ * this poll would time out and fail the spec. It is
+ * deliberately NOT a longer timeout on the value
+ * assertion: it proves the remount has finished
+ * rather than hiding it.
+ */
+async function waitForSettledPreview(page: Page): Promise<void> {
+  const preview = page.getByTestId('designer-preview');
+  await expect(preview).toHaveAttribute('data-ready', 'true', {
+    timeout: 20_000,
+  });
+
+  const probe = 'data-preview-settle-probe';
+  await expect
+    .poll(
+      async () => {
+        // Tag the currently mounted FormIO form root
+        // (`.formio-component-form`). A remount clears
+        // the container and renders a new root, so the
+        // tag is dropped.
+        await page.evaluate((attribute) => {
+          const root = document.querySelector(
+            '[data-testid="designer-preview-form"] > *',
+          );
+          root?.setAttribute(attribute, 'settled');
+        }, probe);
+        // A full debounce window plus margin: any
+        // re-armed remount lands inside it.
+        await page.waitForTimeout(PREVIEW_DEBOUNCE_MS + 300);
+        return page.evaluate((attribute) => {
+          const section = document.querySelector(
+            '[data-testid="designer-preview"]',
+          );
+          const root = document.querySelector(
+            '[data-testid="designer-preview-form"] > *',
+          );
+          return (
+            section?.getAttribute('data-ready') === 'true' &&
+            root?.getAttribute(attribute) === 'settled'
+          );
+        }, probe);
+      },
+      {
+        timeout: 20_000,
+        message:
+          'the preview form kept re-mounting — it never stayed stable for a full debounce window',
+      },
+    )
+    .toBe(true);
+}
+
 test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
+  // The whole file drives the real FormIO builder
+  // page; see DESIGNER_SPEC_TIMEOUT_MS. Scoped to
+  // this describe block — no other spec's budget
+  // moves.
+  test.describe.configure({
+    timeout: DESIGNER_SPEC_TIMEOUT_MS,
+  });
+
   test.beforeEach(() => {
     submissionsRequests = [];
   });
@@ -335,14 +465,31 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
     // a single undo reverses the whole add.
     await expect(page.getByTestId('designer-undo-button')).toBeEnabled();
     await page.getByTestId('designer-undo-button').click();
-    await page.waitForTimeout(SETTLE_MS);
-    expect(await builderComponentCount(page)).toBe(initialCount);
+    // Deterministic wait for the restore: the click
+    // handler resolves through `builder.setForm()`,
+    // so poll the builder's own schema until the
+    // pre-add snapshot has landed. Polling fails on
+    // timeout — a restore that never lands is red —
+    // so this is a real assertion, not a sleep. The
+    // count is 3 here and 4 below, so the redo leg
+    // cannot pass without the count actually moving.
+    await expect
+      .poll(() => builderComponentCount(page), {
+        timeout: RESTORE_TIMEOUT_MS,
+        message:
+          'a single undo did not restore the pre-add component count',
+      })
+      .toBe(initialCount);
 
     // And redo restores it.
     await expect(page.getByTestId('designer-redo-button')).toBeEnabled();
     await page.getByTestId('designer-redo-button').click();
-    await page.waitForTimeout(SETTLE_MS);
-    expect(await builderComponentCount(page)).toBe(initialCount + 1);
+    await expect
+      .poll(() => builderComponentCount(page), {
+        timeout: RESTORE_TIMEOUT_MS,
+        message: 'redo did not restore the added component',
+      })
+      .toBe(initialCount + 1);
   });
 
   test("a component's validate and conditional properties are authored in the builder's edit form and persist with the schema (FRM-05)", async ({
@@ -446,12 +593,18 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
     await stubDesignerApi(page);
     await page.goto('/#/apps/hr-leave-request/designer');
 
+    // Wait for the preview to settle before typing.
+    // The designer mounts the preview twice (the
+    // builder's initial schema round-trip re-arms the
+    // 400 ms debounce), and a value typed into the
+    // first instance is discarded when it is replaced.
+    // The helper proves the mounted instance is stable
+    // across a full debounce window first.
+    await waitForSettledPreview(page);
+
     // The preview rendered the draft form from the
     // same schema the builder edits.
     const preview = page.getByTestId('designer-preview');
-    await expect(preview).toHaveAttribute('data-ready', 'true', {
-      timeout: 20_000,
-    });
     await expect(
       preview.getByLabel('Full name'),
     ).toBeVisible();
