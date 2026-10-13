@@ -99,6 +99,7 @@ created: "2026-10-13"
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-10-13 | 35 | 35 | 0 | gsd-secure-phase (ASVS L1 grep-depth; register authored at plan time — short-circuit, no auditor spawn required) |
+| 2026-10-13 | 35 | 35 | 0 | gsd-secure-phase re-run (ASVS L1; register re-derived from the eight PLAN threat models — short-circuit) |
 
 Audit notes: the register was authored in all eight PLAN.md `<threat_model>`
 blocks before execution (`register_authored_at_plan_time: true`). L1
@@ -110,6 +111,31 @@ full suite; the AES-256-GCM credential envelope lives in
 `packages/platform/src/crypto/envelope.ts` (Node stdlib, D-100); the
 operator provision seam is `packages/cli/provision.ts`. No threat remained
 open at or above the `high` block threshold.
+
+Re-audit notes (second run, same day, after the UAT/UI hardening landed):
+the register was re-derived independently from all eight PLAN.md
+`<threat_model>` blocks rather than trusted from this file — 35 unique `T-06-*`
+IDs, and the `(severity, disposition)` pair for every one is identical to the
+register above, so no threat was quietly downgraded or flipped to `accept`. The
+`high` block threshold puts 16 threats at or above the gate (15 `high` + 1
+`critical`, T-06-23); all 16 are `mitigate` and all are closed. The six
+`accept` dispositions are all `low` severity and are the AR-06-01..06 entries.
+Each SUMMARY `## Threat Flags` block was checked: only 06-07 raised one (the
+SPA's `GET /users/search?q=` autocomplete — names/emails across the session
+boundary), and it maps to T-06-29, whose mitigation is present. Drift check:
+one implementation file landed after the first audit —
+`apps/app-builder/src/apps/AppsPage.tsx` (68f650dd) — and its diff is a
+lifecycle-badge CSS-class vocabulary change with no data flow, auth, or
+serialisation surface, so it perturbs no mitigation. Mitigations were
+re-verified at ASVS L1 grep depth against the implementation, and the specs the
+register names were re-run green this session: `auth.session.integration`,
+`otp-state-machine`, `publish.integration`, `app-definition.integration`,
+`submission-export.service`, `template`, `sandbox`, `builder-ability`,
+`saved-query.repository`, `seed-saved-query.lookup`,
+`otp-onboarding.integration` — 11 files / 87 tests, 0 failures. The CSP cited
+by T-06-01 is live at `apps/api/src/main.ts` (`script-src 'self'`); the
+committed lockfile is `package-lock.json` (`"name": "akane"`), tracked at HEAD.
+No threat is open at or above `high`; `threats_open: 0` stands.
 
 ---
 
