@@ -57,7 +57,22 @@ const SPECIFIER_PATTERNS = [
 ];
 
 /**
- * Every workspace source file, excluding specs.
+ * Build- and test-runner configuration, not runtime sources:
+ * a `vite.config.ts` imports the bundler it configures, and
+ * the bundler legitimately lives in `devDependencies` — the
+ * same reasoning that excludes specs below. Nothing at
+ * runtime imports a config file, so `npm ci --omit=dev`
+ * never needs one to boot.
+ */
+const BUILD_CONFIG_BASE_NAMES = new Set([
+  'vite.config.ts',
+  'vitest.config.ts',
+  'playwright.config.ts',
+]);
+
+/**
+ * Every workspace source file, excluding specs and build
+ * configuration.
  *
  * Specs are excluded because they import `vitest`, `@nestjs/testing` and
  * `testcontainers`, and those legitimately live in `devDependencies` — the whole
@@ -71,7 +86,12 @@ function runtimeSourceFiles(): string[] {
       if (statSync(full).isDirectory()) {
         if (entry === 'dist' || entry === 'node_modules') continue;
         walk(full);
-      } else if (full.endsWith('.ts') && !full.endsWith('.spec.ts') && !full.endsWith('.d.ts')) {
+      } else if (
+        full.endsWith('.ts') &&
+        !full.endsWith('.spec.ts') &&
+        !full.endsWith('.d.ts') &&
+        !BUILD_CONFIG_BASE_NAMES.has(entry)
+      ) {
         out.push(full);
       }
     }

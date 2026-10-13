@@ -88,6 +88,9 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
+import { OIDC_CONFIG_KEYS } from '../apps/api/src/auth/oidc.service.js';
+import { StubOidcIssuer } from '../apps/api/src/auth/oidc-issuer.stub.js';
+
 import {
   CACHE_MAXMEMORY_POLICY,
   MONGO_IMAGE,
@@ -198,7 +201,28 @@ const READ_LINK_ENV: Record<string, string> = {
   RENDERER_ORIGIN: 'http://localhost:5173',
 };
 
-afterAll(() => {
+/**
+ * The stub OIDC issuer, started once and shared by every api boot below.
+ *
+ * A reachable OIDC issuer is part of the boot contract (BLD-12:
+ * `discoverOidcClient` runs openid-client discovery at module init,
+ * loudly). The documented `OIDC_ISSUER` placeholder points at a domain
+ * no network resolves — correctly, it is a placeholder — so the harness
+ * runs the in-repo stub issuer and points the boot environment at it,
+ * exactly as it points the three container URLs at the harness.
+ * Discovery needs only the metadata endpoint; the client id and secret
+ * `.env.example` documents are never exchanged at boot, so they ride
+ * the documented values verbatim.
+ */
+let stubIssuer: StubOidcIssuer | undefined;
+
+async function startSharedIssuer(): Promise<StubOidcIssuer> {
+  stubIssuer ??= await StubOidcIssuer.start();
+  return stubIssuer;
+}
+
+afterAll(async () => {
+  await stubIssuer?.stop();
   rmSync(KEY_DIR, { recursive: true, force: true });
 });
 
@@ -264,15 +288,24 @@ function exampleActiveEnv(): Record<string, string> {
 }
 
 /**
- * The documented boot environment with the three URLs pointed at the harness and
- * the read-link verification keys supplied from {@link READ_LINK_ENV}.
+ * The documented boot environment with the harness URLs pointed at the
+ * harness and the read-link verification keys supplied from {@link READ_LINK_ENV}.
  *
  * The container URLs are taken **verbatim**, in particular `urls.mongo`, which
  * already carries `?directConnection=true` because `containers.ts` starts
  * MongoDB with `--replSet`. Stripping it, or copying the documented URL and
  * "fixing" it, breaks every boot below.
+ *
+ * `OIDC_ISSUER` is the fourth harness-pointed URL — see
+ * {@link stubIssuer} for why the documented placeholder cannot boot.
  */
 function containerEnv(containers: ThreeContainers): Record<string, string> {
+  if (stubIssuer === undefined) {
+    // Every beforeAll that boots the api starts the shared issuer first;
+    // reaching this without it is a harness bug, not a configuration an
+    // operator could make.
+    throw new Error('the stub OIDC issuer has not been started');
+  }
   return childEnv({
     ...exampleActiveEnv(),
     ...READ_LINK_ENV,
@@ -281,6 +314,7 @@ function containerEnv(containers: ThreeContainers): Record<string, string> {
     REDIS_QUEUE_URL: containers.urls.queue,
     CRYPTO_LOCAL_KEY_FILE: KEY_FILE,
     SERVICE_NAME: 'api',
+    OIDC_ISSUER: stubIssuer.origin,
   });
 }
 
@@ -537,8 +571,8 @@ function dependencyStatuses(
 }
 
 describe('.env.example — the boot contract, asserted against the schema', () => {
-  it('names every key APP_CONFIG_KEYS declares, plus CRYPTO_LOCAL_KEY_FILE', () => {
-    const missing = [...APP_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE'].filter(
+  it('names every key the boot contract declares, plus CRYPTO_LOCAL_KEY_FILE', () => {
+    const missing = [...APP_CONFIG_KEYS, ...OIDC_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE'].filter(
       (key) => !ENV_EXAMPLE.documented.has(key),
     );
     expect(missing, 'a boot key is not written down in .env.example').toEqual([]);
@@ -547,8 +581,15 @@ describe('.env.example — the boot contract, asserted against the schema', () =
   it('enumerates the schema keys and nothing invented alongside them', () => {
     // Key-set parity in both directions. Forward-only would let a key be
     // deleted from the schema and left behind in the example file, where a
-    // reader would set a variable no boot reads.
-    const declared = new Set<string>([...APP_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE']);
+    // reader would set a variable no boot reads. The OIDC login config
+    // (06-02, BLD-12) is deliberately not an `AppConfigSchema` field —
+    // like the read-link config it is read straight from `process.env` —
+    // so the boot contract's declared keys are the union of both surfaces.
+    const declared = new Set<string>([
+      ...APP_CONFIG_KEYS,
+      ...OIDC_CONFIG_KEYS,
+      'CRYPTO_LOCAL_KEY_FILE',
+    ]);
     const invented = [...ENV_EXAMPLE.documented].filter((key) => !declared.has(key));
     expect(invented, '.env.example documents a variable no boot contract declares').toEqual([]);
   });
@@ -617,6 +658,7 @@ describe('.env.example — booting a real api process', () => {
   };
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 
@@ -1458,6 +1500,7 @@ describe('Trap A — port collision, and the "successfully started" lie', () => 
   const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 
@@ -1526,6 +1569,7 @@ describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
   const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 

@@ -20,7 +20,10 @@
  * exactly the claims that test needs.
  *
  * The stub is test infrastructure, not a production surface: it is
- * never imported outside the specs in this directory.
+ * imported only by specs — the builder-auth integration specs in
+ * this directory, and the tooling onboarding spec, which boots the
+ * real api against it because a reachable issuer is part of the
+ * boot contract (BLD-12: discovery runs at module init).
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';

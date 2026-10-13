@@ -77,11 +77,27 @@ import {
 export class AuthModule {
   /**
    * Guard every builder-facing route with the session
-   * middleware (T-06-04, D-103). The two OIDC login
-   * routes are excluded — they *create* the session,
-   * so guarding them would deadlock the login flow
-   * itself; the callback's own fail-closed checks
-   * (state, PKCE, MFA gate) cover them.
+   * middleware (T-06-04, D-103). The posture is fail
+   * closed: `forRoutes('*')` first, so a route the
+   * session does not cover is a named exclusion, never
+   * an unguarded default. Three surfaces carry no
+   * session, by design:
+   *
+   * - The two OIDC login routes — they *create* the
+   *   session, so guarding them would deadlock the
+   *   login flow itself; the callback's own fail-closed
+   *   checks (state, PKCE, MFA gate) cover them.
+   * - The infrastructure surface — `/health/live` is a
+   *   fixed literal that reads nothing (D-10, T-1-17)
+   *   and `/health/ready` plus `/metrics` are the
+   *   orchestrator's probes; a probe holds no session.
+   * - The read-link surface (`/l/*`) — the recipient
+   *   follows a link from chat and holds no session;
+   *   the signed, single-use token *is* the credential
+   *   (LNK-05: "no Redis, no session"). Every method
+   *   the controller mounts is excluded by name, so a
+   *   new `/l` route fails closed (401) until it is
+   *   added here.
    */
   configure(consumer: MiddlewareConsumer): void {
     consumer
@@ -89,6 +105,13 @@ export class AuthModule {
       .exclude(
         { path: 'auth/oidc/begin', method: RequestMethod.GET },
         { path: 'auth/oidc/callback', method: RequestMethod.GET },
+        { path: 'health/live', method: RequestMethod.GET },
+        { path: 'health/ready', method: RequestMethod.GET },
+        { path: 'metrics', method: RequestMethod.GET },
+        { path: 'l/view/:jti', method: RequestMethod.GET },
+        { path: 'l/query/:jti', method: RequestMethod.GET },
+        { path: 'l/edit/:jti', method: RequestMethod.GET },
+        { path: 'l/edit/:jti', method: RequestMethod.POST },
       )
       .forRoutes('*');
   }

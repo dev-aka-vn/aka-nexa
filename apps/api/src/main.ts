@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
@@ -80,8 +81,28 @@ async function bootstrap(): Promise<void> {
   // repository-backed store (insert-if-absent, so a
   // builder's newer query_version is never clobbered
   // and a re-run is a no-op).
-  await app.get(TemplateSeed).load();
-  await backfillSavedQueries(app.get(MongoService));
+  //
+  // Both steps read Mongo, so both are best-effort:
+  // a Mongo that is unreachable *at boot* is a
+  // readiness fact (D-12), not a boot failure. The
+  // steps are idempotent and re-run at every boot, so
+  // the first boot after the dependency returns
+  // completes them; refusing to listen would
+  // crash-loop a pod through the very blip that
+  // `/health/ready` exists to ride out — the process
+  // stays up, readiness reports `mongo: down`, and
+  // traffic is withdrawn until it returns.
+  const bootstrap = new Logger('Bootstrap');
+  try {
+    await app.get(TemplateSeed).load();
+  } catch (error) {
+    bootstrap.warn(`template gallery seed (D-105) deferred: ${String(error)}`);
+  }
+  try {
+    await backfillSavedQueries(app.get(MongoService));
+  } catch (error) {
+    bootstrap.warn(`saved-query backfill (G-11) deferred: ${String(error)}`);
+  }
 
   await app.listen(app.get(ConfigService).getOrThrow<number>('PORT'));
 }
