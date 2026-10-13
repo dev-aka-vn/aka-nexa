@@ -1,10 +1,11 @@
 ---
 phase: "06"
 slug: "self-service-app-builder"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-13"
+reviewed_at: "2026-10-13"
 ---
 
 # Phase 06 — UI Design Contract
@@ -44,7 +45,7 @@ Declared values (must be multiples of 4):
 |-------|-------|-------|
 | xs | 4px | Icon gaps, inline padding, tight row gaps |
 | sm | 8px | Compact element spacing — the token default (`--od-gap: 8px`) |
-| md | 16px | Default element spacing; rail padding (`--od-rail-pad: 16px`) |
+| md | 16px | Default element spacing; rail padding (`.od-rail` fallback default `--od-rail-pad: 16px`, not a `:root` token) |
 | lg | 24px | Section padding |
 | xl | 32px | Layout gaps, empty-state inner padding |
 | 2xl | 48px | Major section breaks |
@@ -111,8 +112,10 @@ Lifecycle badge vocabulary follows the mockup's `statusBadge()` (`mockup.html:78
 Exceptions:
 - **Observed divergence (06-UI-REVIEW Pillars 2–3):** the shipped shell omits the mockup's dark
   `--ink` sidebar (it renders a light top button row), so the rendered 60/30/10 has **no dark
-  anchor**; and the badge tone mapping shipped inverted-can be corrected against the vocabulary
-  above. Zero hardcoded colours exist in TSX — every colour resolves through `var(--*)`.
+  anchor** — a recorded follow-up. The lifecycle badge tone mapping shipped inverted against the
+  vocabulary above and has since been **corrected** (`AppsPage.lifecycleTone` now emits
+  `badge-published/draft/deprecated/archived`, matching `chrome.css:192-196`). Zero hardcoded
+  colours exist in TSX — every colour resolves through `var(--*)`.
 
 ---
 
@@ -159,18 +162,23 @@ Other specific CTAs (no generic `Submit`/`OK` labels in the build): `Continue`, 
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: 5 covered, 2 backstop, 1 unresolved
+Applicable state considerations resolved: 6 covered, 3 backstop, 1 unresolved — from the
+ui-consideration probe (77 applicable considerations over 13 surfaces E1–E13; element kinds
+overridden for E3 = `list-collection` and E11 = `interactive-control`+`static-content`, which the
+prose classifier left unclassified).
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty | list-collection | ✅ covered | Every list renders a tailored empty state (apps, gallery, submissions, audit, transfer queue, connector requests, SSO mappings) — see `## Copywriting Contract`. |
-| loading | async-surface | ✅ covered | Every async read shows a layout-shaped `Skeleton` (`text`/`cards`/`block`), never a spinner-only blank (BLD-09); each dashboard widget loads independently. |
-| error | async-surface | ✅ covered | Every async failure renders an inline, specific, retryable `InlineError` in the content slot (BLD-07); dashboard widgets fail isolated without killing the other widget. |
-| partial | data-surface | ✅ covered | Dashboard widgets load/fail independently; the editor saves and publishes per-section, so a partial definition stays usable. |
-| disabled | action | ✅ covered | Publish and section-save disable while `saving`; transfer approve/reject while `acting`; template fork while `forking`; undo/redo disabled at history ends. |
-| zero-one-many | list-collection | 🧪 backstop | Tables render the same shape for zero/one/many; the dashboard caps each widget at 5 rows; audit and submissions paginate by offset. No hold-out test asserts the one-row or last-page edge. |
-| long-text | static-content | 🧪 backstop | Table cells rely on layout wrap, not CSS ellipsis; long app names / base URLs in the connector table have no held-out visual test. |
-| overflow | container | ⚠ unresolved | 10 of 12 editor sections are a raw `<textarea rows={14}>` of hand-edited JSON (`editor/EditorPage.tsx:59-61,646-653`); long payloads scroll with no structured overflow handling. Planner treats as an assumption. |
+| empty | E1–E10 (lists) | ✅ covered | Every list renders a tailored empty state — see the `## Copywriting Contract` rows (apps, gallery, submissions, audit, transfer queue, SSO mappings, connector requests, dashboard widgets, form-designer fields). |
+| loading | E1–E11, E13 | ✅ covered | Every async read renders a layout-shaped `Skeleton` (`text`/`cards`/`block`), never a spinner-only blank (BLD-09); each dashboard widget loads independently. |
+| error | E1–E11, E13 | ✅ covered | Every async failure renders an inline, specific, retryable `InlineError` in the content slot (BLD-07); dashboard widgets fail in isolation without killing the other widget. |
+| populated | E1, E2, E3, E7, E8, E9, E10 | ✅ covered | The happy path is the shipped tables/cards at normal volume; the dashboard caps each widget at 5 rows; audit and submissions paginate by offset (default 20 / max 100). |
+| partial | E1–E10 | ✅ covered | Per-section save/publish keeps a partial definition usable; dashboard widgets load/fail independently. |
+| disabled | E5, E6, E11 (actions) | ✅ covered | Publish and section-save disable while `saving`; transfer approve/reject while `acting`; template fork while `forking`; undo/redo disabled at history ends. |
+| overflow | E1, E2, E3, E6, E7, E8, E9, E10, E11, E12, E13 | 🧪 backstop | Containers wrap or scroll (table cells wrap; the top nav wraps at narrow widths — see the rule-1 `min-content` fix in `## Spacing Scale`); no held-out visual test asserts the widest/longest case. |
+| overflow | E5 (editor raw-JSON section) | ⚠ unresolved | 10 of 12 editor sections are a raw `<textarea rows={14}>` of hand-edited JSON (`editor/EditorPage.tsx:59-61,646-653`); long payloads scroll with no structured overflow handling. Planner treats as an assumption. |
+| zero-one-many | E1, E2, E3, E7, E8, E9, E10 | 🧪 backstop | Tables/cards render the same shape for zero/one/many; no held-out test asserts the one-row or last-page edge. |
+| long-text | E4, E5, E6, E7, E10, E11, E12, E13 | 🧪 backstop | Cells and labels rely on layout wrap, not CSS ellipsis; long app names / connector base URLs / validation messages have no held-out visual test. |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
      ✅ covered   → a plain truth string lifted into must_haves.truths
@@ -195,12 +203,12 @@ hand-rolled React over the ported mockup stylesheet. The registry vetting gate d
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS — *(FLAG: no primary visual anchor declared for the primary screen)*
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS — *(FLAG: Heading 15.5px sits below Body 16px ("too close"); Label role mapping inaccurate — `.nav-label` is 11px and `.field > label` 13.5px, not 11.5px)*
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS — *(not applicable: `Tool: none`, inventory section correctly omitted)*
 
-**Approval:** pending
+**Approval:** approved 2026-10-13
