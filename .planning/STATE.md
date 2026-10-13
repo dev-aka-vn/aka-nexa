@@ -4,9 +4,9 @@ current_phase: 6
 current_phase_name: Self-Service App Builder
 current_plan: 8
 status: verifying
-stopped_at: Completed 06-08-PLAN.md
-last_updated: "2026-10-12T22:07:28.026Z"
-state_head: 35e1c49b340b50897a02d08e4e8700754013edaf
+stopped_at: Phase 6 UI-SPEC approved
+last_updated: "2026-10-13T11:15:15.914Z"
+state_head: a3d1f38e9ee8d9f21360d2df5602ff782d902d4a
 progress:
   total_phases: 8
   completed_phases: 4
@@ -27,9 +27,9 @@ Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-12T22:06:17.637Z
-**Stopped at:** Completed 06-08-PLAN.md
-**Resume file:** None
+**Last session:** 2026-10-13T11:15:15.232Z
+**Stopped at:** Phase 6 UI-SPEC approved
+**Resume file:** /home/chunghoi/dev-aka-vn/aka-nexa/.planning/phases/06-self-service-app-builder/06-UI-SPEC.md
 
 ## Performance Metrics
 
