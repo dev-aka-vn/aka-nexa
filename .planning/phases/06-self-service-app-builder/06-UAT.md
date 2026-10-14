@@ -1,18 +1,14 @@
 ---
-status: testing
+status: partial
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-13T14:40:19Z
+updated: 2026-10-14T15:10:00Z
 ---
 
 ## Current Test
 
-number: 2
-name: "Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation"
-expected: |
-  Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -29,7 +25,9 @@ result: pass
 ### 2. Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation
 expected: Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
 why_human: "'Without documentation' is a human judgement (06-VALIDATION.md manual-only row). The wizard implementation matches the mockup's step rail and copy, and the e2e wizard.spec.ts encodes the flow, but the e2e suite could not execute in this environment (Chromium OS deps unavailable)."
-result: pending
+result: blocked
+blocked_by: server
+reason: "Need guidance to start backend & frontend services"
 
 ### 3. Execute the Playwright e2e suite (npx playwright test) on a machine with browser OS deps installed
 expected: The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts
@@ -38,12 +36,16 @@ why_human: >-
   no root). The specs are present, configured (desktop chromium + tablet projects,
   vite webServer, page.route API stubs), and the vitest suite behind them is green —
   but the e2e execution itself is unverified.
-result: pending
+result: issue
+reported: "Ran Playwright e2e on chromium project: 32 passed, 1 failed. Failure in apps/app-builder/e2e/designer.spec.ts: the designer mounts the builder; an added component captures one history entry and undo/redo round-trip - .formio-builder-form not visible (timeout 20000ms)."
+severity: major
 
 ### 4. Tablet touch pass (BLD-09): one manual pass on a real tablet at 768×1024
 expected: The wizard, editor and designer are usable without a mouse
 why_human: "Human judgement the emulated viewport only approximates; skeletons are code-verified, touch usability is not. (The BLD-09 truth is the phase's single PRESENT_BEHAVIOR_UNVERIFIED must-have — present and wired, behavior not exercised.)"
-result: pending
+result: blocked
+blocked_by: server
+reason: "Cannot access authenticated UI due to API/OIDC issues"
 
 ### 5. Publish confirmation visual fidelity (BLD-06): the surface exists and the head pair is now right-aligned (4fe54c5b) — confirm the rendered surface satisfies the mockup's confirmation intent
 expected: >-
@@ -61,17 +63,27 @@ expected: >-
   only flexes under .card-head, so the rows pack left rather than space-between as
   the mockup's openPublish rows do — cosmetic, the rows are readable and correct.
 why_human: "Visual rendering + product-shape judgement that grep cannot settle; Playwright cannot launch in the authoring sandbox. The payload shape is unit-tested (buildChangeSummary, publish-gate.service.spec.ts) and the API contract is integration-tested (publish.integration.spec.ts asserts changeSummary and zero_change), but the rendered fidelity needs a human eye."
-result: pending
+result: blocked
+blocked_by: server
+reason: "Cannot access authenticated UI due to API/OIDC issues"
 
 ## Summary
 
 total: 5
 passed: 1
-issues: 0
-pending: 4
+issues: 1
+pending: 0
 skipped: 0
-blocked: 0
+blocked: 3
 
 ## Gaps
 
-<!-- None yet — no test has failed. Filled by verify-work when an item reports an issue. -->
+- gap_id: G-06-3
+  truth: "The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts"
+  status: failed
+  reason: "User reported: Ran Playwright e2e on chromium project: 32 passed, 1 failed. Failure in apps/app-builder/e2e/designer.spec.ts: the designer mounts the builder; an added component captures one history entry and undo/redo round-trip - .formio-builder-form not visible (timeout 20000ms)."
+  severity: major
+  test: 3
+  artifacts: []
+  missing: []
+  debug_session: ""
