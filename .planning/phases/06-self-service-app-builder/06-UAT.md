@@ -1,14 +1,14 @@
 ---
-status: partial
+status: diagnosed
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-15T14:21:34Z
+updated: 2026-10-15T14:52:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+[testing paused — 2 items outstanding: test 2 issue diagnosed (G-06-6, G-06-7), test 4 blocked on hardware]
 
 ## Tests
 
@@ -25,27 +25,54 @@ result: pass
 ### 2. Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation
 expected: Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
 why_human: "'Without documentation' is a human judgement (06-VALIDATION.md manual-only row). The wizard implementation matches the mockup's step rail and copy, and wizard.spec.ts encodes the flow — which now actually runs (66/66, test 3), so the flow is machine-verified; no assertion, however, can judge whether a first-time admin finds it self-explanatory."
-result: blocked
-blocked_by: human-judgement
-reason: >-
-  The environment blocker is gone as of 2026-10-15 (it is recorded in full below because it
-  is the reason G-06-5 exists). The live stack now runs on this machine - mongo 8.0 on 27017,
-  redis 8.10 on 6379/6380, the api on 127.0.0.1:3000 and the SPA on 127.0.0.1:5173 - and
-  login works end to end against the in-repo StubOidcIssuer. The authenticated wizard surface
-  does NOT need a backend to be looked at either: the e2e specs stub the session and the app
-  API with page.route, so the SPA boots signed in offline. 66 final-state screenshots (every
-  spec, both viewports) are at
-  C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ - the two wizard ones that
-  answer this test are wizard-create-wizard-BLD-0-8d736-* (the five-step rail and step 1
-  blocking forward navigation) and wizard-create-wizard-BLD-0-4f249-* (steps 2-5 and the
-  verbatim draft toast).
-  What remains is the judgement itself: whether a first-time admin finds the wizard
-  self-explanatory *without documentation*. That is the test's stated why_human and no
-  agent can render it. The stack is up and waiting at
-  http://127.0.0.1:5173/#/spike (no auth) and http://127.0.0.1:5173/ (login as
-  stub-admin-0001, MFA), so the walkthrough can happen whenever the user walks it.
-  A first real write through that stack already succeeded (a template fork at
-  18:38:54 +0700), which is what surfaced G-06-5.
+result: issue
+reported: "Form Desiger seems broken style, lost arrangement & style. After form design completion, how do I back to wizard?"
+severity: major
+diagnosis: >-
+  Two distinct findings, both surfaced while walking this test — the designer is step 4's
+  surface, so both sit squarely inside "create an app end-to-end".
+
+  (1) The FormIO canvas and preview render UNSTYLED. Measured, not inferred. The @formio/js
+  5.x active template set is Bootstrap 5, so the builder and the preview emit Bootstrap 5
+  class names (row, col-md-2, col-md-10, col-sm-3, form-control, card, card-header,
+  btn-outline-primary, d-grid, mb-2, col-form-label, visually-hidden) — but Bootstrap's
+  stylesheet is never loaded. The only CSS imported is
+  @formio/js/dist/formio.full.min.css (FormioBuilderField.tsx:220, PreviewPane.tsx:139),
+  which styles .formio-* and carries a bare .form-control{height}, with no grid or utility
+  CSS and no :root token layer. @formio/bootstrap ships class names only (no CSS at all),
+  and node_modules/bootstrap/dist/css/bootstrap.min.css (226.7 KB, bootstrap@5.3.8) is
+  installed but imported nowhere. Probe (repo-root probe-designer-style.mjs, real Chromium
+  against the live SPA, spike route — the same FormioBuilderField component, template set
+  and CSS import the designer mounts): --bs-primary EMPTY; no stylesheet rule defines .row;
+  .row computes display:block / flex-wrap:nowrap (Bootstrap's .row is display:flex / wrap);
+  the emitted .col-md-2 and .col-md-10 both compute width:1280px (full width, not 2/12 and
+  10/12); .form-control computes 2px inset / padding 1px 2px / width 177px — the browser's
+  default <input>, not a styled control. Every column collapses and every field stacks
+  full-width. This is why the suite never saw it: the S1 acceptance criterion
+  (06-01-PLAN.md:38 — "renders without silently broken 4.x grid classes") was verified by
+  asserting class NAMES in the DOM (s1-spike.spec.ts), and drag-drop / undo-redo all work
+  fine over a dead grid. Recorded as G-06-6.
+
+  (2) The designer is a navigation dead end — the direct answer to the second question.
+  Step 4 links out to the designer (FormStep.tsx:58-66, data-testid="wizard-open-designer"
+  -> #/apps/:id/designer) and FormDesignerPage offers no return affordance whatsoever: its
+  page-head is an h1 plus a sub line (FormDesignerPage.tsx:442-452), with no back control,
+  no breadcrumb and no done action. The sidebar's Create app link (#/wizard) is a FRESH
+  wizard — WizardPage keeps every field in useState, with draft=null and step=0
+  (WizardPage.tsx:111-131), so it remounts at step 1 with empty inputs — and browser Back
+  behaves identically. The draft survives server-side (POST /apps on step 1, then PATCH per
+  section on Next), so nothing saved is lost; the wizard's position and any in-progress
+  step input are. Recorded as G-06-7.
+prior_context: >-
+  The row was blocked on human-judgement until 2026-10-15 and was re-opened for this live
+  walkthrough. The stack (mongo 8.0 :27017, redis 8.10 :6379/6380, api 127.0.0.1:3000, SPA
+  127.0.0.1:5173) runs and login completes against the in-repo StubOidcIssuer; the write
+  path was already proven by the user's own template fork at 2026-10-15T18:38:54+07:00 — the
+  surface that produced G-06-5. 66 final-state screenshots (every spec, both viewports) are
+  at C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ — including
+  wizard-create-wizard-BLD-0-8d736-* (the five-step rail and step 1 blocking forward
+  navigation) and wizard-create-wizard-BLD-0-4f249-* (steps 2-5 and the verbatim draft
+  toast).
 
 ### 3. Execute the Playwright e2e suite (npx playwright test) on a machine with browser OS deps installed
 expected: The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts
@@ -167,10 +194,10 @@ note: >-
 
 total: 5
 passed: 3
-issues: 0
+issues: 1
 pending: 0
 skipped: 0
-blocked: 2
+blocked: 1
 
 ## Gaps
 
@@ -305,4 +332,82 @@ blocked: 2
     deleted from Mongo afterwards; that user app was left in place.
   missing:
     - "The coverage hole that let this ship is real and only partly closed. The Playwright e2e specs satisfy every /api/** call with page.route, so the real API and its CSRF gate are never exercised through the SPA; and the api's own integration specs call it directly on one origin, where the gate always passes. Nothing tested 'the SPA's dev proxy against the real API', which is the only path a developer walks. tooling/dev-proxy-shape.spec.ts guards the configuration that caused it, but a live proxy-against-real-API test does not yet exist."
+  debug_session: ""
+
+- gap_id: G-06-6
+  truth: "The authored form renders with the layout its schema describes — the designer canvas and the FRM-09 preview show the form as a signer will see it (grid columns side by side, styled controls), not a collapsed full-width stack of browser-default inputs"
+  status: failed
+  reason: "User report, verbatim: \"Form Desiger seems broken style, lost arrangement & style.\""
+  severity: major
+  test: 2
+  root_cause: >-
+    The active @formio/js 5.x template set is Bootstrap 5, so the builder canvas and the
+    preview emit Bootstrap 5 class names — but Bootstrap's stylesheet is never loaded, so the
+    emitted vocabulary has no rules behind it. Only one CSS file is imported for the whole
+    FormIO surface, @formio/js/dist/formio.full.min.css (FormioBuilderField.tsx:220,
+    PreviewPane.tsx:139). It styles .formio-* and carries a bare .form-control{height} rule,
+    but contains no Bootstrap grid or utility CSS and no :root token layer. The template sets
+    themselves cannot supply it: @formio/bootstrap ships class names only and no CSS file at
+    all. bootstrap@5.3.8 is installed (a dependency of @formio/js 5.x) and
+    node_modules/bootstrap/dist/css/bootstrap.min.css (226.7 KB) exists, but nothing in the
+    tree imports it. Verified by measurement, not inference (repo-root probe-designer-style.mjs,
+    real Chromium against the live SPA, spike route — the same FormioBuilderField component,
+    template set and CSS import the designer mounts): --bs-primary EMPTY; no stylesheet rule
+    defines .row; .row computes display:block / flex-wrap:nowrap where Bootstrap's .row is
+    display:flex / wrap; the emitted .col-md-2 and .col-md-10 both compute width:1280px
+    (full width, not 2/12 and 10/12); .form-control computes 2px inset / padding 1px 2px /
+    width 177px — the browser default for an <input>. Every column collapses and every field
+    stacks full-width. The suite could not see it because the S1 acceptance criterion
+    (06-01-PLAN.md:38 — "renders without silently broken 4.x grid classes") was verified by
+    asserting class NAMES in the DOM (s1-spike.spec.ts), and drag-drop / undo-redo function
+    fine over a dead grid.
+  artifacts:
+    - path: "apps/app-builder/src/form-designer/FormioBuilderField.tsx"
+      issue: "Imports only @formio/js/dist/formio.full.min.css (line 220). The Bootstrap 5 grid and utility classes the canvas emits (row, col-md-*, d-grid, mb-*) have no stylesheet behind them."
+    - path: "apps/app-builder/src/form-designer/PreviewPane.tsx"
+      issue: "The same single import (line 140). The preview is the surface FRM-09 defines as 'renders the draft form exactly as a signer would see it', so it currently shows something a signer will not see."
+    - path: "apps/app-builder/src/form-designer/bootstrap5Templates.ts"
+      issue: "Ports exactly one template — the Bootstrap-4-era label (sr-only -> visually-hidden). The container/form templates that emit row/col-* were never addressed, so the 5.x class vocabulary was adopted without its stylesheet. This is where the S1 spike stopped short."
+    - path: "apps/app-builder/e2e/s1-spike.spec.ts"
+      issue: "Asserts the 5.x class vocabulary is present in the DOM. That is the assertion that passed while the layout was dead; it measures names, not computed layout."
+    - path: "node_modules/bootstrap/dist/css/bootstrap.min.css"
+      issue: "Present (bootstrap@5.3.8, 226.7 KB) and imported nowhere — this is the missing stylesheet."
+  missing:
+    - "Decide the styling strategy before writing code. Option A: load Bootstrap 5's stylesheet but scope it to the FormIO host so it cannot reach the app chrome (the app has its own tokens.css/chrome.css and AGENTS.md forbids introducing a second palette). Option B: keep FormIO's own stylesheet as the only source and make the canvas emit the classes it actually styles — the cssClasses-map route the existing form-group -> formio-form-group rename already demonstrates. A raw global `import 'bootstrap/dist/css/bootstrap.min.css'` would restyle the whole admin console and collide with the app's own .btn/.card, so it needs an explicit decision rather than a default."
+    - "Add a computed-style regression guard, not another class-name assertion. The S1 criterion that this defect slipped past should be re-verified as layout: .row computes display:flex, and a multi-column form's columns compute widths that are fractions of the row, at both viewports."
+    - "Re-check the FRM-09 preview against a real signer rendering once the canvas is styled; they share the import, so they should converge, but that is a claim to verify rather than assume."
+  debug_session: ""
+
+- gap_id: G-06-7
+  truth: "A user part-way through the create wizard can open the form designer from step 4, design the form, and return to the wizard to finish it without losing their wizard position or the draft they are building"
+  status: failed
+  reason: "User report, verbatim: \"After form design completion, how do I back to wizard?\""
+  severity: major
+  test: 2
+  root_cause: >-
+    The designer is a navigation dead end. WizardPage step 4 (index 3) renders exactly one
+    outbound action, an <a data-testid="wizard-open-designer" href="#/apps/:id/designer">
+    (FormStep.tsx:58-66), and FormDesignerPage offers no return affordance of any kind: its
+    page-head is an h1 plus a sub line and nothing else (FormDesignerPage.tsx:442-452), with
+    no back control, no breadcrumb and no done action. The only route back is the sidebar's
+    Create app link (#/wizard, App.tsx:519, data-testid="nav-wizard"), and that is a FRESH
+    wizard — WizardPage holds every field in useState with draft=null and step=0
+    (WizardPage.tsx:111-131), so remounting resets it to step 1 with empty inputs. Browser
+    Back behaves identically: the hash route changes, the component remounts, the state
+    resets. The draft itself survives (POST /apps on step 1, then PATCH per section on Next),
+    so nothing that was saved is lost — but the wizard's position and any in-progress step
+    input are, and the user is left with no way to resume the flow they were in.
+  artifacts:
+    - path: "apps/app-builder/src/form-designer/FormDesignerPage.tsx"
+      issue: "page-head carries no back, breadcrumb or done affordance (lines 442-452); the page is a one-way destination."
+    - path: "apps/app-builder/src/wizard/FormStep.tsx"
+      issue: "Step 4's only action navigates away from the wizard (href=#/apps/:id/designer) and the destination has no return path, so the step is a trap."
+    - path: "apps/app-builder/src/wizard/WizardPage.tsx"
+      issue: "All wizard state is component-local useState (step, basics, triggers, rbac, routing, draft) with no persistence and no route encoding, so any remount restarts at step 0."
+    - path: "prototypes/mockup.html"
+      issue: "Not a defect, and deliberately recorded as such: the mockup never depicts a designer surface, so it does not define this navigation and cannot be cited as authority either way. Its sub-pages do establish the pattern the designer does not follow — an explicit back control (line 1039: icon-btn + i-arrow-left + aria-label='Back to apps'; line 925: 'Back to dashboard'). Per AGENTS.md rule 3 (absence is not permission) the designer's navigation must be confirmed, not improvised."
+  missing:
+    - "Confirm the intended navigation model before implementing (AGENTS.md rule 3: the mockup does not depict this surface). Does the designer get back-to-wizard, back-to-app-editor, or both? The answer determines whether this is a one-control fix or a routing change."
+    - "Decide whether the wizard must survive a round trip to the designer at all — i.e. persist wizard position (route-encoded step, or server-side draft progress) — or whether the intended path after draft creation is the app editor (#/apps/:id) and the wizard is explicitly one-way. FormStep's own docstring and the mockup's 'the editor opens at the drafts tabs' flow point at the latter, in which case the real defect is the missing affordance plus the misleading reset, not a missing resume feature."
+    - "The test-2 walkthrough cannot be completed end-to-end until the way back exists or is documented as intentionally absent."
   debug_session: ""
