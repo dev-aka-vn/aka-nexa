@@ -13,8 +13,8 @@ progress:
   total_plans: 45
   completed_plans: 45
   percent: 50
-last_activity: 2026-10-11
-last_activity_desc: Phase 05 plans all executed; a verification pass ran and recorded its findings in 05-GAPS.md (CON-05 unimplemented, AUD-10 unimplemented, 7 unreachable api sources, no VERIFICATION.md).
+last_activity: 2026-10-15
+last_activity_desc: Completed quick task 261015-p1h — the App Builder dev proxy now preserves the browser Host, so state-changing requests from the SPA stop answering 403 CSRF_ORIGIN_MISMATCH.
 ---
 
 ## Current Position
@@ -158,3 +158,9 @@ Total Plans in Phase: 8
 - **[Phase 02/03] Their ROADMAP boxes are unticked while every plan is ticked**, and their
   code is unwired. `gsd-tools progress` reports them "Complete" on plans+summaries alone,
   which is a plan-execution notion, not a verified one.
+
+## Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 261015-p1h | Fix the App Builder dev stack so same-origin state-changing requests from the SPA succeed — every write currently 403s with `CSRF_ORIGIN_MISMATCH` because the Vite dev proxy rewrites the Host header. | 2026-10-15 | d57aeca | [261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal](./quick/261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal/) |
