@@ -35,6 +35,24 @@ import type { Page } from '@playwright/test';
 const DEBOUNCE_WINDOW_MS = 300;
 const SETTLE_MS = DEBOUNCE_WINDOW_MS + 150;
 
+/**
+ * The budget for the builder (and the preview) to
+ * mount. The spike mounts the same `@formio/js`
+ * graph the designer does; the mount is the only
+ * cold-path wait and swings from seconds to tens
+ * of seconds depending on dev-server coldness and
+ * machine load (see the same constant in
+ * designer.spec.ts, where this was diagnosed).
+ */
+const BUILDER_MOUNT_TIMEOUT_MS = 60_000;
+
+/**
+ * The per-test budget for this spec: the mount
+ * headroom above, plus the drag + dialog save +
+ * undo/redo the heavier tests drive.
+ */
+const SPIKE_SPEC_TIMEOUT_MS = 120_000;
+
 /** The builder's component count, read through the spike handle. */
 async function builderComponentCount(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -112,11 +130,19 @@ async function addComponentViaSidebar(
 async function waitForPreview(page: Page): Promise<void> {
   const preview = page.getByTestId('spike-preview');
   await expect(preview).toHaveAttribute('data-ready', 'true', {
-    timeout: 20_000,
+    timeout: BUILDER_MOUNT_TIMEOUT_MS,
   });
 }
 
 test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
+  // The whole file drives the real FormIO builder
+  // — the heaviest module graph the SPA loads.
+  // Scoped to this describe block so no other
+  // spec's budget moves.
+  test.describe.configure({
+    timeout: SPIKE_SPEC_TIMEOUT_MS,
+  });
+
   test('builder mounts; a text-component add fires change and the captured snapshot deep-equals builder.schema', async ({
     page,
   }) => {
@@ -126,7 +152,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
     // container (container-as-leaf mount, Pattern 4).
     const host = page.getByTestId('formio-builder-host');
     await expect(host.locator('.formio-builder-form')).toBeVisible({
-      timeout: 20_000,
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
     });
 
     const before = await builderComponentCount(page);
@@ -236,7 +262,7 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
     await page.goto('/#/spike');
     const host = page.getByTestId('formio-builder-host');
     await expect(host.locator('.formio-builder-form')).toBeVisible({
-      timeout: 20_000,
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
     });
     const before = await builderComponentCount(page);
 

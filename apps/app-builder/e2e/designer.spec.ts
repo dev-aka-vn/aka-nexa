@@ -74,25 +74,43 @@ const PREVIEW_DEBOUNCE_MS = 400;
  * the first execution additionally pays the dev
  * server's on-demand transform of that graph
  * plus the browser's parse and execution of it.
- * Measured on this machine, the first execution
- * of the :385 drag test lands at 20.8–26.5 s
- * against Playwright's default 30 s per-test
- * budget (69–88 % of the ceiling), and a slower
- * run was observed to cross it — "Test timeout
- * of 30000ms exceeded" at the undo click, 30.4 s
- * total. A real drag + dialog save + undo + redo
+ * A real drag + dialog save + undo + redo
  * against a heavyweight builder needs headroom.
  *
- * 90 s is deliberately bounded at 3x the
+ * 120 s is deliberately bounded at 4x the
  * default: enough for the cold cost, nowhere
  * near an unbounded wait. The spec is NOT given
  * an endless timeout — a genuine hang, or any
  * failed assertion, still fails the test, and
- * every step keeps its own explicit wait (20 s
- * visibility, 10 s dialog, the restore polls in
- * the BLD-04 test).
+ * every step keeps its own explicit wait (the
+ * builder mount at BUILDER_MOUNT_TIMEOUT_MS,
+ * 10 s dialog, the restore polls in the BLD-04
+ * test).
  */
-const DESIGNER_SPEC_TIMEOUT_MS = 90_000;
+const DESIGNER_SPEC_TIMEOUT_MS = 120_000;
+
+/**
+ * The budget for the builder (and the preview)
+ * to mount.
+ *
+ * The mount is the spec's only genuinely
+ * cold-path wait: it pays the dev server's
+ * on-demand transform of the `@formio/js` graph
+ * (~3.7 MB, pre-bundled) plus the browser's
+ * parse and execution of it. Measured on this
+ * machine across repeated isolated runs, that
+ * single wait ranges from ~6 s (warm, idle) to
+ * ~40 s (cold server under load) — a spread that
+ * makes the fixed 20 s this spec previously used
+ * a coin flip, and the reported G-06-3 failure
+ * (`.formio-builder-form` not visible, 20 s
+ * timeout). Every assertion after the mount runs
+ * against a warm server and keeps its own tight
+ * wait; only the mount gets this headroom, so a
+ * builder that genuinely fails to render still
+ * fails the test — just later.
+ */
+const BUILDER_MOUNT_TIMEOUT_MS = 60_000;
 
 /**
  * Deterministic-wait budget for a builder
@@ -377,7 +395,7 @@ async function openComponentEditor(
 async function waitForSettledPreview(page: Page): Promise<void> {
   const preview = page.getByTestId('designer-preview');
   await expect(preview).toHaveAttribute('data-ready', 'true', {
-    timeout: 20_000,
+    timeout: BUILDER_MOUNT_TIMEOUT_MS,
   });
 
   const probe = 'data-preview-settle-probe';
@@ -443,7 +461,7 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
     // Pattern 4).
     const host = page.getByTestId('formio-builder-host');
     await expect(host.locator('.formio-builder-form')).toBeVisible({
-      timeout: 20_000,
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
     });
 
     // The served schema: two fields + the submit
@@ -500,7 +518,7 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
 
     const host = page.getByTestId('formio-builder-host');
     await expect(host.locator('.formio-builder-form')).toBeVisible({
-      timeout: 20_000,
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
     });
 
     // Open the "Days of leave" number component's own

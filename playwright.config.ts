@@ -13,10 +13,24 @@ import { devices, defineConfig } from '@playwright/test';
  * The webServer boots the SPA dev server (vite,
  * rooted at apps/app-builder) before any spec
  * runs.
+ *
+ * `testDir` is the app-builder e2e directory
+ * rather than the repo root. A root-wide match
+ * for e2e spec files also collected
+ * `tests/e2e/slack-leave.e2e.spec.ts` — a
+ * vitest stub (it imports `describe`/`it` from
+ * 'vitest'), which made a bare `npx playwright
+ * test` die at collection time with "Cannot read
+ * properties of undefined (reading 'config')"
+ * before a single spec ran. Scoping to the
+ * directory this config actually describes also
+ * means a future non-SPA Playwright suite in
+ * `tests/` gets its own config instead of being
+ * silently swallowed by this one.
  */
 export default defineConfig({
-  testDir: './',
-  testMatch: '**/e2e/**/*.spec.ts',
+  testDir: './apps/app-builder/e2e',
+  testMatch: '**/*.spec.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
