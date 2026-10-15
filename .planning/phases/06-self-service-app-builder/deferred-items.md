@@ -143,3 +143,43 @@ absorbed by this one.
 prior-phase artifact and deleting another phase's file is not this workflow's
 call. Recommendation: delete it, or rewrite it as a real Playwright spec under
 its own config.
+
+**Second independent E2E flake found the same session, and fixed: the roles
+page's loading skeleton.**
+
+While extracting screenshots with `--trace on`, the full suite failed 2 of 66 —
+the *same* test on both projects: `roles.spec.ts:372`, "the roles page skeletons
+while loading and renders a specific inline error with retry (BLD-09, BLD-07)",
+with
+
+    expect(locator).toBeVisible() failed
+    Locator: getByTestId('skeleton')
+    Timeout: 5000ms
+    Error: element(s) not found
+
+and the DOM snapshot already showing the resolved failure state ("Failed to load
+the app's roles APP_READ_FAILED").
+
+**Cause:** the assertion races its own stub. `stubRolesApi` fulfils the app GET
+immediately, and a stubbed route resolves in about a millisecond — shorter than
+Playwright's poll interval. The skeleton can therefore mount and unmount between
+polls, so `toBeVisible` legitimately never observes it and reports
+"element(s) not found" after 5 s. The roles page is not at fault: the skeleton
+does render. It is also unrelated to G-06-3 — a different spec, which passed in
+all three untraced runs (66/66, 66/66, 45/45). The extra overhead of `--trace on`
+is what tipped the race.
+
+**Fix:** added an optional `appGetDelayMs` hook to `RolesApiHooks`, set to 500 ms
+in that one test, so the stub holds the read open and the loading state is
+observable. Delaying the *response* is the supported way to assert a transient
+loading state; the assertion itself is unchanged and no other test passes the
+hook, so no other test's timing moves.
+
+**Evidence:** `npx playwright test apps/app-builder/e2e/roles.spec.ts --trace on
+--repeat-each=2` → 24 passed (1.4 m); then the full `npx playwright test --trace
+on` → 66 passed (2.8 m), exit 0 — the exact condition that had failed.
+
+**Why fixed rather than merely noted:** CI sets `trace: 'on-first-retry'` with
+`retries: 2`. A machine slow enough to trip the race on the first attempt would
+turn tracing on for the retry, changing the timing again rather than reliably
+recovering.
