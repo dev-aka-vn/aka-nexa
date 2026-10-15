@@ -3,12 +3,12 @@ status: diagnosed
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-15T14:52:00Z
+updated: 2026-10-15T16:05:00Z
 ---
 
 ## Current Test
 
-[testing paused — 2 items outstanding: test 2 issue diagnosed (G-06-6, G-06-7), test 4 blocked on hardware]
+[testing paused — 2 items outstanding: test 2 issue diagnosed (G-06-6, G-06-7, G-06-8), test 4 blocked on hardware]
 
 ## Tests
 
@@ -373,7 +373,7 @@ blocked: 1
     - path: "node_modules/bootstrap/dist/css/bootstrap.min.css"
       issue: "Present (bootstrap@5.3.8, 226.7 KB) and imported nowhere — this is the missing stylesheet."
   missing:
-    - "Decide the styling strategy before writing code. Option A: load Bootstrap 5's stylesheet but scope it to the FormIO host so it cannot reach the app chrome (the app has its own tokens.css/chrome.css and AGENTS.md forbids introducing a second palette). Option B: keep FormIO's own stylesheet as the only source and make the canvas emit the classes it actually styles — the cssClasses-map route the existing form-group -> formio-form-group rename already demonstrates. A raw global `import 'bootstrap/dist/css/bootstrap.min.css'` would restyle the whole admin console and collide with the app's own .btn/.card, so it needs an explicit decision rather than a default."
+    - "Styling strategy — DECIDED (user, 2026-10-15): the mechanism is delegated to the planner to investigate and recommend. Hard constraints: it must be scoped (never a raw global import) and it must reach apps/renderer as well as the app-builder (see G-06-8). Candidate mechanisms to weigh and record with rationale — selector-prefixing (e.g. postcss-prefix-selector), CSS `@scope`, CSS cascade layers, or swapping/switching the FormIO template set so formio.full.min.css alone suffices. A raw global `import 'bootstrap/dist/css/bootstrap.min.css'` is excluded by AGENTS.md rule 1: it would restyle the whole admin console and collide with the app's own .btn/.card."
     - "Add a computed-style regression guard, not another class-name assertion. The S1 criterion that this defect slipped past should be re-verified as layout: .row computes display:flex, and a multi-column form's columns compute widths that are fractions of the row, at both viewports."
     - "Re-check the FRM-09 preview against a real signer rendering once the canvas is styled; they share the import, so they should converge, but that is a claim to verify rather than assume."
   debug_session: ""
@@ -407,7 +407,65 @@ blocked: 1
     - path: "prototypes/mockup.html"
       issue: "Not a defect, and deliberately recorded as such: the mockup never depicts a designer surface, so it does not define this navigation and cannot be cited as authority either way. Its sub-pages do establish the pattern the designer does not follow — an explicit back control (line 1039: icon-btn + i-arrow-left + aria-label='Back to apps'; line 925: 'Back to dashboard'). Per AGENTS.md rule 3 (absence is not permission) the designer's navigation must be confirmed, not improvised."
   missing:
-    - "Confirm the intended navigation model before implementing (AGENTS.md rule 3: the mockup does not depict this surface). Does the designer get back-to-wizard, back-to-app-editor, or both? The answer determines whether this is a one-control fix or a routing change."
-    - "Decide whether the wizard must survive a round trip to the designer at all — i.e. persist wizard position (route-encoded step, or server-side draft progress) — or whether the intended path after draft creation is the app editor (#/apps/:id) and the wizard is explicitly one-way. FormStep's own docstring and the mockup's 'the editor opens at the drafts tabs' flow point at the latter, in which case the real defect is the missing affordance plus the misleading reset, not a missing resume feature."
+    - "Navigation model — DECIDED (user, 2026-10-15): the designer returns to the wizard, resuming the step the user left. Because resumption is required this is a routing/state change, not a one-control fix. A back-to-app-editor breadcrumb is explicitly NOT required."
+    - "Wizard must survive the round trip — DECIDED (user, 2026-10-15): yes. Persist wizard position and in-progress step input (route-encoded step and/or server-side draft progress) so returning lands on step 4 with the inputs the user left. The planner picks the mechanism (route encoding vs server-side draft progress) and records the rationale. The wizard is NOT declared one-way."
     - "The test-2 walkthrough cannot be completed end-to-end until the way back exists or is documented as intentionally absent."
+  debug_session: ""
+
+- gap_id: G-06-8
+  truth: "The signer-facing Form Renderer (apps/renderer read and edit pages) renders the authored form with the layout its schema describes — grid columns side by side and styled controls — not a collapsed full-width stack of browser-default inputs"
+  status: failed
+  reason: >-
+    Not reported by the user — found by orchestrator investigation while scoping G-06-6
+    (2026-10-15) and confirmed by the user as in-scope for this gap-closure pass. G-06-6's root
+    cause is not designer-local: every consumer of @formio/js 5.x receives the Bootstrap 5
+    template set by default, and apps/renderer imports formio.full.min.css without Bootstrap's
+    stylesheet — so the form a signer actually fills in and reads renders unstyled. This is the
+    surface the product's core value rests on ("a single rendered form").
+  severity: major
+  test: 2
+  root_cause: >-
+    Identical root cause to G-06-6, proven independently of the designer.
+    (a) @formio/js wires the Bootstrap 5 template set in by default: lib/cjs/index.js:6 does
+    require("@formio/bootstrap/bootstrap5"), and formio.form.js:93 defaults the framework name to
+    'bootstrap' — which in 5.x is the Bootstrap 5 set (the app-builder's own
+    bootstrap5Templates.ts:8-10 says the framework *name* stayed while the set became Bootstrap 5).
+    (b) @formio/bootstrap ships no CSS whatsoever: lib/cjs/** is only .js/.d.ts and dist/ is only
+    bootstrap{3,4,5}.js.
+    (c) bootstrap@^5.3.3 is a *direct dependency* of @formio/js, and
+    node_modules/bootstrap/dist/css/bootstrap.min.css (5.3.8, 226.7 KB) is installed — but nothing
+    in the tree imports it.
+    (d) @formio/js/dist/formio.full.min.css (130.5 KB) carries only partial Bootstrap component
+    styling — .form-control{ x5, .btn{ x2, .card-body x2, .form-check x7, .invalid-feedback x6 —
+    and .row has ZERO occurrences, with .mb-2 / .d-flex / .visually-hidden / .form-label /
+    .form-select / .card-header / .card{ all absent. The renderer therefore emits row / col-md-*
+    markup with no width rule behind it.
+    The measurement is the designer's, and it is this gap's measurement too: apps/app-builder and
+    apps/renderer import the same single stylesheet and share the same default template set, and
+    the app-builder's registerPortedBootstrap5Templates only *extends* that set (a single label
+    template, sr-only -> visually-hidden) rather than replacing it. probe-designer-style.mjs, real
+    Chromium: .row computes display:block (Bootstrap's is display:flex); .col-md-2 and .col-md-10
+    both compute width:1280px (full width, not 2/12 and 10/12); .form-control computes
+    2px inset / padding 1px 2px / width 177px — the browser default for an <input>. Every column
+    collapses and every field stacks full-width.
+    The suite could not see it because the renderer's specs assert import *strings*, not layout —
+    the same class of blind assertion as s1-spike.spec.ts in G-06-6 (edit.spec.ts:257
+    expect(EDIT_TS).toContain('@formio/js'); view.spec.ts:287-288 the same shape).
+  artifacts:
+    - path: "apps/renderer/src/read/view.browser.ts"
+      issue: "Imports only @formio/js/dist/formio.full.min.css (line 1) and never calls Formio.use; the read-only submission view renders Bootstrap-5-classed markup with no Bootstrap CSS behind it."
+    - path: "apps/renderer/src/read/edit.ts"
+      issue: "The same single import (line 312), after a dynamic import of @formio/js (line 309); the signer's edit form renders unstyled."
+    - path: "apps/renderer/src/read/view.html"
+      issue: "Not a defect, but the reason scoping is mandatory rather than optional: the page defines its own :root token set (lines 12-40, the mockup palette per AGENTS.md rule 1) and its own .card class (line 56). Bootstrap defines .card and .btn too, so a raw global import would collide with both."
+    - path: "apps/renderer/src/read/edit.spec.ts"
+      issue: "Asserts the import string (line 257) rather than computed layout — the assertion that passes while the form is unstyled."
+    - path: "apps/renderer/src/read/view.spec.ts"
+      issue: "Asserts import strings (lines 287-288) for the same reason."
+    - path: "node_modules/bootstrap/dist/css/bootstrap.min.css"
+      issue: "Present (bootstrap@5.3.8, 226.7 KB) and imported nowhere — the missing stylesheet on this surface too."
+  missing:
+    - "One root cause, one mechanism: the fix must be shared with G-06-6 and applied to apps/app-builder AND apps/renderer. A mechanism that cannot reach the renderer's static HTML pages (view.html / edit.html, served from RENDERER_ORIGIN) is not acceptable."
+    - "The computed-style regression guard must cover the renderer as well, not only the designer: on a rendered signer page at both viewports, .row computes display:flex and a multi-column form's columns compute widths that are fractions of the row."
+    - "No UAT test covers the signer-facing renderer — 06-UAT.md holds 5 tests and none renders a read or edit page, which is why this shipped. Consider adding one."
   debug_session: ""
