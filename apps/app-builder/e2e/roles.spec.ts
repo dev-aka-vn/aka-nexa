@@ -117,6 +117,22 @@ export interface RolesApiHooks {
   onPatch?: (body: Record<string, unknown>) => void;
   /** Fail the definition read (BLD-07's failure path). */
   failAppGet?: () => boolean;
+  /**
+   * Hold the definition read open for this many
+   * milliseconds before fulfilling or failing it.
+   *
+   * Needed only by the spec that asserts the page's
+   * *loading* placeholder. A stubbed route resolves in
+   * a millisecond or two, so without this the skeleton
+   * can mount and unmount between Playwright's polls and
+   * `toBeVisible` legitimately never sees it — the
+   * assertion then fails on a machine (or a trace run)
+   * whose timing differs, with the page already showing
+   * the resolved state. Delaying the *response* is the
+   * supported way to make a transient loading state
+   * observable; it does not weaken what is asserted.
+   */
+  appGetDelayMs?: number;
 }
 
 /**
@@ -168,6 +184,11 @@ async function stubRolesApi(
     const url = route.request().url();
 
     if (method === 'GET' && url.endsWith(`/${APP_ID}`)) {
+      if (hooks.appGetDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, hooks.appGetDelayMs),
+        );
+      }
       if (hooks.failAppGet?.()) {
         return route.fulfill({
           status: 500,
@@ -373,7 +394,13 @@ test('the roles page skeletons while loading and renders a specific inline error
   page,
 }) => {
   let fail = true;
-  await stubRolesApi(page, { failAppGet: () => fail });
+  // Hold the read open so the loading placeholder is
+  // observable. The stub resolves in ~1 ms, which is
+  // shorter than a poll interval: without this the
+  // skeleton is replaced before `toBeVisible` can look,
+  // and the assertion fails on the unfixable side of a
+  // race (observed under `--trace on`, both projects).
+  await stubRolesApi(page, { failAppGet: () => fail, appGetDelayMs: 500 });
 
   await page.goto(`#/apps/${APP_ID}/roles`);
 
