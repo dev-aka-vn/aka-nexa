@@ -3,7 +3,7 @@ status: partial
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-15T11:49:28Z
+updated: 2026-10-15T12:08:20Z
 ---
 
 ## Current Test
@@ -72,6 +72,24 @@ note: >-
   replaced before Playwright's first poll. Fixed by letting the stub hold the read open
   (`appGetDelayMs`). Re-run under the condition that had failed, `npx playwright test --trace
   on` → 66 passed (2.8 m), exit 0. See deferred-items.md (Resolved, 2026-10-15).
+  RE-RUN 2026-10-15 19:06 (+07:00), after the G-06-5 fix changed apps/app-builder/vite.config.ts:
+  bare `npx playwright test` → 66 passed (1.7 m), exit 0, both projects (chromium 33 + tablet
+  33), no flaky tests. This run is the regression check on that config change, and it matters
+  because playwright.config.ts `webServer` boots the SPA through the very vite config the fix
+  edited (`npx vite --config apps/app-builder/vite.config.ts`, line 72) — the suite had to be
+  re-proved on the changed proxy, not assumed. It was: the `changeOrigin: false` /api rule and
+  the added /auth rule are transparent to `npx playwright test`, because every spec satisfies
+  its own /api/** calls with `page.route` and never reaches the proxy.
+  Reproduced again with the run captured to a log (exit 0, `66 passed (2.0 m)`, no flaky line):
+  the vite dev server emits, twice per run while the designer spec exercises the JSON/CSS tabs,
+  `[Unhandled error] Error: Uncaught NetworkError: Failed to execute 'importScripts' on
+  'WorkerGlobalScope': The script at 'https://cdn.form.io/ace/1.4.12/worker-json.js' failed to
+  load.` Playwright forwards it as a `[WebServer]` line — the same third-party cdn.form.io Ace
+  dependency already recorded in deferred-items.md. It is a vite-level console error, not a
+  test failure (the designer spec passes in the run that emits it), so it does not change this
+  test's result; it is noted because a captured reproduction is evidence for that deferred
+  finding. Capture:
+  C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\pw-run.log
 
 ### 4. Tablet touch pass (BLD-09): one manual pass on a real tablet at 768×1024
 expected: The wizard, editor and designer are usable without a mouse
@@ -79,14 +97,26 @@ why_human: "Human judgement the emulated viewport only approximates; skeletons a
 result: blocked
 blocked_by: physical-device
 reason: >-
-  Two prerequisites, and neither can be satisfied from this machine. (1) Physical hardware —
-  the truth is a manual pass on a real tablet at 768×1024 "without a mouse", and no emulation
-  reproduces multi-touch or real scroll behaviour. The emulated tablet *project* does pass
-  (33/33), but that is layout evidence only, not touch evidence. (2) An authenticated session
-  for a live UI: the same OIDC blocker as test 2 — OIDC_ISSUER points at
-  https://idp.example.com, no stub IdP server exists in the repo and there is no dev auth
-  bypass, so `npm run start:api` cannot issue a session on its own; the compose.dev.yml data
-  stack (mongo 8.0 / redis 8.10) is also required.
+  Two prerequisites. The second is now satisfied; the first cannot be satisfied from this
+  machine, so the test stays blocked — but on hardware alone.
+
+  (2) An authenticated session for a live UI — RESOLVED 2026-10-15. The data stack and API run
+  on this machine (mongo 8.0 on 27017, redis 8.10 on 6379/6380, the api on 127.0.0.1:3000, the
+  SPA on 127.0.0.1:5173) and login works end to end against the in-repo StubOidcIssuer, so the
+  blocker recorded here originally (OIDC_ISSUER pointing at https://idp.example.com, no stub
+  IdP server in the repo, no dev auth bypass) no longer applies. It never mattered for the
+  emulated project anyway: those specs stub the session with page.route and need no stack.
+
+  (1) Physical hardware — STILL BLOCKED, and now for a verified reason. The truth is a manual
+  pass on a real tablet at 768×1024 "without a mouse", and no emulation reproduces multi-touch
+  or real scroll behaviour. The emulated tablet project does pass, 33/33 (re-confirmed
+  2026-10-15), but a Playwright pass run on 2026-10-15 checked *why* that cannot count as this
+  test's evidence: no spec in apps/app-builder/e2e calls `tap()` or dispatches any
+  touch/pointer event, and the tablet project differs from chromium only by
+  `viewport: {width: 768, height: 1024}` plus `hasTouch: true, isMobile: true`
+  (playwright.config.ts:63-69). So the tablet run exercises layout and responsive reflow under
+  a narrow viewport with a touch-capable device profile, while every interaction in it is
+  still a mouse click. It is layout evidence, full stop.
   Partial evidence available offline: the emulated 768×1024 final frames for every spec are at
   C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ (the `*-tablet.jpeg` files, e.g.
   wizard-create-wizard-BLD-0-8d736-*-tablet.jpeg and editor-the-editor-renders-*-tablet.jpeg).
