@@ -41,6 +41,21 @@ import { defineConfig } from 'vite';
  * brings back `403 CSRF_ORIGIN_MISMATCH` on every write while
  * reads keep working. `tooling/dev-proxy-shape.spec.ts` is the
  * guard that fails if that value returns.
+ *
+ * ## Why `/auth` is proxied too, and why it has no `rewrite`
+ *
+ * The OIDC login routes are the API's own, mounted at the root
+ * (`/auth/oidc/begin`, `/auth/oidc/callback`), so this entry
+ * forwards them unchanged — callers already address the real
+ * path. That is the one way it differs from `/api`, which the
+ * SPA addresses with a key the API does not serve under and
+ * which is therefore stripped. Adding the entry is what lets the
+ * callback land on the SPA origin instead of the API's bare root:
+ * `oidc.service.ts` re-derives the callback's `redirect_uri` from
+ * the live request (`${req.protocol}://${req.get('host')}${req.originalUrl}`),
+ * and the stub issuer rejects a token exchange whose
+ * `redirect_uri` differs from the one it issued. Host preservation
+ * matches `/api`, for the same Origin/Host and redirect-URI reasons.
  */
 
 const API_ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:3000';
@@ -65,6 +80,15 @@ export default defineConfig({
         // Without the rewrite every proxied
         // call 404s against the API.
         rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      // `/auth/...` is already the API's own path — its routes are
+      // mounted at the root — so there is deliberately no `rewrite`
+      // here (one would corrupt the path). See the header for why the
+      // entry exists: it lets the OIDC callback finish on the SPA
+      // origin. Host preservation matches `/api`.
+      '/auth': {
+        target: API_ORIGIN,
+        changeOrigin: false,
       },
     },
   },

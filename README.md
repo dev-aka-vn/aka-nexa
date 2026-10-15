@@ -187,7 +187,26 @@ differently-named variable gets a named refusal rather than a silent default):
 | `OIDC_ISSUER` | The corporate IdP's issuer URL. Discovery is fetched once at module init from `<OIDC_ISSUER>/.well-known/openid-configuration` (T-06-09: a slow IdP degrades login latency, not security). |
 | `OIDC_CLIENT_ID` | The builder's client registration at the IdP. |
 | `OIDC_CLIENT_SECRET` | The client secret. |
-| `OIDC_REDIRECT_URI` | The callback the `api` serves (`https://<api-host>/auth/oidc/callback`). |
+| `OIDC_REDIRECT_URI` | The callback the `api` serves. **Production:** the API's own origin (`https://<api-host>/auth/oidc/callback`). **Dev via the Vite proxy:** the SPA origin (see below). |
+
+**Dev via the Vite proxy.** In a local stack the browser talks to the SPA on
+`http://127.0.0.1:5173`, and the SPA's Vite config proxies `/auth` to the `api`
+with the Host preserved — so the callback, whose `redirect_uri` the `api`
+re-derives from the live request as `${protocol}://${host}${originalUrl}`, lands
+back on the SPA origin rather than the API's bare root. Point `OIDC_REDIRECT_URI`
+at that origin, and open the SPA at the same spelling:
+
+```sh
+OIDC_REDIRECT_URI=http://127.0.0.1:5173/auth/oidc/callback
+```
+
+**One spelling, both places.** `localhost` and `127.0.0.1` are different *sites*
+for SameSite purposes, and the session cookie is `__Host-`-prefixed with
+`SameSite=Strict`: mix the two — open the SPA at `localhost` while the registered
+redirect URI says `127.0.0.1`, or the reverse — and the IdP's return navigation
+is cross-site, the cookie is dropped on the callback hop, and the callback answers
+`401 SESSION_MISSING`. Address `OIDC_ISSUER` at the same host spelling too, so the
+whole login round-trip stays on one site.
 
 A boot missing any of the four refuses to start with `OIDC_CONFIG_INVALID: must set …`,
 naming the absent ones. In non-production the issuer may be `http://` (the integration
