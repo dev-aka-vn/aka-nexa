@@ -3,7 +3,7 @@ status: partial
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-15T09:56:07Z
+updated: 2026-10-15T11:49:28Z
 ---
 
 ## Current Test
@@ -26,21 +26,26 @@ result: pass
 expected: Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
 why_human: "'Without documentation' is a human judgement (06-VALIDATION.md manual-only row). The wizard implementation matches the mockup's step rail and copy, and wizard.spec.ts encodes the flow — which now actually runs (66/66, test 3), so the flow is machine-verified; no assertion, however, can judge whether a first-time admin finds it self-explanatory."
 result: blocked
-blocked_by: server
+blocked_by: human-judgement
 reason: >-
-  The environment blocker is narrower than it first appeared, and only the human judgement
-  remains. The authenticated wizard surface does NOT need a backend to be looked at: the e2e
-  specs stub the session and the app API with page.route, so the SPA boots signed in offline.
-  66 final-state screenshots (every spec, both viewports) are at
-  C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ — the two wizard ones that
+  The environment blocker is gone as of 2026-10-15 (it is recorded in full below because it
+  is the reason G-06-5 exists). The live stack now runs on this machine - mongo 8.0 on 27017,
+  redis 8.10 on 6379/6380, the api on 127.0.0.1:3000 and the SPA on 127.0.0.1:5173 - and
+  login works end to end against the in-repo StubOidcIssuer. The authenticated wizard surface
+  does NOT need a backend to be looked at either: the e2e specs stub the session and the app
+  API with page.route, so the SPA boots signed in offline. 66 final-state screenshots (every
+  spec, both viewports) are at
+  C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ - the two wizard ones that
   answer this test are wizard-create-wizard-BLD-0-8d736-* (the five-step rail and step 1
   blocking forward navigation) and wizard-create-wizard-BLD-0-4f249-* (steps 2-5 and the
-  verbatim draft toast). A *live* walkthrough still needs the real stack, which needs two
-  things nothing local substitutes for: `docker compose -f compose.dev.yml up -d` (mongo
-  8.0 on 27017, redis 8.10 on 6379/6380) and an OIDC IdP — .env.development.example points
-  OIDC_ISSUER at https://idp.example.com, no stub IdP server exists in the repo
-  (apps/api/src/auth/oidc-issuer.stub.ts is an in-process test fixture, not a server) and
-  there is no dev auth bypass, so `npm run start:api` cannot issue a session on its own.
+  verbatim draft toast).
+  What remains is the judgement itself: whether a first-time admin finds the wizard
+  self-explanatory *without documentation*. That is the test's stated why_human and no
+  agent can render it. The stack is up and waiting at
+  http://127.0.0.1:5173/#/spike (no auth) and http://127.0.0.1:5173/ (login as
+  stub-admin-0001, MFA), so the walkthrough can happen whenever the user walks it.
+  A first real write through that stack already succeeded (a template fork at
+  18:38:54 +0700), which is what surfaced G-06-5.
 
 ### 3. Execute the Playwright e2e suite (npx playwright test) on a machine with browser OS deps installed
 expected: The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts
@@ -206,4 +211,68 @@ blocked: 2
     - path: "apps/app-builder/src/editor/EditorPage.tsx"
       issue: "publish() is wired straight to the button (line 428-437) and to the Ctrl/Cmd+S listener (325-374) with no confirmation step and no dirty-JSON check."
   missing: []
+  debug_session: ""
+
+- gap_id: G-06-5
+  truth: "Through the dev proxy a builder's own browser can complete every write path the App Builder has - create app, fork template, save section, publish, deprecate, archive and logout - and the CSRF gate still refuses genuinely cross-origin requests"
+  status: resolved
+  resolved_by: "quick task 261015-p1h — apps/app-builder/vite.config.ts, .env.example, README.md, tooling/dev-proxy-shape.spec.ts (commits 8e771a6, b9540a6, d57aeca, 0a41ac7)"
+  resolved_at: 2026-10-15
+  reason: >-
+    User report, verbatim: "I could access app but app creation or use template seems not work.
+    are they not implement or error?" The answer is an ERROR, not an unimplemented feature.
+    Both paths were fully implemented and seeded - `GET /templates` returns 200 with the 10
+    seeded templates and `POST /apps` returns 201 with a full definition - but every
+    *state-changing* request the SPA sent answered 403 `CSRF_ORIGIN_MISMATCH`. Reads
+    (dashboard, app list, template gallery) all work, which is exactly why the app looked
+    half-alive rather than dead.
+  root_cause: >-
+    The `apps/app-builder/vite.config.ts` dev proxy was configured `changeOrigin: true` on
+    `/api`, so http-proxy rewrote the request's Host header to the target's
+    (`127.0.0.1:3000`). The CSRF gate in `apps/api/src/auth/session.middleware.ts:96-111` is a
+    T-06-04 / D-101 contract that compares the request's `Origin` host against its `Host`
+    header (`sameOrigin = new URL(origin).host === host`, line 102). The browser therefore
+    sent `Origin: http://127.0.0.1:5173` while the API saw `Host: 127.0.0.1:3000`, so every
+    mutation was refused - and logout too, since it is a POST. The gate was never wrong: it
+    correctly fails closed. The dev proxy was defeating the same-origin illusion its own doc
+    comment claims ("the browser SPA talks to the API origin through one origin story in
+    dev", vite.config.ts:14-19).
+  severity: major
+  test: 2
+  artifacts:
+    - path: "apps/app-builder/vite.config.ts"
+      issue: "`/api` proxy used `changeOrigin: true`, rewriting Host to the API origin so the CSRF gate could never see a same-origin request; no `/auth` rule existed either, so the OIDC callback had nowhere to land on the SPA origin."
+    - path: "apps/api/src/auth/session.middleware.ts"
+      issue: "Not a defect. Line 102's host comparison is the frozen contract and is correct; recorded here so nobody 'fixes' it by relaxing the gate. apps/api/src/auth/auth.session.integration.spec.ts:350-399 pins this behaviour."
+  resolution: >-
+    `changeOrigin: false` on `/api` so the browser's Host is forwarded verbatim - the API now
+    observes a genuinely same-origin request. Added an `/auth` proxy rule (also
+    `changeOrigin: false`, no path rewrite) because `oidc.service.ts` derives the callback's
+    redirect_uri from the request (`protocol://host + originalUrl`, line 411) while `begin`
+    uses the configured value verbatim (line 382); with the Host preserved the two only agree
+    if `OIDC_REDIRECT_URI` names the SPA origin, which is now documented in `.env.example`
+    and `README.md`. Bonus: login now finishes on the SPA root instead of the API's bare 401
+    JSON root, making dev closer to the production same-origin shape. Added
+    `tooling/dev-proxy-shape.spec.ts` as a deterministic guard for the invariant.
+  evidence: >-
+    Before (5-way probe, varying only the Origin header, same `POST /apps` body): no Origin →
+    403; `Origin: 127.0.0.1:5173` direct → 403; **via the `/api` proxy with
+    `Origin: 127.0.0.1:5173` — what a real browser does — → 403**; `Origin: 127.0.0.1:3000`
+    direct → 201; via proxy with `Origin: 127.0.0.1:3000` → 201. D and E proved the create
+    path was implemented; C proved the failure was the Host rewrite. After
+    (`probe-postfix.mjs`, 17/17 PASS, exit 0): the full login chain through the proxy —
+    `/api/auth/oidc/begin` → 302, the authorization request naming
+    `http://127.0.0.1:5173/auth/oidc/callback`, the IdP returning to the SPA origin, the
+    callback → 302 to `/` on the SPA, `/api/auth/me` → 200 — then the table with A and B
+    still 403 (the gate is preserved, not bypassed), C → 201, D → 201, and E now → 403,
+    because with Host preserved a `127.0.0.1:3000` Origin really is cross-origin. Real write
+    surfaces through the SPA origin: templates gallery → 200 (10), `POST
+    /templates/asset-request/fork` → 201, the created apps visible to the builder, `POST
+    /auth/logout` → 200. Independent confirmation that this is not just a probe artefact: the
+    user's own browser forked the Asset Request template at 2026-10-15T18:38:54+07:00 (app
+    `asset-request`, draft, v1, createdBy 449cfa03-4207-4ce0-8fbb-b3eb40615a8f), after the
+    fixed config went live in the already-open dev server at 18:12:08. All probe apps were
+    deleted from Mongo afterwards; that user app was left in place.
+  missing:
+    - "The coverage hole that let this ship is real and only partly closed. The Playwright e2e specs satisfy every /api/** call with page.route, so the real API and its CSRF gate are never exercised through the SPA; and the api's own integration specs call it directly on one origin, where the gate always passes. Nothing tested 'the SPA's dev proxy against the real API', which is the only path a developer walks. tooling/dev-proxy-shape.spec.ts guards the configuration that caused it, but a live proxy-against-real-API test does not yet exist."
   debug_session: ""
