@@ -229,7 +229,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: 8/8 plans executed
+**Plans**: 12 plans — 8 executed, 4 gap-closure pending
 
 Plans:
 **Wave 1**
@@ -255,6 +255,16 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [x] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
+
+**Gap closure** *(from 06-UAT.md: G-06-4, G-06-6, G-06-7, G-06-8)*
+
+**Wave 9** *(depends on Wave 8)*
+- [ ] 06-09-PLAN.md — G-06-6: a scoped, selector-prefixed Bootstrap 5 stylesheet from a checked-in generator, consumed by the designer canvas and preview pane, with a computed-style layout guard (BLD-04, FRM-09)
+- [ ] 06-11-PLAN.md — G-06-4: one publish confirmation gate both the button and Ctrl/Cmd+S route through, plus the dirty-JSON guard that blocks the chord (BLD-06)
+- [ ] 06-12-PLAN.md — G-06-7: the designer's return path back to the wizard resuming the step left with in-progress input preserved, via a route-encoded step and a session-scoped snapshot (BLD-01)
+
+**Wave 10** *(blocked on Wave 9)*
+- [ ] 06-10-PLAN.md — G-06-8: the signer renderer consumes the same scoped stylesheet, gains its own dev server and Playwright projects, and the UAT record gains renderer coverage (FRM-09)
 
 **UI hint**: yes
 **Notes**: Highest-value, lowest-risk slice: by now the APIs are stable, so this is a CRUD skin rather than a design against moving targets. Research explicitly resolved the DH-2 tension by **not** moving the builder earlier. The pre-builder story is made credible by shipping the **~10-app seed template gallery plus tag filtering** (`APP-09`) — do not drop it. Editing a published form must not disturb an in-flight submission.
