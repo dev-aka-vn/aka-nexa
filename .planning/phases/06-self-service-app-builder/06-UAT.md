@@ -3,7 +3,7 @@ status: partial
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-14T15:10:00Z
+updated: 2026-10-15T09:32:13Z
 ---
 
 ## Current Test
@@ -32,13 +32,23 @@ reason: "Need guidance to start backend & frontend services"
 ### 3. Execute the Playwright e2e suite (npx playwright test) on a machine with browser OS deps installed
 expected: The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts
 why_human: >-
-  Environmental: the authoring sandbox cannot launch Chromium (libatk-1.0.so.0 missing,
-  no root). The specs are present, configured (desktop chromium + tablet projects,
-  vite webServer, page.route API stubs), and the vitest suite behind them is green —
-  but the e2e execution itself is unverified.
-result: issue
-reported: "Ran Playwright e2e on chromium project: 32 passed, 1 failed. Failure in apps/app-builder/e2e/designer.spec.ts: the designer mounts the builder; an added component captures one history entry and undo/redo round-trip - .formio-builder-form not visible (timeout 20000ms)."
-severity: major
+  Environmental: the authoring sandbox could not launch Chromium (libatk-1.0.so.0 missing,
+  no root). Re-run on a Windows machine with Chromium installed (Playwright 1.64.0,
+  chromium-1248).
+result: pass
+note: >-
+  `npx playwright test` (the documented bare command) → 66 passed (1.8 m), both projects
+  (chromium 33 + tablet 33), exit 0. G-06-3's reported single failure reproduced as a
+  cold-start flake, not a deterministic break: the first builder mount was pinned to a fixed
+  20 s visibility ceiling, while that one wait measured 6–40 s across repeated isolated runs
+  on this machine (vite cold-transforming the 3.68 MB `@formio/js` graph). Fixed by raising
+  the mount ceiling to a named BUILDER_MOUNT_TIMEOUT_MS = 60 s and the per-test budget to
+  120 s in designer.spec.ts + s1-spike.spec.ts, and by scoping playwright.config.ts
+  `testDir` to apps/app-builder/e2e so the bare command no longer aborts collecting a vitest
+  stub at tests/e2e/slack-leave.e2e.spec.ts. Cold-isolation repeat (`--repeat-each=5` over
+  designer.spec.ts + s1-spike.spec.ts, chromium) → 45 passed (2.1 m), 0 flaky — the same
+  method the prior Nyquist pass used to bound this wait (it recorded 20/20 for designer
+  alone). See G-06-3 (resolved) below.
 
 ### 4. Tablet touch pass (BLD-09): one manual pass on a real tablet at 768×1024
 expected: The wizard, editor and designer are usable without a mouse
@@ -70,8 +80,8 @@ reason: "Cannot access authenticated UI due to API/OIDC issues"
 ## Summary
 
 total: 5
-passed: 1
-issues: 1
+passed: 2
+issues: 0
 pending: 0
 skipped: 0
 blocked: 3
@@ -80,10 +90,41 @@ blocked: 3
 
 - gap_id: G-06-3
   truth: "The chromium and tablet projects pass across wizard.spec.ts, designer.spec.ts, roles.spec.ts, editor.spec.ts, dashboard.spec.ts, submissions.spec.ts, connectors.spec.ts, s1-spike.spec.ts"
-  status: failed
+  status: resolved
+  resolved_by: "inline UAT fix (no gap-closure plan) — apps/app-builder/e2e/designer.spec.ts, apps/app-builder/e2e/s1-spike.spec.ts, playwright.config.ts"
+  resolved_at: 2026-10-15
   reason: "User reported: Ran Playwright e2e on chromium project: 32 passed, 1 failed. Failure in apps/app-builder/e2e/designer.spec.ts: the designer mounts the builder; an added component captures one history entry and undo/redo round-trip - .formio-builder-form not visible (timeout 20000ms)."
+  root_cause: >-
+    Cold-start flake, not a code defect. `designer.spec.ts` pinned the *first* builder mount to a
+    fixed 20 s visibility ceiling. That single wait is dominated by the vite dev server
+    cold-transforming the 3.68 MB `@formio/js` dependency graph, and measured 6 s–40 s across
+    repeated isolated runs on this machine — so a 20 s ceiling is a coin flip. The reported run's
+    failure ("timeout 20000ms") reproduces the wait landing just past the ceiling; the same spec
+    passes in 19.5 s when the machine is idle. Prior hardening (06-VALIDATION) raised the
+    per-test budget to 90 s but left the inner visibility wait at 20 s. Two contributing
+    environment facts, both recorded as separate findings below rather than causes: the mount
+    cost is machine-load-dominated, and FormIO lazily loads its Ace editor from `cdn.form.io`
+    at runtime.
   severity: major
   test: 3
-  artifacts: []
+  artifacts:
+    - path: "apps/app-builder/e2e/designer.spec.ts"
+      issue: "Builder-mount `toBeVisible` waits pinned to a fixed 20 s ceiling while the wait measures 6–40 s on a cold/contended vite server."
+    - path: "apps/app-builder/e2e/s1-spike.spec.ts"
+      issue: "Same 20 s mount ceiling; also carried no per-test budget override, so the default 30 s test timeout capped it."
+    - path: "playwright.config.ts"
+      issue: "Root-wide `testDir: './'` collected tests/e2e/slack-leave.e2e.spec.ts — a vitest stub, not a Playwright spec — so the documented bare `npx playwright test` aborted at collection time with \"Cannot read properties of undefined (reading 'config')\" before running a single test."
+  resolution: >-
+    Raised the mount ceiling to a named `BUILDER_MOUNT_TIMEOUT_MS = 60_000` and the per-test budget
+    to `120_000` in both designer.spec.ts and s1-spike.spec.ts (every post-mount assertion stays
+    tight — only the cold mount is allowed headroom). Scoped playwright.config.ts `testDir` to
+    `./apps/app-builder/e2e` so the harness only collects the suite this config describes; all
+    documented invocations (bare, directory-scoped, file-scoped) collect correctly.
+  evidence: >-
+    `npx playwright test` (bare) → 66 passed (1.4 m), exit 0, both projects. `npx playwright test
+    apps/app-builder/e2e --reporter=list` → 66 passed (1.8 m). Cold-isolation repeat
+    (`designer.spec.ts` + `s1-spike.spec.ts`, `--project=chromium --repeat-each=5`) →
+    45 passed (2.1 m), 0 flaky. designer.spec.ts + s1-spike.spec.ts in isolation → 9 passed.
+    --list checks: bare 66, directory+project 33, file+project 4. `npx eslint .` → exit 0.
   missing: []
   debug_session: ""

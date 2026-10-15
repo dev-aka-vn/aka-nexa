@@ -70,3 +70,76 @@ spec's six api orphans (slack adapter ×3, link-error filter, permission
 guard, submissions controller) — unreachable from any `main.ts`. Their
 fix belongs to the phase that wires each surface into `AppModule`; see
 `06-02-deferred-items.md`.
+
+## Out-of-scope discovery (06 UAT, 2026-10-15)
+
+**The FormIO builder loads its Ace editor from `cdn.form.io` at runtime.**
+
+Found while diagnosing G-06-3. Running the App Builder's designer against a
+local vite dev server logs, on every builder mount:
+
+```
+Error: Uncaught NetworkError: Failed to execute 'importScripts' on
+'WorkerGlobalScope': The script at 'https://cdn.form.io/ace/1.4.12/worker-json.js'
+failed to load.
+```
+
+`@formio/js` does not bundle Ace. On first render of a component edit form it
+calls `Formio.requireLibrary('ace', 'ace', <Formio.cdn.ace>/ace.js)`, and Ace
+then pulls `worker-json.js`, modes and themes from the same origin. `ace-builds`
+is absent from `node_modules`, so there is no local copy to fall back to.
+
+**Why this matters:**
+
+- It is a **new external network dependency on a third-party CDN** from a
+  first-party admin surface. That contradicts `06-01-SUMMARY.md:275` ("`@formio/js`
+  is loaded from the bundled npm package, not a CDN") — the *package* is bundled;
+  the Ace *asset* is not.
+- NFR-SEC-3 (no third-party CDN / SRI requirement) and the data-residency
+  ("configurable and region-locked") constraint both assume the app has no
+  runtime CDN dependency. A region-locked or air-gapped deployment would render
+  the builder with a broken Ace editor and a console error on every mount.
+- Blast radius is currently contained: Ace is only reached by TextArea components
+  with `editor: 'ace'` and the builder's own JSON / Custom-CSS tabs. The phase's
+  own seated schemas (textfield / number / button) never trigger it, and the
+  signer-facing Form Renderer does not use it — so this is an **admin-console**
+  concern, not a signer-path one.
+
+**Explicitly not the cause of G-06-3.** A/B runs that aborted `cdn.form.io` did
+not improve mount times (26.9 / 29.6 / 40.6 s with the CDN blocked vs. 6.3 / 15.5 s
+without); the failing wait was dominated by vite cold-transforming
+`@formio/js`, not by the CDN fetch.
+
+**Not fixed here:** eliminating it is a design decision with a cost, not a
+one-line change. Options are (a) vendor `ace-builds` and point
+`Formio.cdn.setOverrideUrl('ace', <same-origin path>)` at it — new dependency
+plus bundle weight; (b) register a bundled `window.ace` and override Ace's
+worker/module URLs so `requireLibrary` short-circuits; or (c) disable the Ace
+editor and drop the JSON / Custom-CSS editing tabs. This needs a small spike and
+a product call on whether in-builder JSON editing is required. Recommended
+owner: the phase that hardens the App Builder for a region-locked deployment (or
+the Phase 3 Form Renderer hardening pass, since it shares the `@formio/js`
+dependency).
+
+## Resolved (2026-10-15, 06 UAT gap closure)
+
+**The stray vitest stub at `tests/e2e/slack-leave.e2e.spec.ts` no longer breaks
+the Playwright suite.** The file (a 7-line vitest stub, committed in Phase 02 as
+`4dc31ae`) matched `playwright.config.ts`'s root-wide
+`testMatch: '**/e2e/**/*.spec.ts'`, so a bare `npx playwright test` — the command
+`06-VERIFICATION.md` names for UAT test 3 — aborted at collection with
+`TypeError: Cannot read properties of undefined (reading 'config')`, running zero
+specs. `vitest.config.mts` already excludes `**/e2e/**`, so nothing was running
+the file at all.
+
+Fixed by scoping `playwright.config.ts` `testDir` to `./apps/app-builder/e2e`
+(the directory the config's own doc comment describes) with `testMatch:
+'**/*.spec.ts'`. This keeps every documented invocation working (bare → 66 tests;
+directory + project → 33; file + project → 4) and means a future non-SPA
+Playwright suite in `tests/` gets its own config instead of being silently
+absorbed by this one.
+
+**Left in place deliberately:** the stub file itself was not deleted — it is a
+prior-phase artifact and deleting another phase's file is not this workflow's
+call. Recommendation: delete it, or rewrite it as a real Playwright spec under
+its own config.
