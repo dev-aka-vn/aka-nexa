@@ -3,7 +3,7 @@ status: diagnosed
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-15T16:05:00Z
+updated: 2026-10-16T07:49:35Z
 ---
 
 ## Current Test
@@ -190,10 +190,25 @@ note: >-
   `%TEMP%\opencode\uat-shots\final\editor-the-editor-renders-*0fd8a*` if a visual re-check is
   wanted.
 
+### 6. Signer renderer layout (G-06-8): the read and edit pages render the authored form with the layout its schema describes
+expected: A two-column form's columns sit side by side as fractions of a wrapping flex row, and every control computes a 1px top border and 12px left padding — on both signer pages, at 1280px and at 768px
+result: pass
+note: >-
+  Machine-verified, not a human walkthrough: `apps/renderer/e2e/renderer-form-layout.spec.ts`
+  (guard `signer renderer layout (G-06-8)`) boots the renderer's own dev server on 5174, fulfils
+  each page's link fetch with a two-column schema (widths 2 and 10, one text field each), and
+  asserts by computed style — the scope root exposes a non-empty theme token, every row inside
+  it is a wrapping flex container, the 2/12 and 10/12 columns are fractions of their row, and
+  every form-control computes Bootstrap geometry — with explicit count assertions so no loop
+  passes vacuously. `npx playwright test --project=renderer --project=renderer-tablet` →
+  4 passed (read + edit × 1280px + 768px), exit 0. This is the coverage G-06-8 records as
+  missing: no UAT test rendered a read or edit page before, which is why the unstyled signer
+  form shipped.
+
 ## Summary
 
-total: 5
-passed: 3
+total: 6
+passed: 4
 issues: 1
 pending: 0
 skipped: 0
@@ -244,7 +259,9 @@ blocked: 1
 
 - gap_id: G-06-4
   truth: "Publish cannot fire by accident: the action is confirmed before the change takes effect, and the Ctrl/Cmd+S shortcut cannot publish while a section's JSON is mid-edit"
-  status: failed
+  status: resolved
+  resolved_by: "plan 06-11 — apps/app-builder/src/editor/publishGuards.ts, apps/app-builder/src/editor/publishGuards.spec.ts, apps/app-builder/src/editor/EditorPage.tsx, apps/app-builder/e2e/editor.spec.ts"
+  resolved_at: 2026-10-16
   reason: >-
     Surfaced while resolving UAT test 5 (it does not fail test 5's human question, which is
     answered by the contract — see test 5). Publish fires immediately from the button and from
@@ -267,6 +284,20 @@ blocked: 1
   artifacts:
     - path: "apps/app-builder/src/editor/EditorPage.tsx"
       issue: "publish() is wired straight to the button (line 428-437) and to the Ctrl/Cmd+S listener (325-374) with no confirmation step and no dirty-JSON check."
+  resolution: >-
+    One `requestPublish()` gate both entry points route through: the publish button and the
+    Ctrl/Cmd+S chord open the gate, and `publish()` is reachable only from the gate's confirm
+    control (proven by recorded POST count — zero until confirm, exactly one after). Only the
+    chord carries the dirty-JSON guard: a chord over a mid-edit section is blocked inline naming
+    the section, and saving clears it. The gate states the effect without change rows (the
+    change summary is the publish response payload; no dry-run endpoint exists — frozen-contract
+    precedence), and the stub PATCH echoes the forms-section patch so a saved edit stops reading
+    as dirty.
+  evidence: >-
+    `npx vitest run apps/app-builder/src/editor/publishGuards.spec.ts` → 5 passed (the two pure
+    BLD-06 predicates). `npx playwright test apps/app-builder/e2e/editor.spec.ts` → 5/5 in the
+    chromium project and 5/5 in the tablet project (confirmation gate + dirty-chord tests).
+    Full app-builder set 72/72 green with no regressions (per 06-11-SUMMARY.md).
   missing: []
   debug_session: ""
 
@@ -336,7 +367,9 @@ blocked: 1
 
 - gap_id: G-06-6
   truth: "The authored form renders with the layout its schema describes — the designer canvas and the FRM-09 preview show the form as a signer will see it (grid columns side by side, styled controls), not a collapsed full-width stack of browser-default inputs"
-  status: failed
+  status: resolved
+  resolved_by: "plan 06-09 — tooling/formio-scope-css.mjs, tooling/formio-scope-css.spec.ts, apps/app-builder/src/form-designer/formio-scope.css, apps/renderer/src/read/formio-scope.css, FormioBuilderField.tsx, PreviewPane.tsx, representativeSchema.ts, s1-spike.spec.ts, designer.spec.ts"
+  resolved_at: 2026-10-16
   reason: "User report, verbatim: \"Form Desiger seems broken style, lost arrangement & style.\""
   severity: major
   test: 2
@@ -372,15 +405,31 @@ blocked: 1
       issue: "Asserts the 5.x class vocabulary is present in the DOM. That is the assertion that passed while the layout was dead; it measures names, not computed layout."
     - path: "node_modules/bootstrap/dist/css/bootstrap.min.css"
       issue: "Present (bootstrap@5.3.8, 226.7 KB) and imported nowhere — this is the missing stylesheet."
-  missing:
-    - "Styling strategy — DECIDED (user, 2026-10-15): the mechanism is delegated to the planner to investigate and recommend. Hard constraints: it must be scoped (never a raw global import) and it must reach apps/renderer as well as the app-builder (see G-06-8). Candidate mechanisms to weigh and record with rationale — selector-prefixing (e.g. postcss-prefix-selector), CSS `@scope`, CSS cascade layers, or swapping/switching the FormIO template set so formio.full.min.css alone suffices. A raw global `import 'bootstrap/dist/css/bootstrap.min.css'` is excluded by AGENTS.md rule 1: it would restyle the whole admin console and collide with the app's own .btn/.card."
-    - "Add a computed-style regression guard, not another class-name assertion. The S1 criterion that this defect slipped past should be re-verified as layout: .row computes display:flex, and a multi-column form's columns compute widths that are fractions of the row, at both viewports."
-    - "Re-check the FRM-09 preview against a real signer rendering once the canvas is styled; they share the import, so they should converge, but that is a claim to verify rather than assume."
+  resolution: >-
+    One dependency-free generator (`tooling/formio-scope-css.mjs`) turns the pinned Bootstrap
+    5.3.8 source into two byte-identical scope-rooted stylesheets — every selector reachable
+    only beneath the `formio-scope` root, the `:root` token block landed ON the scope root,
+    page-level `html`/`body` rules dropped. The designer canvas (FormioBuilderField) and the
+    FRM-09 preview (PreviewPane) each statically import the sheet and carry the scope class on
+    their FormIO mount containers only — never on page shell, tabs, toolbar, card or sandbox
+    chrome. The class-name-only spike assertion was retired and replaced by computed-style
+    guards on both surfaces.
+  evidence: >-
+    `node tooling/formio-scope-css.mjs --check` exits 0 (no drift).
+    `npx vitest run tooling/formio-scope-css.spec.ts` → 7 passed (drift guard, byte-equality,
+    parsed transform invariants). `npx playwright test apps/app-builder/e2e/s1-spike.spec.ts
+    apps/app-builder/e2e/designer.spec.ts` green in the chromium and tablet projects (per
+    06-09-SUMMARY.md); re-confirmed from this plan's own runs — the G-06-6 designer guard
+    (canvas + preview, populated token, wrapping flex rows, fractional columns, Bootstrap
+    control geometry) passes in both projects. No `bootstrap` entry added to package.json.
+  missing: []
   debug_session: ""
 
 - gap_id: G-06-7
   truth: "A user part-way through the create wizard can open the form designer from step 4, design the form, and return to the wizard to finish it without losing their wizard position or the draft they are building"
-  status: failed
+  status: resolved
+  resolved_by: "plan 06-12 — apps/app-builder/src/wizard/wizardDraftStore.ts, apps/app-builder/src/wizard/wizardDraftStore.spec.ts, apps/app-builder/src/wizard/WizardPage.tsx, apps/app-builder/src/App.tsx, apps/app-builder/src/form-designer/FormDesignerPage.tsx, apps/app-builder/e2e/wizard.spec.ts"
+  resolved_at: 2026-10-16
   reason: "User report, verbatim: \"After form design completion, how do I back to wizard?\""
   severity: major
   test: 2
@@ -406,15 +455,31 @@ blocked: 1
       issue: "All wizard state is component-local useState (step, basics, triggers, rbac, routing, draft) with no persistence and no route encoding, so any remount restarts at step 0."
     - path: "prototypes/mockup.html"
       issue: "Not a defect, and deliberately recorded as such: the mockup never depicts a designer surface, so it does not define this navigation and cannot be cited as authority either way. Its sub-pages do establish the pattern the designer does not follow — an explicit back control (line 1039: icon-btn + i-arrow-left + aria-label='Back to apps'; line 925: 'Back to dashboard'). Per AGENTS.md rule 3 (absence is not permission) the designer's navigation must be confirmed, not improvised."
-  missing:
-    - "Navigation model — DECIDED (user, 2026-10-15): the designer returns to the wizard, resuming the step the user left. Because resumption is required this is a routing/state change, not a one-control fix. A back-to-app-editor breadcrumb is explicitly NOT required."
-    - "Wizard must survive the round trip — DECIDED (user, 2026-10-15): yes. Persist wizard position and in-progress step input (route-encoded step and/or server-side draft progress) so returning lands on step 4 with the inputs the user left. The planner picks the mechanism (route encoding vs server-side draft progress) and records the rationale. The wizard is NOT declared one-way."
-    - "The test-2 walkthrough cannot be completed end-to-end until the way back exists or is documented as intentionally absent."
+  resolution: >-
+    Session-scoped wizard snapshots plus route-encoded steps close the dead end: the wizard
+    hydrates once on mount from the snapshot (position + in-progress inputs) and re-reads the
+    draft definition from the server, syncs `#/wizard?app=<id>&step=<n>` via `replaceState`
+    (never `location.hash` assignment, so no hashchange remount loop), and clears on finish.
+    Leaving step 4 for the designer and returning lands back on the Form step with every typed
+    input intact; a deep link with no snapshot resumes on the route step with the draft loaded;
+    the sidebar Create link still opens a fresh wizard (keyed remount on app-id change). The
+    designer page-head renders a return control only when a live snapshot exists — no
+    back-to-app-editor breadcrumb, per the decided model.
+  evidence: >-
+    `npx vitest run apps/app-builder/src/wizard/wizardDraftStore.spec.ts` → 6 passed (keyed
+    reads, malformed-payload and step-range rejection, per-app clear, round-trip,
+    null-storage no-op). `npx playwright test apps/app-builder/e2e/wizard.spec.ts` → 8/8 in
+    the chromium project and 8/8 in the tablet project (designer detour-and-return with inputs
+    intact, no-snapshot deep link, fresh-wizard guard); directory suite 74/74 (per
+    06-12-SUMMARY.md).
+  missing: []
   debug_session: ""
 
 - gap_id: G-06-8
   truth: "The signer-facing Form Renderer (apps/renderer read and edit pages) renders the authored form with the layout its schema describes — grid columns side by side and styled controls — not a collapsed full-width stack of browser-default inputs"
-  status: failed
+  status: resolved
+  resolved_by: "plan 06-10 — apps/renderer/vite.config.ts, apps/renderer/src/read/view.html, apps/renderer/src/read/view.browser.ts, apps/renderer/src/read/edit.html, apps/renderer/src/read/edit.ts, apps/renderer/e2e/renderer-form-layout.spec.ts, playwright.config.ts"
+  resolved_at: 2026-10-16
   reason: >-
     Not reported by the user — found by orchestrator investigation while scoping G-06-6
     (2026-10-15) and confirmed by the user as in-scope for this gap-closure pass. G-06-6's root
@@ -464,8 +529,23 @@ blocked: 1
       issue: "Asserts import strings (lines 287-288) for the same reason."
     - path: "node_modules/bootstrap/dist/css/bootstrap.min.css"
       issue: "Present (bootstrap@5.3.8, 226.7 KB) and imported nowhere — the missing stylesheet on this surface too."
-  missing:
-    - "One root cause, one mechanism: the fix must be shared with G-06-6 and applied to apps/app-builder AND apps/renderer. A mechanism that cannot reach the renderer's static HTML pages (view.html / edit.html, served from RENDERER_ORIGIN) is not acceptable."
-    - "The computed-style regression guard must cover the renderer as well, not only the designer: on a rendered signer page at both viewports, .row computes display:flex and a multi-column form's columns compute widths that are fractions of the row."
-    - "No UAT test covers the signer-facing renderer — 06-UAT.md holds 5 tests and none renders a read or edit page, which is why this shipped. Consider adding one."
+  resolution: >-
+    One root cause, one mechanism, two surfaces: the renderer consumes the same scoped,
+    byte-identical artifact the designer consumes (produced by plan 06-09's generator, drift
+    guarded there). The renderer serves its signer pages from its own dev server (5174,
+    `apps/renderer/vite.config.ts`); the read page statically imports the sheet beside the
+    engine stylesheet and the edit page dynamically imports it on the live-link path only
+    (replay and deny paths render no form); both pages carry `formio-scope` on their FormIO
+    mount containers only — never on the page body or the surrounding card — so the page's
+    own token block and its own `.card` class cannot be overridden. The renderer is
+    browser-loadable for the first time, and the harness boots each app's dev server per
+    project without breaking the existing suite.
+  evidence: >-
+    `npx playwright test --project=renderer --project=renderer-tablet` → 4 passed (read +
+    edit × 1280px + 768px), exit 0 — this plan's own guard, run here: populated theme token,
+    wrapping flex rows, 2/12 + 10/12 fractional columns, 1px/12px control geometry on both
+    signer pages. The two scoped sheets remain byte-identical under the plan-06-09 drift
+    guard (`tooling/formio-scope-css.spec.ts`, green in this plan's 129-test vitest scope).
+    Recorded as UAT test 6 above — the signer-renderer coverage this gap records as missing.
+  missing: []
   debug_session: ""

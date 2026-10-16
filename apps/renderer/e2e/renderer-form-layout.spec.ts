@@ -10,8 +10,10 @@
  * symptom instead: the scope root exposes a non-empty theme
  * token, rows are wrapping flex containers, the schema's
  * columns are fractions of their row, and form-controls
- * compute Bootstrap geometry — at 1280px (renderer project)
- * and at 768px (renderer-tablet project).
+ * compute Bootstrap geometry — on both signer pages, at
+ * 1280px (renderer project) and at 768px
+ * (renderer-tablet project). One shared helper asserts the
+ * geometry set so the two pages cannot drift apart.
  *
  * Both viewports must hold: the asserted column classes are
  * `col-md-*`, whose breakpoint is min-width 768px, so at
@@ -19,11 +21,11 @@
  * full width there is a regression, not responsiveness.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 
 /**
  * The budget for the engine to load and the form to mount.
- * The read page pulls the same `@formio/js` graph the
+ * Each signer page pulls the same `@formio/js` graph the
  * designer mounts; the mount is the only cold-path wait
  * (dev-server on-demand transform plus parse/execute), so
  * it gets the same headroom the app-builder specs allow
@@ -39,8 +41,12 @@ const RENDERER_MOUNT_TIMEOUT_MS = 60_000;
  */
 const RENDERER_SPEC_TIMEOUT_MS = 120_000;
 
-/** The read page's dev-server path (vite root is apps/renderer). */
+/**
+ * The signer pages' dev-server paths (vite root is
+ * apps/renderer).
+ */
 const VIEW_PATH = '/src/read/view.html';
+const EDIT_PATH = '/src/read/edit.html';
 
 /**
  * The authored layout under test: one two-column row,
@@ -105,6 +111,143 @@ function viewPayload(): Record<string, unknown> {
   };
 }
 
+/**
+ * An edit-link payload that classifies as a LIVE link: the
+ * submission carries the layout pair and the latest
+ * revision carries prefill data. The stub must NOT include
+ * an edit-outcome payload — a consumed link replays a
+ * confirmation instead of rendering the form (D-95), and
+ * there would be no layout to assert on.
+ */
+function editPayload(): Record<string, unknown> {
+  return {
+    submission: {
+      _id: 'probe-submission',
+      form_schema: TWO_COLUMN_SCHEMA,
+      data: {},
+    },
+    latestRevision: {
+      submission_id: 'probe-submission',
+      revision: 3,
+      data: { layoutFirst: 'Ada', layoutLast: 'Lovelace' },
+    },
+  };
+}
+
+/**
+ * The shared computed-style assertion set for one signer
+ * surface beneath its scope root (G-06-8): a populated
+ * theme token, wrapping flex rows, fractional grid
+ * columns, and Bootstrap-geometry form controls. Every
+ * loop carries an explicit prior count assertion so none
+ * can pass on an empty subtree.
+ */
+async function expectScopedSignerGeometry(
+  mount: Locator,
+  surface: string,
+): Promise<void> {
+  // The mount container carries the scope class — the
+  // boundary that keeps the Bootstrap rule set off the
+  // page's own token block and its own .card class.
+  // (The class is asserted structurally here; everything
+  // below is computed style, which is what proves the
+  // sheet actually reached the subtree.)
+  await expect(mount).toHaveClass(/formio-scope/);
+
+  // The scope root carries the theme token block: without
+  // the scoped sheet `--bs-primary` is an empty string
+  // (the measured symptom).
+  const primary = await mount.evaluate(
+    (el) => getComputedStyle(el).getPropertyValue('--bs-primary').trim(),
+  );
+  expect(
+    primary,
+    `${surface}: the scope root exposes no --bs-primary — the scoped sheet is absent`,
+  ).not.toBe('');
+
+  // Every row inside the scope is a wrapping flex
+  // container (without the sheet a row computes
+  // display:block / flex-wrap:nowrap).
+  const rows = await mount.evaluate((el) =>
+    [...el.querySelectorAll('.row')].map((row) => {
+      const style = getComputedStyle(row);
+      return { display: style.display, wrap: style.flexWrap };
+    }),
+  );
+  expect(
+    rows.length,
+    `${surface}: no .row inside the scope — the schema columns did not render`,
+  ).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(row.display).toBe('flex');
+    expect(row.wrap).toBe('wrap');
+  }
+
+  // The schema's two columns render as fractional widths
+  // of their row, not two full-width blocks (without the
+  // sheet both compute the row width). Scoped to rows
+  // with at least two grid columns so the assertion is
+  // about the layout pair, and the sum check carries
+  // gutter headroom (border-box column widths include
+  // half-gutters).
+  const grids = await mount.evaluate((el) =>
+    [...el.querySelectorAll('.row')]
+      .map((row) => {
+        const rowWidth = row.getBoundingClientRect().width;
+        const columns = [...row.children].filter((child) =>
+          /col-(sm|md|lg|xl|xxl)-\d+/.test(child.className),
+        );
+        return {
+          rowWidth,
+          widths: columns.map(
+            (child) => child.getBoundingClientRect().width,
+          ),
+        };
+      })
+      .filter((grid) => grid.widths.length >= 2),
+  );
+  expect(
+    grids.length,
+    `${surface}: no row with two grid columns — the schema layout pair did not render`,
+  ).toBeGreaterThan(0);
+  // The schema's own column classes are present (2/12
+  // and 10/12) — each loop below is then about them.
+  expect(await mount.locator('.col-md-2').count()).toBeGreaterThanOrEqual(1);
+  expect(await mount.locator('.col-md-10').count()).toBeGreaterThanOrEqual(1);
+  for (const grid of grids) {
+    for (const width of grid.widths) {
+      expect(width).toBeLessThan(grid.rowWidth);
+    }
+    const total = grid.widths.reduce((a, b) => a + b, 0);
+    expect(Math.abs(total - grid.rowWidth)).toBeLessThanOrEqual(
+      grid.rowWidth * 0.05 + 32,
+    );
+  }
+
+  // Every form-control inside the scope computes Bootstrap
+  // geometry — a 1px top border and 12px left padding —
+  // instead of the browser's unstyled default (2px inset
+  // border, 1px/2px padding). The count assertion keeps
+  // the loop non-vacuous.
+  const controls = await mount.evaluate((el) =>
+    [...el.querySelectorAll('.form-control')].map((control) => {
+      const style = getComputedStyle(control);
+      return {
+        borderTop: style.borderTopWidth,
+        paddingLeft: style.paddingLeft,
+      };
+    }),
+  );
+  expect(
+    controls.length,
+    `${surface}: no .form-control inside the scope — nothing to check geometry on`,
+  ).toBeGreaterThan(0);
+  for (const control of controls) {
+    expect(control.borderTop).toBe('1px');
+    expect(control.paddingLeft).toBe('12px');
+  }
+}
+
 test.describe('signer renderer layout (G-06-8)', () => {
   test.describe.configure({
     timeout: RENDERER_SPEC_TIMEOUT_MS,
@@ -142,105 +285,36 @@ test.describe('signer renderer layout (G-06-8)', () => {
       mount.locator('.form-control').first(),
     ).toBeVisible({ timeout: RENDERER_MOUNT_TIMEOUT_MS });
 
-    // The mount container carries the scope class — the
-    // boundary that keeps the Bootstrap rule set off the
-    // page's own token block and its own .card class.
-    // (The class is asserted structurally here; everything
-    // below is computed style, which is what proves the
-    // sheet actually reached the subtree.)
-    await expect(mount).toHaveClass(/formio-scope/);
+    await expectScopedSignerGeometry(mount, 'read page');
+  });
 
-    // The scope root carries the theme token block: without
-    // the scoped sheet `--bs-primary` is an empty string
-    // (the measured symptom).
-    const primary = await mount.evaluate(
-      (el) => getComputedStyle(el).getPropertyValue('--bs-primary').trim(),
-    );
-    expect(
-      primary,
-      'the scope root exposes no --bs-primary — the scoped sheet is absent',
-    ).not.toBe('');
+  test('the edit page renders the pre-filled two-column layout with Bootstrap geometry', async ({
+    page,
+  }) => {
+    // Same interception shape as the read page: the edit
+    // page's inline module derives the same empty link id
+    // under the dev-server path and the same no-op origin,
+    // so the live-link GET lands on the bare edit path
+    // (`/l/edit/?token=...`) and is fulfilled here. The
+    // stub classifies as a live link (no editOutcome), so
+    // the page renders the editable, pre-filled form —
+    // the path whose dynamic scoped-stylesheet import this
+    // test exercises.
+    await page.route(/\/l\/edit\//, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(editPayload()),
+      });
+    });
 
-    // Every row inside the scope is a wrapping flex
-    // container (without the sheet a row computes
-    // display:block / flex-wrap:nowrap).
-    const rows = await mount.evaluate((el) =>
-      [...el.querySelectorAll('.row')].map((row) => {
-        const style = getComputedStyle(row);
-        return { display: style.display, wrap: style.flexWrap };
-      }),
-    );
-    expect(
-      rows.length,
-      'no .row inside the scope — the schema columns did not render',
-    ).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(row.display).toBe('flex');
-      expect(row.wrap).toBe('wrap');
-    }
+    await page.goto(`${EDIT_PATH}?token=probe-token`);
 
-    // The schema's two columns render as fractional widths
-    // of their row, not two full-width blocks (without the
-    // sheet both compute the row width). Scoped to rows
-    // with at least two grid columns so the assertion is
-    // about the layout pair, and the sum check carries
-    // gutter headroom (border-box column widths include
-    // half-gutters).
-    const grids = await mount.evaluate((el) =>
-      [...el.querySelectorAll('.row')]
-        .map((row) => {
-          const rowWidth = row.getBoundingClientRect().width;
-          const columns = [...row.children].filter((child) =>
-            /col-(sm|md|lg|xl|xxl)-\d+/.test(child.className),
-          );
-          return {
-            rowWidth,
-            widths: columns.map(
-              (child) => child.getBoundingClientRect().width,
-            ),
-          };
-        })
-        .filter((grid) => grid.widths.length >= 2),
-    );
-    expect(
-      grids.length,
-      'no row with two grid columns — the schema layout pair did not render',
-    ).toBeGreaterThan(0);
-    // The schema's own column classes are present (2/12
-    // and 10/12) — each loop below is then about them.
-    expect(await mount.locator('.col-md-2').count()).toBeGreaterThanOrEqual(1);
-    expect(await mount.locator('.col-md-10').count()).toBeGreaterThanOrEqual(1);
-    for (const grid of grids) {
-      for (const width of grid.widths) {
-        expect(width).toBeLessThan(grid.rowWidth);
-      }
-      const total = grid.widths.reduce((a, b) => a + b, 0);
-      expect(Math.abs(total - grid.rowWidth)).toBeLessThanOrEqual(
-        grid.rowWidth * 0.05 + 32,
-      );
-    }
+    const mount = page.locator('#formio-edit');
+    await expect(
+      mount.locator('.form-control').first(),
+    ).toBeVisible({ timeout: RENDERER_MOUNT_TIMEOUT_MS });
 
-    // Every form-control inside the scope computes Bootstrap
-    // geometry — a 1px top border and 12px left padding —
-    // instead of the browser's unstyled default (2px inset
-    // border, 1px/2px padding). The count assertion keeps
-    // the loop non-vacuous.
-    const controls = await mount.evaluate((el) =>
-      [...el.querySelectorAll('.form-control')].map((control) => {
-        const style = getComputedStyle(control);
-        return {
-          borderTop: style.borderTopWidth,
-          paddingLeft: style.paddingLeft,
-        };
-      }),
-    );
-    expect(
-      controls.length,
-      'no .form-control inside the scope — nothing to check geometry on',
-    ).toBeGreaterThan(0);
-    for (const control of controls) {
-      expect(control.borderTop).toBe('1px');
-      expect(control.paddingLeft).toBe('12px');
-    }
+    await expectScopedSignerGeometry(mount, 'edit page');
   });
 });

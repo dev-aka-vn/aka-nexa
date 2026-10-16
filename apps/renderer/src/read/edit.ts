@@ -310,6 +310,7 @@ export async function initEdit(deps: EditBrowserDeps): Promise<void> {
     Formio: { createForm: (el: HTMLElement, schema: unknown, opts?: unknown) => Promise<{ setSubmission: (s: unknown) => void; on: (ev: string, cb: () => void) => void }> };
   };
   await import('@formio/js/dist/formio.full.min.css');
+  await import('./formio-scope.css');
 
   let submitting = false;
 
