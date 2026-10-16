@@ -20,6 +20,16 @@
  *                  the 5.x `visually-hidden` class here (was
  *                  `sr-only` in Bootstrap 4), which is how the
  *                  template-port assertion observes the port.
+ *  - `nameColumns` — a two-column layout pair (widths 2 and 10,
+ *                  each holding one text field): the layout pair
+ *                  is what proves the grid stylesheet is present.
+ *                  Without the scoped Bootstrap sheet the row
+ *                  computes `display: block` and both columns
+ *                  span the full canvas; with it the row is a
+ *                  wrapping flex container and the columns are
+ *                  2/12 and 10/12 of it. The spike spec reads
+ *                  counts relatively (`before + 1`) so a fifth
+ *                  component changes no existing spike assertion.
  */
 
 export interface RepresentativeSchema extends Record<string, unknown> {
@@ -67,6 +77,34 @@ export const REPRESENTATIVE_SCHEMA: RepresentativeSchema = {
       label: 'Internal note',
       hideLabel: true,
       validate: { required: true },
+    },
+    {
+      type: 'columns',
+      key: 'nameColumns',
+      columns: [
+        {
+          width: 2,
+          components: [
+            {
+              type: 'textfield',
+              key: 'layoutFirst',
+              label: 'Layout first',
+              input: true,
+            },
+          ],
+        },
+        {
+          width: 10,
+          components: [
+            {
+              type: 'textfield',
+              key: 'layoutLast',
+              label: 'Layout last',
+              input: true,
+            },
+          ],
+        },
+      ],
     },
   ],
 };

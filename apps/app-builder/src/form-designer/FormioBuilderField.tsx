@@ -34,6 +34,15 @@ import type { Ref } from 'react';
 import {
   registerPortedBootstrap5Templates,
 } from './bootstrap5Templates';
+// The scoped Bootstrap 5 sheet (G-06-6): the FormIO template set emits
+// Bootstrap class names but ships no Bootstrap stylesheet, so the canvas
+// renders unstyled HTML without this. Scoped to `formio-scope` — it reaches
+// the FormIO-owned subtree only, never the app chrome. Static, at module
+// scope: unlike the engine module itself this is plain CSS, so the
+// Pattern-1 browser guard does not apply to it. Distinct from the guarded
+// dynamic import of the engine's own stylesheet further below — that one
+// stays exactly as it is.
+import './formio-scope.css';
 import { SchemaHistory } from './undoHistory';
 
 /** The builder surface the designer consumes (documented public API). */
@@ -271,10 +280,14 @@ export function FormioBuilderField({
 
   // Container-as-leaf (Pitfall 4): no children — React never
   // reconciles inside the FormIO-controlled subtree.
+  // The `formio-scope` class is the G-06-6 scope root: the scoped
+  // Bootstrap sheet's rules are reachable only beneath it, so it sits
+  // on this FormIO mount container — never on the page shell, the tabs,
+  // or the toolbar.
   return (
     <div
       ref={containerRef}
-      className="formio-builder-host"
+      className="formio-builder-host formio-scope"
       data-testid="formio-builder-host"
     />
   );

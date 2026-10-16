@@ -4,7 +4,7 @@
  *
  * The four behaviors the plan's Test 1 / Test 2 name,
  * plus the undo/redo round-trip through the real
- * builder and the Bootstrap-5 template port:
+ * builder and the computed-style guard:
  *
  *  1. The builder mounts into the React-owned
  *     container; adding a text component fires the
@@ -19,9 +19,15 @@
  *     one step outside either bound.
  *  4. Undo/redo reverses a real component add
  *     through `builder.setForm()` snapshots.
- *  5. The ported Bootstrap-4-era label template
- *     renders with the 5.x class vocabulary
- *     (`visually-hidden`, never `sr-only`).
+ *  5. G-06-6: the builder canvas renders with real
+ *     Bootstrap 5 styling — the scope root exposes
+ *     a non-empty `--bs-primary`, rows are wrapping
+ *     flex containers, the schema's columns are
+ *     fractions of their row, and form-controls
+ *     compute Bootstrap geometry. Measured by
+ *     computed style, never by class names: the
+ *     class names were already correct while the
+ *     styles were entirely absent.
  */
 
 import { expect, test } from '@playwright/test';
@@ -283,20 +289,89 @@ test.describe('S1 spike — FormIO 5.6.1 builder in the React 19 shell', () => {
     expect(await builderComponentCount(page)).toBe(before + 1);
   });
 
-  test('the ported Bootstrap-4-era label template renders with the 5.x class vocabulary', async ({
+  test('the builder canvas renders with real Bootstrap 5 styling — computed layout, not class names (G-06-6)', async ({
     page,
   }) => {
     await page.goto('/#/spike');
-    await waitForPreview(page);
+    const host = page.getByTestId('formio-builder-host');
+    await expect(host.locator('.formio-builder-form')).toBeVisible({
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
+    });
 
-    const preview = page.getByTestId('spike-preview');
-    // The hidden-label required field renders the ported
-    // label template: Bootstrap 5's `visually-hidden`
-    // where Bootstrap 4 used `sr-only`.
-    await expect(preview.locator('label.visually-hidden')).toHaveCount(1);
+    // The scope root carries the theme token block: without the scoped
+    // sheet `--bs-primary` is an empty string (the measured symptom).
+    const primary = await host.evaluate(
+      (el) => getComputedStyle(el).getPropertyValue('--bs-primary').trim(),
+    );
+    expect(primary, 'the scope root exposes no --bs-primary — the scoped sheet is absent').not.toBe('');
 
-    // No silently-broken 4.x class anywhere in the preview.
-    const html = await preview.innerHTML();
-    expect(html).not.toContain('sr-only');
+    // Every row inside the scope is a wrapping flex container (without
+    // the sheet a row computes display:block / flex-wrap:nowrap).
+    const rows = await host.evaluate((el) =>
+      [...el.querySelectorAll('.row')].map((row) => {
+        const style = getComputedStyle(row);
+        return { display: style.display, wrap: style.flexWrap };
+      }),
+    );
+    expect(rows.length, 'no .row inside the scope — the schema columns did not render').toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.display).toBe('flex');
+      expect(row.wrap).toBe('wrap');
+    }
+
+    // The schema's two columns render as fractional widths of their row,
+    // not two full-width blocks (without the sheet both compute the
+    // canvas width). Scoped to rows with at least two grid columns so
+    // the assertion is about the layout pair, and the sum check carries
+    // gutter headroom (border-box column widths include half-gutters).
+    const grids = await host.evaluate((el) =>
+      [...el.querySelectorAll('.row')]
+        .map((row) => {
+          const rowWidth = row.getBoundingClientRect().width;
+          const columns = [...row.children].filter((child) =>
+            /col-(sm|md|lg|xl|xxl)-\d+/.test(child.className),
+          );
+          return {
+            rowWidth,
+            widths: columns.map(
+              (child) => child.getBoundingClientRect().width,
+            ),
+          };
+        })
+        .filter((grid) => grid.widths.length >= 2),
+    );
+    expect(grids.length, 'no row with two grid columns — the schema layout pair did not render').toBeGreaterThan(0);
+    // The schema's own column classes are present (2/12 and 10/12),
+    // at least one of each — the builder chrome may repeat markup.
+    expect(await host.locator('.col-md-2').count()).toBeGreaterThanOrEqual(1);
+    expect(await host.locator('.col-md-10').count()).toBeGreaterThanOrEqual(1);
+    for (const grid of grids) {
+      for (const width of grid.widths) {
+        expect(width).toBeLessThan(grid.rowWidth);
+      }
+      const total = grid.widths.reduce((a, b) => a + b, 0);
+      expect(Math.abs(total - grid.rowWidth)).toBeLessThanOrEqual(
+        grid.rowWidth * 0.05 + 32,
+      );
+    }
+
+    // Every form-control inside the scope computes Bootstrap geometry —
+    // a 1px top border and 12px left padding — instead of the browser's
+    // unstyled default (2px inset border, 1px/2px padding). The count
+    // assertion keeps the loop non-vacuous.
+    const controls = await host.evaluate((el) =>
+      [...el.querySelectorAll('.form-control')].map((control) => {
+        const style = getComputedStyle(control);
+        return {
+          borderTop: style.borderTopWidth,
+          paddingLeft: style.paddingLeft,
+        };
+      }),
+    );
+    expect(controls.length, 'no .form-control inside the scope — nothing to check geometry on').toBeGreaterThan(0);
+    for (const control of controls) {
+      expect(control.borderTop).toBe('1px');
+      expect(control.paddingLeft).toBe('12px');
+    }
   });
 });
