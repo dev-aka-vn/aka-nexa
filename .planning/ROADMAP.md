@@ -51,6 +51,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1–8): the whole of v1, executed in numeric order.
 
 - [x] **Phase 1: Foundations & Platform** - Three pinned entrypoints, build-failing module boundaries, and the four irreversible contracts + three conflict rulings encoded in code (completed 2026-10-03)
@@ -71,6 +72,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Nothing (first phase)
 **Requirements**: FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08, FND-09, FND-10, LNK-07, RTE-10, AUD-10, DAT-13, OBS-01
 **Success Criteria** (what must be TRUE):
+
   1. A fresh clone runs `npm ci` with no peer-dependency error, and `.nvmrc` plus the committed `package-lock.json` pin Node 24 LTS and TypeScript 6.0.3 — a deliberate install with the lockfile deleted is what the guard exists for, not routine installs.
   2. `api`, `worker`, and `scheduler` each start as separate processes and each answers `/health/live` (checks no dependency) and `/health/ready` (checks MongoDB plus **both** Redis deployments); a Redis blip fails readiness without restarting a healthy pod.
   3. A module that imports across a declared component boundary fails the build; a compliant tree passes, and the three entrypoints cannot drift into one process.
@@ -81,26 +83,32 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Gap closure (2026-10-05):** UAT on the shipped phase found **G1** — no `.env.example`, no compose file, and no run documentation, while `01-10-SUMMARY.md:402` records D-11 as a "documented local full-stack run". Closed by `01-11-PLAN.md` (`gap_closure: true`), delivered and reviewed at 0 blockers. Reconciled as `resolved` in `01-UAT.md`. `phase.complete` was deliberately **not** run — see WINDOWS #17, which records it clobbering the FND-10 / AUD-10 / DAT-13 deferrals. Two UAT items remain human decisions, not verification tasks: the pino `msg` ruling (WINDOWS #5) and the KMS vendor (B-3 / D-27, which holds FND-10 Pending and gates Phase 5).
 **Verification (2026-10-03):** `gaps_found` — SC#3 failed on the subpath import form (gap G-1) and one advisory on `CryptoModule` composition. **Both closed the same day** (`44b0619`, `f813f64`); the verifier re-runs before Phase 2. FND-10 remains **pending** — composing `CryptoModule` makes the guard reachable from a real boot, it does not produce a KMS-backed key.
 **Wave 1**
+
 - [x] 01-01-PLAN.md — Workspaces scaffold, pinned toolchain, CI install guard, and the `api` boot tracer
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 01-02-PLAN.md — Zod boot config, the two-deployment Redis split, and the ioredis connection profiles
 - [x] 01-03-PLAN.md — Build-failing module boundaries and the per-app boot boundary assertion
 - [x] 01-04-PLAN.md — PII-safe structured logging with a frozen allowlist enforced before serialisation
 - [x] 01-06-PLAN.md — Frozen JEV v1 wire contract, read-link claim schema, and contract skeletons
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 01-05-PLAN.md — `KeyProvider`, the AES-256-GCM envelope, and the production key guard
 - [x] 01-07-PLAN.md — Three-container test harness, native-driver Mongo, and per-dependency readiness
 - [x] 01-08-PLAN.md — BullMQ queue registration, `{akane-q}` prefix, heartbeat scheduler, and business metrics
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [x] 01-09-PLAN.md — OTel bootstrap, span-attribute allowlist, and the single Prometheus metrics path
 
 **Wave 5** *(blocked on Wave 4 completion)*
+
 - [x] 01-10-PLAN.md — Compose the three app graphs, the ESM bootstrap shape, and the entrypoint-drift test
 
 **Wave 6** *(gap closure — blocked on Waves 1–5 completion; ran on the shipped tree)*
+
 - [x] 01-11-PLAN.md — Document the boot contract: `.env.example`, `compose.dev.yml`, run section, and a spec that performs the documented start for real (G1)
 
 **Notes**: Two Redis deployments are split from day one — BullMQ requires `maxmemory-policy=noeviction` while the cache wants eviction, and the policy is instance-wide. Rate limiting is **per user and per link `jti`, never per IP**, and blocks only on signature failure (`NFR-SEC-10` loses). `FR-D-12` write-once is **amended** to a single-send guarantee plus a per-connector `supports_idempotency_key` flag. The §15.4 erasure promise is narrowed to PII-excluded-by-allowlist + tombstonable `actor_ref` + defined purge windows.
@@ -114,6 +122,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Phase 1
 **Requirements**: IDN-01, IDN-02, IDN-03, IDN-04, IDN-06, IDN-07, ACL-01, ACL-02, ACL-03, ACL-04, ACL-06, ACL-07, ACL-08, ACL-09, ACL-11, IM-01, IM-02, IM-03, IM-04, IM-05, IM-06, IM-07, IM-08, IM-09, IM-11, APP-01, APP-02, APP-04, FRM-01, FRM-02, FRM-03, FRM-04, FRM-06, FRM-07, FRM-08, LNK-01, LNK-03, LNK-04, LNK-09, LNK-10, LNK-11, LNK-12, DAT-02, DAT-08, DAT-09, AUD-01, AUD-02
 **Success Criteria** (what must be TRUE):
+
   1. A pre-provisioned employee types `/leave request` in Slack, receives a signed link, fills the rendered form, and gets a confirmation **in the same thread** carrying the submission's ID — without ever opening another system.
   2. Replaying the submit request produces exactly one submission, and an integration test that **kills Redis mid-submit** also produces exactly one submission — the MongoDB unique index is the guarantee, `GETDEL` is only the fast path.
   3. An unmapped user receives plain-language onboarding instructions in chat, never a raw system error; a deactivated mapping stops future resolution while that user's historical submissions remain readable.
@@ -121,6 +130,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   5. Every state change writes an append-only audit entry recording actor, action, target, previous state, and new state; success and failure produce two **distinct**, actionable Slack messages; a duplicate platform delivery produces one processing job.
 
 **Plans**: TBD
+
 - [x] 02-01-PLAN.md
 - [x] 02-02-PLAN.md
 - [x] 02-03-PLAN.md
@@ -136,6 +146,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Phase 2
 **Requirements**: RTE-01, RTE-02, RTE-03, RTE-04, RTE-05, RTE-06, RTE-07, RTE-08, RTE-09, RTE-11, OBS-02
 **Success Criteria** (what must be TRUE):
+
   1. A user types "I want to request leave" and receives the same signed form link they would get from `/leave request`.
   2. A user without permission on an app never sees it offered, and the decision provider's request payload contains only the apps that user can actually open — never the global catalogue.
   3. When the hosted provider is unreachable or slow, the request still returns a routing decision inside the 2-second chat-to-link budget by propagating a deadline down the fallback chain to a local rule-based provider. The user never sees an error.
@@ -143,6 +154,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   5. Every provider — including the rule-based one — passes a conformance suite of 50 labelled intents and degrades gracefully on an empty tool list, unknown input, and a malformed request; accuracy is reported **per app with a confidence interval**, never as a single number.
 
 **Plans**: 3/3 plans executed
+
 - [x] 03-01-PLAN.md — Tracer: RBAC-filtered local routing slice through the worker, rule-based provider, verified===true gate
 - [x] 03-02-PLAN.md — Config-ordered provider chain, absolute deadline, 60s health probes, RTE-09 cache
 - [x] 03-03-PLAN.md — Clarification sessions, redaction fail-safe, RTE-11 conformance suite, OBS-02 stage spans
@@ -158,12 +170,14 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Phase 3
 **Requirements**: LNK-05, LNK-06, LNK-08, DAT-10, DAT-11, DAT-12
 **Success Criteria** (what must be TRUE):
+
   1. A user opens a view link in a browser with no cookie set and sees only their own submission; the link verifies with the **public key alone**, which is why signing is asymmetric.
   2. Revoking that user's permission makes the already-issued link fail on the next click, and the failure is recorded with a distinct reason — expired, consumed, revoked, wrong app, wrong version, deactivated user, or bad signature — not one aggregate counter.
   3. A manager holding `view_all` sees the whole team's records; a regular user never sees another user's records, including soft-deleted rows, and one filter builder emits both `real_user_id` and `deleted_at: null` so neither can be omitted.
   4. Rotating the signing key invalidates nothing: links signed by the previous key keep working through the zero-downtime dual-key window, and a new key can be added without touching live links.
 
 **Plans**: TBD
+
 - [x] 04-01-PLAN.md
 - [x] 04-02-PLAN.md
 - [x] 04-03-PLAN.md
@@ -186,6 +200,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Phase 4 (and structurally on Phase 2's submission record)
 **Requirements**: DAT-01, DAT-03, DAT-04, DAT-05, DAT-06, DAT-07, DAT-14, CON-01, CON-02, CON-03, CON-04, CON-05, CON-06, CON-07, CON-08, CON-09, CON-10, LNK-02, OBS-04
 **Success Criteria** (what must be TRUE):
+
   1. A hybrid submission confirms in chat the moment the internal write commits; the Redmine ticket appears seconds later; and if Redmine is down the submission shows as **`partial`** on the user's own status page rather than disappearing.
   2. A failed connector call retries with exponential backoff, then lands in a dead-letter queue a platform admin can view and retry by hand; the outbound request is never sent for an internal write that did not commit.
   3. Nothing in `sent_unconfirmed` is ever auto-resent — the reconciliation job retries only `not_sent`, because an unconfirmed send may already have reached Redmine.
@@ -194,22 +209,27 @@ Four researchers converged on this shape; the deviation is stated rather than si
 
 **Plans**: 9/9 plans executed
 **Wave 1**
+
 - [x] 05-01-PLAN.md — Tracer: connector seam, boundary edge, credential store, transactional outbox, relay + delivery
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 05-02-PLAN.md — Field-mapping resolver, HTTP→taxonomy split, Redmine contract spec
 - [x] 05-03-PLAN.md — Data-mode routing, `partial` outcome, atomic outbox commit + repository
 - [x] 05-04-PLAN.md — Backoff/DLQ budget, per-revision idempotency, reconciliation sweep
 - [x] 05-05-PLAN.md — Real Redis ThrottlerStorage + business metrics (`submission_status`, connector counter)
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 05-06-PLAN.md — Operator CLI: connector seed, `dlq list`/`retry`, audited `connector_ref` rebind
 - [x] 05-07-PLAN.md — "My submissions" status surface via the frozen query action
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [x] 05-08-PLAN.md — Edit link: atomic consume-on-submit, new revision + D-95 replay
 
 **Wave 5** *(blocked on Wave 4 completion)*
+
 - [x] 05-09-PLAN.md — Renderer surfaces A–D, self-hosted FormIO, package-legitimacy gate
 
 **UI hint**: yes
@@ -223,47 +243,58 @@ Four researchers converged on this shape; the deviation is stated rather than si
 **Depends on**: Phase 5
 **Requirements**: BLD-01, BLD-02, BLD-03, BLD-04, BLD-05, BLD-06, BLD-07, BLD-08, BLD-09, BLD-10, BLD-11, BLD-12, APP-03, APP-05, APP-06, APP-07, APP-08, APP-09, FRM-05, FRM-09, IDN-05, IDN-08, ACL-05, ACL-10, OBS-05
 **Success Criteria** (what must be TRUE):
+
   1. A department admin signs in with corporate SSO (OIDC, MFA), creates a working app in **five wizard steps or fewer** without documentation, and publishes it — with the change-summary confirmation, the routing dry-run that blocks a >5-point routing-share drop for any existing app, and the description-collision check all enforced.
   2. A department admin publishes an **external or hybrid app after requesting a connector**, with no platform admin creating credentials for them. `FR-C-2` + `FR-C-10` + §12.4 otherwise mean the Redmine, HR, and ERP use cases that justify this product are unreachable by the people it is for — an org-chart dependency inside a self-service promise.
   3. An employee with no CSV mapping self-onboards by OTP from Slack — 10-minute expiry, 3 attempts, 30-minute lockout — and can immediately use an app they were granted; an admin can also map an SSO identity without the user verifying anything.
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: 10/12 plans executed — 8 executed, 4 gap-closure pending
+**Plans**: 11/12 plans executed — 8 executed, 4 gap-closure pending
 
 Plans:
 **Wave 1**
+
 - [x] 06-01-PLAN.md — Spike S1: FormIO 5.6.1 builder mount, snapshot undo/redo, 5.x shape verification, SPA shell, boundary extension (package-legitimacy gate)
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 06-02-PLAN.md — Builder auth: OIDC authorization-code + PKCE login, Redis session with __Host- cookie, MFA claim gate, auto-provision, IDN-08 SSO mapping
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 06-03-PLAN.md — IDN-05 OTP self-onboarding: Redis state machine (10-min / 3-attempt / 30-min lockout) wired into the chat pipeline
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [x] 06-04-PLAN.md — App definitions: draft CRUD, 20-version retention + rollback, lifecycle state machine, D-31 template gallery with snapshot forks, G-11 saved-query store replacement
 
 **Wave 5** *(blocked on Wave 4 completion)*
+
 - [x] 06-05-PLAN.md — Publish gate: APP-07 routing dry-run through the real orchestrator (>5-point share drop blocks), APP-08 description collision, BLD-06 change summary, OBS-05 routing_share{app_id} metric
 
 **Wave 6** *(blocked on Wave 5 completion)*
+
 - [x] 06-06-PLAN.md — Connector requests (BLD-10, D-97..D-100: definition minus secret, operator-provisioned terminal state), submissions viewer + visible-column CSV export (BLD-08/D-111), field-mapping endpoint (BLD-05)
 
 **Wave 7** *(blocked on Wave 6 completion)*
+
 - [x] 06-07-PLAN.md — SPA core: 5-step wizard (BLD-01), tabbed editor (BLD-02), FormIO designer with undo/redo + conditional/validate + sandbox preview (BLD-04/FRM-05/FRM-09), roles + autocomplete + @casl/ability (BLD-03/ACL-10/BLD-11), skeletons + inline errors (BLD-07/BLD-09)
 
 **Wave 8** *(blocked on Wave 7 completion)*
+
 - [x] 06-08-PLAN.md — SPA surfaces: live-data dashboard (D-112), submissions/connectors pages, users page (IDN-08 + ACL-05 transfer with 7-day auto-cancel), audit browse, template gallery + tag filter, settings stub (D-109)
 
 **Gap closure** *(from 06-UAT.md: G-06-4, G-06-6, G-06-7, G-06-8)*
 
 **Wave 9** *(depends on Wave 8)*
+
 - [x] 06-09-PLAN.md — G-06-6: a scoped, selector-prefixed Bootstrap 5 stylesheet from a checked-in generator, consumed by the designer canvas and preview pane, with a computed-style layout guard (BLD-04, FRM-09)
 - [x] 06-11-PLAN.md — G-06-4: one publish confirmation gate both the button and Ctrl/Cmd+S route through, plus the dirty-JSON guard that blocks the chord (BLD-06)
-- [ ] 06-12-PLAN.md — G-06-7: the designer's return path back to the wizard resuming the step left with in-progress input preserved, via a route-encoded step and a session-scoped snapshot (BLD-01)
+- [x] 06-12-PLAN.md — G-06-7: the designer's return path back to the wizard resuming the step left with in-progress input preserved, via a route-encoded step and a session-scoped snapshot (BLD-01)
 
 **Wave 10** *(blocked on Wave 9)*
+
 - [ ] 06-10-PLAN.md — G-06-8: the signer renderer consumes the same scoped stylesheet, gains its own dev server and Playwright projects, and the UAT record gains renderer coverage (FRM-09)
 
 **UI hint**: yes
@@ -278,6 +309,7 @@ Plans:
 **Depends on**: Phase 6
 **Requirements**: IM-10, NOT-01, NOT-02, NOT-03, NOT-04, NOT-05
 **Success Criteria** (what must be TRUE):
+
   1. A Teams employee requests leave through the same plain-language and slash-command paths as a Slack employee, and receives the same signed link and threaded confirmation — same normalized event contract, no Teams-specific code path in the kernel.
   2. Redmine pushes a signed status webhook mapped from its entity ID to a `submission_id`; the original submitter receives an IM notification whose deep link opens **only that person's** record.
   3. A replayed webhook — stale timestamp or reused nonce — is rejected and logged, and IM delivery failure retries three times rather than disappearing.
@@ -295,6 +327,7 @@ Plans:
 **Depends on**: Phase 7
 **Requirements**: AUD-03, AUD-04, AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, OBS-03, OBS-06, OBS-07, OBS-08, OBS-09, OBS-10
 **Success Criteria** (what must be TRUE):
+
   1. A global admin can answer "who changed what, when, and from where" for any of the last three years, searching by user, app, action, and date range, and can export that trail as CSV or JSON Lines. Archived apps' data stays queryable for compliance.
   2. An erasure request nulls the actor reference on audit rows **without deleting a single audit row**, and a purge soft-deletes first then hard-deletes after a 30-day grace period with operator ID and timestamp recorded.
   3. A quarterly access-review report is produced without manual work, naming who holds access to what.
@@ -327,6 +360,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 8 | Production Readiness | 4.5 wk | 4–5 |
 
 **Basis:**
+
 - **Throughput assumption: one engineer + one implementer agent.** No team, no parallel human
   streams. `config.parallelization: true` parallelises plans and waves *within* a phase; it does not
   add people. This is the single largest driver of the total.
@@ -361,7 +395,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
-| 6. Self-Service App Builder | 10/12 | In Progress|  |
+| 6. Self-Service App Builder | 11/12 | In Progress|  |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |
 

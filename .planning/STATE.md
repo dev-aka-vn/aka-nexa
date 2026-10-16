@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Self-Service App Builder
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 06-11-PLAN.md
-last_updated: "2026-10-16T06:36:46.726Z"
-state_head: c3bb18e18a3d0e6e23c6f1b9bed49a4d14e92512
+stopped_at: Completed 06-12-PLAN.md
+last_updated: "2026-10-16T07:11:44.587Z"
+state_head: 3317e6cdb1f8d12a61849d2493627431803cd320
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 49
-  completed_plans: 47
+  completed_plans: 48
   percent: 50
 last_activity: 2026-10-15
 last_activity_desc: Completed quick task 261015-p1h — the App Builder dev proxy now preserves the browser Host, so state-changing requests from the SPA stop answering 403 CSRF_ORIGIN_MISMATCH.
@@ -20,15 +20,15 @@ last_activity_desc: Completed quick task 261015-p1h — the App Builder dev prox
 ## Current Position
 
 Phase: 06 (Self-Service App Builder) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 12
 
 ## Session
 
-**Last session:** 2026-10-16T06:36:42.920Z
-**Stopped at:** Completed 06-11-PLAN.md
+**Last session:** 2026-10-16T07:11:42.932Z
+**Stopped at:** Completed 06-12-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -57,6 +57,7 @@ Total Plans in Phase: 12
 | Phase 06 P06-08 | 4h 49m | 3 tasks | 48 files |
 | Phase 06-self-service-app-builder P09 | 50min | 3 tasks | 10 files |
 | Phase 06-self-service-app-builder P11 | 55min | 2 tasks | 4 files |
+| Phase 06-self-service-app-builder P12 | 40min | 2 tasks | 6 files |
 
 ## Decisions
 
@@ -124,6 +125,10 @@ Total Plans in Phase: 12
 - [Phase 06]: [Phase 06-11]: Publish gate states the effect without change rows — change summary is the publish response payload, no dry-run endpoint (frozen-contract precedence)
 - [Phase 06]: [Phase 06-11]: Only the Ctrl/Cmd+S chord carries the dirty-JSON guard — a button click is an explicit act the gate already confirms
 - [Phase 06]: [Phase 06-11]: Stub PATCH echoes the forms-section patch so a saved edit stops reading as dirty (page re-reads persisted state off the PATCH response)
+- [Phase 06]: [Phase 06-12]: Resume restores position+inputs from the session snapshot and the draft definition from the server (GET /apps/:id) — snapshot is working state, API is truth (T-06-48)
+- [Phase 06]: [Phase 06-12]: Wizard route sync uses history.replaceState, never location.hash assignment — no hashchange, no remount loop (T-06-49)
+- [Phase 06]: [Phase 06-12]: RoutedPage keys the wizard by app id so an app-id change remounts into exact fresh hydration — sidebar Create mid-flow stays a fresh wizard
+- [Phase 06]: [Phase 06-12]: Designer return control renders only with a live snapshot; no back-to-app-editor breadcrumb (explicitly not required)
 
 ## Blockers/Concerns
 
