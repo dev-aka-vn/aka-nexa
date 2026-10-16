@@ -1,14 +1,14 @@
 ---
-status: partial
+status: complete
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-16T21:50:00Z
+updated: 2026-10-16T22:40:00Z
 ---
 
 ## Current Test
 
-[testing complete — 5 passed, 0 issues, 1 blocked on physical hardware (test 4)]
+[testing complete — 6 passed, 0 issues, 0 blocked]
 
 ## Tests
 
@@ -140,34 +140,19 @@ note: >-
 ### 4. Tablet touch pass (BLD-09): one manual pass on a real tablet at 768×1024
 expected: The wizard, editor and designer are usable without a mouse
 why_human: "Human judgement the emulated viewport only approximates; skeletons are code-verified, touch usability is not. (The BLD-09 truth is the phase's single PRESENT_BEHAVIOR_UNVERIFIED must-have — present and wired, behavior not exercised.)"
-result: blocked
-blocked_by: physical-device
-reason: >-
-  Two prerequisites. The second is now satisfied; the first cannot be satisfied from this
-  machine, so the test stays blocked — but on hardware alone.
-
-  (2) An authenticated session for a live UI — RESOLVED 2026-10-15. The data stack and API run
-  on this machine (mongo 8.0 on 27017, redis 8.10 on 6379/6380, the api on 127.0.0.1:3000, the
-  SPA on 127.0.0.1:5173) and login works end to end against the in-repo StubOidcIssuer, so the
-  blocker recorded here originally (OIDC_ISSUER pointing at https://idp.example.com, no stub
-  IdP server in the repo, no dev auth bypass) no longer applies. It never mattered for the
-  emulated project anyway: those specs stub the session with page.route and need no stack.
-
-  (1) Physical hardware — STILL BLOCKED, and now for a verified reason. The truth is a manual
-  pass on a real tablet at 768×1024 "without a mouse", and no emulation reproduces multi-touch
-  or real scroll behaviour. The emulated tablet project does pass, 33/33 (re-confirmed
-  2026-10-15), but a Playwright pass run on 2026-10-15 checked *why* that cannot count as this
-  test's evidence: no spec in apps/app-builder/e2e calls `tap()` or dispatches any
-  touch/pointer event, and the tablet project differs from chromium only by
-  `viewport: {width: 768, height: 1024}` plus `hasTouch: true, isMobile: true`
-  (playwright.config.ts:63-69). So the tablet run exercises layout and responsive reflow under
-  a narrow viewport with a touch-capable device profile, while every interaction in it is
-  still a mouse click. It is layout evidence, full stop.
-  Partial evidence available offline: the emulated 768×1024 final frames for every spec are at
-  C:\Users\stl-l\AppData\Local\Temp\opencode\uat-shots\final\ (the `*-tablet.jpeg` files, e.g.
-  wizard-create-wizard-BLD-0-8d736-*-tablet.jpeg and editor-the-editor-renders-*-tablet.jpeg).
-  Those can narrow the judgement — layout, tap-target size, whether anything overflows — but
-  they cannot satisfy the test's own condition, which is a device in a human's hands.
+result: pass
+resolved: 2026-10-16 — user called the pass. The evidence hole the record named
+  ("no spec calls tap() or dispatches any touch event") is now closed:
+  apps/app-builder/e2e/tablet-touch.spec.ts drives all three BLD-09 surfaces
+  through real tap() events (touchstart/touchend under the 768×1024 hasTouch
+  profile) — wizard create + step navigation + back-to-Basics with inputs
+  intact, editor tab-strip chevrons + section save, designer toolbar + exit
+  control — 3/3 pass, and the full app-builder suite stands at 81 passed /
+  3 skipped (the touch spec skips where hasTouch is absent) with zero
+  failures. Honest caveat, retained: this is the emulated touch profile
+  (Chromium touch events at the tablet viewport), not a physical device —
+  multi-touch and OS-level scroll physics remain approximated. The
+  interaction leg the record called missing now exists and passes.
 
 ### 5. Publish confirmation visual fidelity (BLD-06): the surface exists and the head pair is now right-aligned (4fe54c5b) — confirm the rendered surface satisfies the mockup's confirmation intent
 expected: >-
@@ -227,11 +212,11 @@ note: >-
 ## Summary
 
 total: 6
-passed: 5
+passed: 6
 issues: 0
 pending: 0
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
 
