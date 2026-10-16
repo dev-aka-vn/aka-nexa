@@ -1,0 +1,73 @@
+/*
+ * Chrome-leak guards for the FormIO subtree (G-06-6's boundary).
+ *
+ * The app chrome's global `.btn` (chrome.css) leaks into FormIO's
+ * component hover toolbar: FormIO renders its settings buttons as
+ * `.btn.btn-xxs` divs sized 18x18, and while the scoped Bootstrap
+ * sheet out-ranks the chrome rule (0,2,0 vs 0,1,0) for every property
+ * Bootstrap itself sets, two chrome declarations have no Bootstrap
+ * counterpart to beat:
+ *
+ *  - `min-height: 40px` — `min-height` always wins over the builder's
+ *    `height: 18px`, stretching every toolbar button to 40px tall
+ *    (icons crammed at the top, the bar overrunning its component);
+ *  - `gap: 8px` — no Bootstrap `.btn` sets it.
+ *
+ * This file is imported after the generated scoped sheet
+ * (`formio-scope.css`) — hand edits there are wiped by
+ * `npm run build:formio-scope-css`, so the guards live here.
+ * The `.formio-scope` root reaches both the canvas and the
+ * body-mounted component-settings dialog (which the mount tags with
+ * the scope class), so one rule covers every FormIO surface.
+ *
+ * Bootstrap buttons size from padding and line-height, never
+ * `min-height`, so zeroing it inside the scope changes nothing for
+ * them — only the leak stops.
+ */
+
+.formio-scope .btn {
+  min-height: 0;
+  gap: 0;
+}
+
+/*
+ * FormIO's builder templates still emit the Bootstrap-3-era
+ * `btn-default` class for the copy/paste toolbar buttons; the
+ * Bootstrap-5 scoped sheet has no such rule, so those buttons were
+ * picking up the chrome `.btn` background by default. Style them as
+ * the light secondary button the template intends, from the scope
+ * root's own Bootstrap token block.
+ */
+.formio-scope .btn-default {
+  background-color: var(--bs-body-bg, #fff);
+  border: var(--bs-border-width, 1px) solid var(--bs-border-color, #dee2e6);
+  color: var(--bs-body-color, #212529);
+}
+
+/*
+ * The builder toolbox (the component sidebar) — FormIO's builder row
+ * places it in `col-md-2`, a 16.7% column that on the designer card's
+ * ~720px canvas is only ~120px wide: every two-word label ("Text
+ * Field", "Select Boxes", "Text Area") wrapped onto two lines. The
+ * stock desktop proportion is ~200px (what col-md-2 yields on a wide
+ * container), so pin the sidebar to that and let the canvas take the
+ * rest. Media-scoped to md+ exactly like the col-md-* rules it
+ * overrides — below 768px the builder stacks and keeps its natural
+ * full-width toolbox. Same-specificity tie with the scoped sheet's
+ * `.formio-scope .col-md-2` resolves by order: this file imports
+ * after `formio-scope.css`, and the dynamically imported engine sheet
+ * sets no column widths (verified).
+ */
+@media (min-width: 768px) {
+  .formio-scope .formbuilder > .formcomponents {
+    flex: 0 0 200px;
+    width: 200px;
+    max-width: 200px;
+  }
+  .formio-scope .formbuilder > .formarea {
+    flex: 1 1 0%;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
+}

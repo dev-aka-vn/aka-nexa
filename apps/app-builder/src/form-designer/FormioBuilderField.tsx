@@ -43,6 +43,12 @@ import {
 // dynamic import of the engine's own stylesheet further below — that one
 // stays exactly as it is.
 import './formio-scope.css';
+// The chrome-leak guards (see the file header): the app chrome's global
+// `.btn` — in particular `min-height: 40px` — stretches FormIO's 18px
+// component hover toolbar into 40px-tall slabs. This import must stay
+// after `formio-scope.css` so the guards win the cascade inside the
+// scope root.
+import './formio-overrides.css';
 import { SchemaHistory } from './undoHistory';
 
 /** The builder surface the designer consumes (documented public API). */
@@ -213,6 +219,35 @@ export function FormioBuilderField({
   useEffect(() => {
     let cancelled = false;
 
+    // G-06-6's scope boundary vs FormIO's dialog: the builder's
+    // component-settings dialog mounts at document.body — outside
+    // the `.formio-scope` mount container — so the scoped Bootstrap
+    // sheet never reached it and the dialog's form controls rendered
+    // with browser-default geometry ("broken style": 2px-inset
+    // borders, Arial, no grid). This observer tags each dialog with
+    // the scope class as it appears, putting the dialog's subtree
+    // under the same scoped sheet as the canvas. The class carries
+    // no behaviour of its own beyond the sheet's selectors, and the
+    // scoped sheet's `.formio-scope .btn` (0,2,0) outranks the app
+    // chrome's global `.btn` (0,1,0), so the dialog styles as
+    // Bootstrap inside exactly where the canvas does.
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof HTMLElement)) {
+            continue;
+          }
+          const dialogs = node.matches('.formio-dialog')
+            ? [node, ...node.querySelectorAll('.formio-dialog')]
+            : [...node.querySelectorAll('.formio-dialog')];
+          for (const dialog of dialogs) {
+            dialog.classList.add('formio-scope');
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
     (async () => {
       // Pattern 1's guard: never touch the FormIO module
       // outside a DOM check. A Node import of this module
@@ -265,6 +300,7 @@ export function FormioBuilderField({
 
     return () => {
       cancelled = true;
+      observer.disconnect();
       builderRef.current = null;
       // FormIO owns this DOM (Pitfall 4) — clear it on
       // unmount so a remount starts from an empty leaf.

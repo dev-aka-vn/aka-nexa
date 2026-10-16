@@ -818,6 +818,32 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
                     </span>
                   </label>
                 ) : null}
+                {activeSection === 'forms' ? (
+                  <div
+                    className="od-row"
+                    style={{ '--od-gap': '10px', alignItems: 'center' } as never}
+                  >
+                    {/*
+                      The designer entry point from the editor (BLD-04):
+                      the form is authored in the FormIO designer — the
+                      same route the wizard's Form step links to. Raw
+                      JSON editing stays for the cases the designer does
+                      not cover, but it is no longer the only way in.
+                    */}
+                    <a
+                      className="btn btn-sm"
+                      data-testid="editor-open-designer"
+                      href={`#/apps/${appId}/designer`}
+                    >
+                      Open the form designer
+                    </a>
+                    <span className="helper">
+                      Drag-and-drop components, author conditionals and
+                      validation, and preview the draft — the JSON below
+                      stays the source of truth either way.
+                    </span>
+                  </div>
+                ) : null}
                 <span className="helper">
                   The section's JSON payload (the{' '}
                   {jsonFields.join(', ')} field

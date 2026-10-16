@@ -351,6 +351,27 @@ export function FormDesignerPage({
     canUndo: false,
     canRedo: false,
   });
+  /**
+   * The schema's persistence state (the user-facing
+   * half of BLD-04): the builder edits only its
+   * in-memory schema — nothing reaches the API until
+   * Save fires PATCH /apps/:id {section: 'forms'}.
+   * `dirty` tracks builder edits against the last
+   * saved (or served) schema; the back-to-wizard
+   * link routes through `saveForm` while dirty, so
+   * leaving the designer can no longer silently
+   * discard the design.
+   */
+  const [saving, setSaving] = useState(false);
+  const [savedVersion, setSavedVersion] = useState<
+    number | null
+  >(null);
+  const [saveError, setSaveError] = useState<unknown>(
+    null,
+  );
+  const [dirty, setDirty] = useState(false);
+  /** The JSON of the schema as last persisted. */
+  const lastSavedJsonRef = useRef('');
 
   /**
    * G-06-7's return leg: the wizard position
@@ -358,17 +379,29 @@ export function FormDesignerPage({
    * once — the designer mounts because the
    * wizard unmounted, so no snapshot can
    * appear mid-visit. With no snapshot there
-   * is no retained step to resume, and no
-   * control renders: a link that silently
-   * drops the user at a fresh wizard is the
-   * dead end the gap reports. (No
-   * back-to-app-editor breadcrumb — explicitly
-   * not required.)
+   * is no retained step to resume, so the
+   * exit control targets the app editor
+   * instead: the designer must always offer
+   * a way back — entering it from the
+   * editor's Forms tab (or after the wizard
+   * finished and cleared its snapshot) used
+   * to strand the user with no exit at all.
    */
   const [wizardReturnStep] = useState<number | null>(() => {
     const snapshot = readWizardSnapshot(appId);
     return snapshot === null ? null : snapshot.step;
   });
+
+  /**
+   * Where the exit control leads: the resumable
+   * wizard position when one was snapshotted, the
+   * app editor otherwise. The same target the
+   * save-on-leave handler navigates to.
+   */
+  const exitTarget =
+    wizardReturnStep !== null
+      ? `#/wizard?app=${encodeURIComponent(appId)}&step=${wizardReturnStep}`
+      : `#/apps/${encodeURIComponent(appId)}`;
 
   const load = useCallback(async (): Promise<void> => {
     setLoadError(null);
@@ -380,12 +413,18 @@ export function FormDesignerPage({
       setDefinition(loaded);
       // A draft with a schema edits it; a
       // draft without one starts blank.
-      setSchema(
-        structuredClone(
-          (loaded.form_schema ??
-            EMPTY_FORM_SCHEMA) as Record<string, unknown>,
-        ),
+      const restored = structuredClone(
+        (loaded.form_schema ??
+          EMPTY_FORM_SCHEMA) as Record<string, unknown>,
       );
+      setSchema(restored);
+      // The served schema is the persistence baseline
+      // the dirty tracker compares builder edits
+      // against.
+      lastSavedJsonRef.current = JSON.stringify(restored);
+      setDirty(false);
+      setSavedVersion(null);
+      setSaveError(null);
     } catch (error) {
       setDefinition(null);
       setLoadError(error);
@@ -406,9 +445,54 @@ export function FormDesignerPage({
   const handleSchemaChange = useCallback(
     (current: Record<string, unknown>): void => {
       setSchema(structuredClone(current));
+      // Every builder change is an unsaved edit until
+      // Save persists it. (FormIO may also normalise
+      // the served schema and round-trip it through
+      // here on mount; the worst case of counting
+      // that as dirty is one harmless extra save —
+      // never a silently discarded design.)
+      setDirty(
+        JSON.stringify(current) !== lastSavedJsonRef.current,
+      );
     },
     [],
   );
+
+  /**
+   * Persist the builder's current schema (BLD-04's
+   * save leg): PATCH /apps/:id with the frozen
+   * `forms` section shape — `{section, patch:
+   * {form_schema}}` — the same version-bumped,
+   * audited transition the editor's section saves
+   * use. Returns whether the save landed, so the
+   * back-to-wizard link can refuse to navigate away
+   * from a failed save (a silent discard is the
+   * exact defect this closes).
+   */
+  const saveForm = useCallback(async (): Promise<boolean> => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const current =
+        builderFieldRef.current?.builder?.schema ?? schema;
+      const response = await client.patch(
+        `/apps/${appId}`,
+        { section: 'forms', patch: { form_schema: current } },
+        AppDefinitionSchema,
+      );
+      setDefinition(response);
+      lastSavedJsonRef.current = JSON.stringify(current);
+      setDirty(false);
+      setSavedVersion(response.version);
+      return true;
+    } catch (error) {
+      setSavedVersion(null);
+      setSaveError(error);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [appId, client, schema]);
 
   const handleHistoryChange = useCallback(
     (state: { canUndo: boolean; canRedo: boolean }): void => {
@@ -468,15 +552,38 @@ export function FormDesignerPage({
             {definition?.version ?? '…'}
           </p>
         </div>
-        {wizardReturnStep !== null ? (
-          <a
-            className="btn btn-sm"
-            data-testid="designer-back-to-wizard"
-            href={`#/wizard?app=${encodeURIComponent(appId)}&step=${wizardReturnStep}`}
-          >
-            Back to the wizard
-          </a>
-        ) : null}
+        <a
+          className="btn btn-sm"
+          data-testid={
+            wizardReturnStep !== null
+              ? 'designer-back-to-wizard'
+              : 'designer-back-to-app'
+          }
+          href={exitTarget}
+          onClick={(event) => {
+            // Leaving with unsaved edits routes through
+            // the save first — the silent discard this
+            // link used to perform is the defect the
+            // save leg closes. A failed save keeps the
+            // user here (the inline error names why);
+            // navigation only proceeds once the
+            // schema is persisted.
+            if (!dirty) {
+              return;
+            }
+            event.preventDefault();
+            void (async () => {
+              const saved = await saveForm();
+              if (saved) {
+                window.location.hash = exitTarget;
+              }
+            })();
+          }}
+        >
+          {wizardReturnStep !== null
+            ? 'Back to the wizard'
+            : 'Back to the app'}
+        </a>
       </div>
 
       {loadError !== null ? (
@@ -520,7 +627,42 @@ export function FormDesignerPage({
             <span className="pill-mono">
               {formFieldKeys(schema).length} fields
             </span>
+            {dirty ? (
+              <span
+                className="pill-mono"
+                data-testid="designer-dirty"
+                style={{ color: 'var(--amber)' }}
+              >
+                unsaved changes
+              </span>
+            ) : null}
+            {savedVersion !== null ? (
+              <span
+                className="helper"
+                data-testid="designer-saved"
+                style={{ color: 'var(--green)' }}
+              >
+                Saved — version {savedVersion}.
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              data-testid="designer-save-button"
+              disabled={saving}
+              onClick={() => void saveForm()}
+            >
+              {saving ? 'Saving…' : 'Save form'}
+            </button>
           </div>
+
+          {saveError !== null ? (
+            <InlineError
+              operation="save the form schema"
+              error={saveError}
+              onRetry={() => void saveForm()}
+            />
+          ) : null}
 
           <div className="grid-main">
             <section className="card">
