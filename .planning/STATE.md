@@ -1,35 +1,35 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 6
+current_phase: 06
 current_phase_name: Self-Service App Builder
-current_plan: 8
+current_plan: 2
 status: executing
-stopped_at: Phase 6 UI-SPEC approved
-last_updated: "2026-10-15T17:54:18.264Z"
-state_head: bb699ac95f7070e0ea5a1286e660ab55e35d5cde
+stopped_at: Completed 06-09-PLAN.md
+last_updated: "2026-10-16T06:01:57.467Z"
+state_head: 66ab6d0dde700237996661aff421fcbbb98857b8
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 49
-  completed_plans: 45
-  percent: 13
+  completed_plans: 46
+  percent: 50
 last_activity: 2026-10-15
 last_activity_desc: Completed quick task 261015-p1h — the App Builder dev proxy now preserves the browser Host, so state-changing requests from the SPA stop answering 403 CSRF_ORIGIN_MISMATCH.
 ---
 
 ## Current Position
 
-Phase: 6 (Self-Service App Builder) — READY TO EXECUTE
-Plan: 8 of 8
+Phase: 06 (Self-Service App Builder) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
-Current Plan: 8
+Current Plan: 2
 Total Plans in Phase: 12
 
 ## Session
 
-**Last session:** 2026-10-13T11:15:15.232Z
-**Stopped at:** Phase 6 UI-SPEC approved
-**Resume file:** /home/chunghoi/dev-aka-vn/aka-nexa/.planning/phases/06-self-service-app-builder/06-UI-SPEC.md
+**Last session:** 2026-10-16T06:01:55.361Z
+**Stopped at:** Completed 06-09-PLAN.md
+**Resume file:** None
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Total Plans in Phase: 12
 | Phase 06-self-service-app-builder P06 | 96min | 3 tasks | 28 files |
 | Phase 06 P06-07 | 10369 | 3 tasks | 39 files |
 | Phase 06 P06-08 | 4h 49m | 3 tasks | 48 files |
+| Phase 06-self-service-app-builder P09 | 50min | 3 tasks | 10 files |
 
 ## Decisions
 
@@ -117,6 +118,8 @@ Total Plans in Phase: 12
 - [Phase 06]: The plan's single transfer.controller.ts was split into transfer-request.controller.ts (owner) + transfer-approval.controller.ts (global-admin) — the two RBAC roles own distinct route trees
 - [Phase 06]: Rule 1 fix: the app-shell header row wraps at narrow widths — the 8-link nav's min-content width (~865px) exceeded the 768px tablet layout viewport, widening the document and breaking Playwright click hit-testing on wide tables (13 tablet e2e timeouts); proven causal by a stash-and-compare geometry probe
 - [Phase 06]: Settings page is a deliberate read-only stub (D-109): it names the deferred JEV-chain/decision-cache/circuit-breaker knobs as platform-admin territory; no fake inputs
+- [Phase 06]: [Phase 06-09]: One generator writes two byte-identical scoped Bootstrap stylesheets (designer + renderer) from a single Bootstrap 5.3.8 source read
+- [Phase 06]: [Phase 06-09]: --check compares on normalised line endings so autocrlf checkouts never report false drift
 
 ## Blockers/Concerns
 
