@@ -101,6 +101,8 @@ function definition(
 export interface EditorApiHooks {
   /** Every PATCH /apps/:id body, in order. */
   onPatch?: (body: Record<string, unknown>) => void;
+  /** Every POST /apps/:id/publish body, in order. */
+  onPublish?: (body: Record<string, unknown>) => void;
 }
 
 /** Stub the builder API the editor touches. */
@@ -128,6 +130,31 @@ async function stubEditorApi(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(definition()),
+      });
+    }
+
+    if (method === 'POST' && url.endsWith('/publish')) {
+      let body: Record<string, unknown> = {};
+      try {
+        body = route.request().postDataJSON() ?? {};
+      } catch {
+        body = {};
+      }
+      hooks.onPublish?.(body);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...definition({ version: 2 }),
+          changeSummary: [
+            {
+              field: 'name',
+              from: 'HR Leave Request',
+              to: 'Renamed leave app',
+            },
+          ],
+          zero_change: false,
+        }),
       });
     }
 
@@ -221,6 +248,42 @@ test('every other section edits as its JSON payload — the forms tab round-trip
   const patch = patches[0]['patch'] as Record<string, unknown>;
   expect((patch['form_schema'] as { components: unknown[] })
     .components.length).toBeGreaterThan(0);
+});
+
+test('publish opens a confirmation naming the app and posts only on confirm (BLD-06)', async ({
+  page,
+}) => {
+  const publishes: Array<Record<string, unknown>> = [];
+  await stubEditorApi(page, {
+    onPublish: (body) => publishes.push(body),
+  });
+
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+
+  // The gate is not present until publish is requested.
+  const gate = page.getByTestId('editor-publish-confirm');
+  await expect(gate).toHaveCount(0);
+
+  // A click opens the gate — and fires no request.
+  await page.getByTestId('editor-publish').click();
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText('HR Leave Request');
+  expect(publishes).toHaveLength(0);
+
+  // Cancel closes the gate — and still fires nothing.
+  await page.getByTestId('editor-publish-cancel').click();
+  await expect(gate).toHaveCount(0);
+  expect(publishes).toHaveLength(0);
+
+  // Only the gate's confirm posts: exactly one request,
+  // and the post-publish banner renders the response rows.
+  await page.getByTestId('editor-publish').click();
+  await expect(gate).toBeVisible();
+  await page.getByTestId('editor-publish-confirm-button').click();
+  await expect(page.getByTestId('editor-published')).toBeVisible();
+  await expect(page.getByTestId('publish-change-row')).toHaveCount(1);
+  expect(publishes).toHaveLength(1);
 });
 
 test('an invalid section payload is refused inline, naming the section (BLD-07)', async ({

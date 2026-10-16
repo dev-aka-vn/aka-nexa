@@ -110,6 +110,21 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     readonly rows: PublishChangeRow[];
     readonly zeroChange: boolean;
   } | null>(null);
+  /**
+   * The BLD-06 publish gate — the explicit
+   * confirmation both entry points (the
+   * button and the Ctrl/Cmd+S chord) route
+   * through. `publish()` is reachable only
+   * from the gate's confirm control, so a
+   * single click or chord can never fire the
+   * POST as a side effect (G-06-4). The gate
+   * carries no change rows: the change
+   * summary is the publish *response*
+   * payload and no dry-run endpoint exists,
+   * so the gate states the effect rather
+   * than inventing a diff.
+   */
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // The data-routing tab's provisioned-connector
   // read (the app's connector-request queue).
@@ -155,6 +170,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       setSaved(false);
       setPublished(false);
       setConfirmation(null);
+      setConfirmOpen(false);
       if (isJsonSection(section) && definition !== null) {
         setJsonText(
           formatJson(sectionValue(section as never, definition)),
@@ -250,6 +266,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     setSaved(false);
     setPublished(false);
     setConfirmation(null);
+    setConfirmOpen(false);
 
     let patch: Record<string, unknown>;
     if (activeSection === 'general') {
@@ -323,6 +340,12 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
    * AUD-01 entry retains.
    */
   const publish = useCallback(async (): Promise<void> => {
+    // Close the gate first: the confirm
+    // control is the gate's only path to
+    // this callback, and closing upfront
+    // means a second click cannot reach the
+    // endpoint twice.
+    setConfirmOpen(false);
     setSaveError(null);
     setSaved(false);
     setPublished(false);
@@ -355,23 +378,34 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     }
   }, [client, appId]);
 
+  /**
+   * Open the BLD-06 publish gate — the
+   * single entry point to the state change.
+   * Both the publish button and the
+   * keyboard shortcut call this; only the
+   * gate's confirm control calls
+   * `publish()`.
+   */
+  const requestPublish = useCallback((): void => {
+    setConfirmOpen(true);
+  }, []);
+
   // BLD-06 — the keyboard shortcut for
-  // publish. The shortcut triggers the
-  // same POST /apps/:id/publish the
-  // publish surface triggers — one
-  // endpoint, so the two cannot diverge
-  // (06-05's contract).
+  // publish. The shortcut opens the same
+  // confirmation gate the publish surface
+  // opens — one gate, so the two cannot
+  // diverge (06-05's contract, G-06-4).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!isPublishShortcut(event)) {
         return;
       }
       event.preventDefault();
-      void publish();
+      requestPublish();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [publish]);
+  }, [requestPublish]);
 
   /* ======================= The loading states ======================= */
 
@@ -417,9 +451,9 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             {/*
               BLD-06 — the publish surface.
               The button and the Ctrl/Cmd+S
-              shortcut fire the same publish
-              callback — one endpoint, so
-              the two cannot diverge
+              shortcut open the same
+              confirmation gate — one gate,
+              so the two cannot diverge
               (06-05's contract). The
               auto margin right-aligns the
               pair: `.spacer` only flexes
@@ -429,7 +463,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
               type="button"
               className="btn btn-primary btn-sm"
               data-testid="editor-publish"
-              onClick={() => void publish()}
+              onClick={() => requestPublish()}
               disabled={saving}
               style={{ marginLeft: 'auto' }}
             >
@@ -445,6 +479,70 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       </div>
 
       <AppTabs active={activeSection} onSelect={selectSection} />
+
+      {/*
+        BLD-06 — the publish confirmation
+        gate (G-06-4). The gate states the
+        effect without change rows: the
+        change summary is the publish
+        response payload and no dry-run
+        endpoint exists, so no pre-publish
+        diff can be listed here. Cancel
+        closes the gate and fires nothing;
+        only the confirm control calls
+        `publish()`. In-flow layout keeps
+        the gate reachable at every
+        viewport — no overlay, no
+        offscreen controls.
+      */}
+      {confirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editor-publish-confirm-title"
+          data-testid="editor-publish-confirm"
+          style={{
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--radius)',
+            padding: '14px 16px',
+            marginTop: 18,
+            maxWidth: 560,
+            background: 'var(--canvas)',
+          }}
+        >
+          <h2
+            id="editor-publish-confirm-title"
+            style={{ margin: '0 0 8px', fontSize: 16 }}
+          >
+            Publish &ldquo;{definition.name}&rdquo;?
+          </h2>
+          <p style={{ margin: '0 0 12px', fontSize: 14 }}>
+            Publishing makes your changes take effect immediately.
+          </p>
+          <div
+            className="od-row"
+            style={{ '--od-gap': '8px' } as never}
+          >
+            <button
+              type="button"
+              className="btn btn-sm"
+              data-testid="editor-publish-cancel"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              data-testid="editor-publish-confirm-button"
+              disabled={saving}
+              onClick={() => void publish()}
+            >
+              Confirm publish
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div role="tabpanel" style={{ marginTop: 18 }}>
         {saveError ? (
