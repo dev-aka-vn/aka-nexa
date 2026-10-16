@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Self-Service App Builder
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 06-09-PLAN.md
-last_updated: "2026-10-16T06:01:57.467Z"
-state_head: 66ab6d0dde700237996661aff421fcbbb98857b8
+stopped_at: Completed 06-11-PLAN.md
+last_updated: "2026-10-16T06:36:46.726Z"
+state_head: c3bb18e18a3d0e6e23c6f1b9bed49a4d14e92512
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 49
-  completed_plans: 46
+  completed_plans: 47
   percent: 50
 last_activity: 2026-10-15
 last_activity_desc: Completed quick task 261015-p1h — the App Builder dev proxy now preserves the browser Host, so state-changing requests from the SPA stop answering 403 CSRF_ORIGIN_MISMATCH.
@@ -20,15 +20,15 @@ last_activity_desc: Completed quick task 261015-p1h — the App Builder dev prox
 ## Current Position
 
 Phase: 06 (Self-Service App Builder) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 12
 
 ## Session
 
-**Last session:** 2026-10-16T06:01:55.361Z
-**Stopped at:** Completed 06-09-PLAN.md
+**Last session:** 2026-10-16T06:36:42.920Z
+**Stopped at:** Completed 06-11-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -56,6 +56,7 @@ Total Plans in Phase: 12
 | Phase 06 P06-07 | 10369 | 3 tasks | 39 files |
 | Phase 06 P06-08 | 4h 49m | 3 tasks | 48 files |
 | Phase 06-self-service-app-builder P09 | 50min | 3 tasks | 10 files |
+| Phase 06-self-service-app-builder P11 | 55min | 2 tasks | 4 files |
 
 ## Decisions
 
@@ -120,6 +121,9 @@ Total Plans in Phase: 12
 - [Phase 06]: Settings page is a deliberate read-only stub (D-109): it names the deferred JEV-chain/decision-cache/circuit-breaker knobs as platform-admin territory; no fake inputs
 - [Phase 06]: [Phase 06-09]: One generator writes two byte-identical scoped Bootstrap stylesheets (designer + renderer) from a single Bootstrap 5.3.8 source read
 - [Phase 06]: [Phase 06-09]: --check compares on normalised line endings so autocrlf checkouts never report false drift
+- [Phase 06]: [Phase 06-11]: Publish gate states the effect without change rows — change summary is the publish response payload, no dry-run endpoint (frozen-contract precedence)
+- [Phase 06]: [Phase 06-11]: Only the Ctrl/Cmd+S chord carries the dirty-JSON guard — a button click is an explicit act the gate already confirms
+- [Phase 06]: [Phase 06-11]: Stub PATCH echoes the forms-section patch so a saved edit stops reading as dirty (page re-reads persisted state off the PATCH response)
 
 ## Blockers/Concerns
 
