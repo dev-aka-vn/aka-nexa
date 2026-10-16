@@ -93,6 +93,8 @@ export interface WizardApiHooks {
     url: string,
     body: Record<string, unknown>,
   ) => void;
+  /** Every GET the wizard or the designer issues against a deeper app path. */
+  onGet?: (url: string) => void;
 }
 
 /**
@@ -154,6 +156,49 @@ async function stubBuilderApi(
           ...(body.patch ?? {}),
           version: 2,
         }),
+      });
+    }
+    if (method === 'GET') {
+      hooks.onGet?.(url);
+      if (url.includes('/connector-requests')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            requests: [
+              {
+                request_id: 'cr_1',
+                app_id: 'hr-leave-request',
+                requested_by: 'usr_owner_1',
+                connector_id: 'redmine',
+                name: 'Redmine',
+                base_url: 'https://redmine.example',
+                state: 'provisioned',
+                requested_at: '2026-10-12T10:00:00.000Z',
+              },
+            ],
+          }),
+        });
+      }
+      // A single-app read (`GET /apps/:id`) — the
+      // served draft definition. The designer's
+      // load and the wizard's resume-after-detour
+      // both ride this leg; anything deeper still
+      // falls through to the empty object.
+      const appPath = new URL(url).pathname.split('/api/apps/')[1] ?? '';
+      if (appPath.length > 0 && !appPath.includes('/')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            draftDefinition(decodeURIComponent(appPath), 'Leave Request'),
+          ),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({}),
       });
     }
     if (url.includes('/connector-requests')) {
@@ -446,5 +491,90 @@ test.describe('create wizard (BLD-01)', () => {
         connector_id: 'redmine',
       },
     });
+  });
+
+  test('the wizard survives a designer detour: leave step 4, design, return to the same step with the same inputs', async ({
+    page,
+  }) => {
+    await stubBuilderApi(page);
+    await page.goto('/#/wizard');
+
+    await fillBasics(page);
+    await page.getByTestId('wizard-create-button').click();
+    await expect(page.getByTestId('wizard-toast')).toHaveText(
+      DRAFT_TOAST,
+    );
+
+    // Walk to step 4 with distinctive inputs on
+    // each of the content steps.
+    await page.getByTestId('wizard-trigger-add').click();
+    await page
+      .getByTestId('wizard-trigger-intent-0')
+      .fill('request_leave');
+    await page
+      .getByTestId('wizard-trigger-example-0')
+      .fill('I want to take leave');
+    await page.getByTestId('wizard-next-button').click();
+
+    await page.getByTestId('wizard-assignment-add').click();
+    await page
+      .getByTestId('wizard-assignment-user-0')
+      .fill('manager@example.com');
+    await page
+      .getByTestId('wizard-assignment-role-0')
+      .selectOption('manager');
+    await page.getByTestId('wizard-next-button').click();
+
+    // Step 4 — the rail's current step is Form.
+    const rail = page.getByTestId('wizard-step-rail');
+    const currentLabel = rail.locator(
+      '.step.now [data-testid="wizard-step-label"]',
+    );
+    await expect(currentLabel).toHaveText('Form');
+
+    // The outbound leg: the designer renders and
+    // offers the return control.
+    await page.getByTestId('wizard-open-designer').click();
+    await expect(page.getByTestId('designer-page')).toBeVisible();
+    const backToWizard = page.getByTestId(
+      'designer-back-to-wizard',
+    );
+    await expect(backToWizard).toBeVisible();
+    await backToWizard.click();
+
+    // The return leg lands back on the Form step —
+    // the rail's current step is still Form, and
+    // the route carries the resumed position. A
+    // return that lands on a fresh wizard at
+    // Basics fails both assertions.
+    await expect(page.getByTestId('wizard-page')).toBeVisible();
+    await expect(currentLabel).toHaveText('Form');
+    await expect(page).toHaveURL(
+      /#\/wizard\?app=hr-leave-request&step=3/,
+    );
+
+    // Stepping back shows the earlier steps'
+    // inputs still holding the values typed
+    // before the detour.
+    await page.getByTestId('wizard-back-button').click();
+    await expect(currentLabel).toHaveText('RBAC');
+    await expect(
+      page.getByTestId('wizard-assignment-user-0'),
+    ).toHaveValue('manager@example.com');
+
+    await page.getByTestId('wizard-back-button').click();
+    await expect(currentLabel).toHaveText('Triggers');
+    await expect(
+      page.getByTestId('wizard-trigger-intent-0'),
+    ).toHaveValue('request_leave');
+    await expect(
+      page.getByTestId('wizard-trigger-example-0'),
+    ).toHaveValue('I want to take leave');
+
+    await page.getByTestId('wizard-back-button').click();
+    await expect(currentLabel).toHaveText('Basics');
+    await expect(page.getByTestId('wizard-app-name')).toHaveValue(
+      'Leave Request',
+    );
   });
 });

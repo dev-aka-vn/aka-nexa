@@ -24,7 +24,7 @@
  * specific, actionable error on failure (BLD-07).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { createApiClient } from '../api/client.js';
@@ -58,6 +58,11 @@ import {
   triggersValid,
   type TriggersValue,
 } from './TriggersStep.js';
+import {
+  clearWizardSnapshot,
+  readWizardSnapshot,
+  writeWizardSnapshot,
+} from './wizardDraftStore.js';
 
 /** The locked wizard order (the mockup's step rail). */
 const STEPS = [
@@ -99,7 +104,24 @@ interface StepError {
   retry: () => void;
 }
 
-export function WizardPage(): ReactElement {
+/** The wizard's resumable position (G-06-7's designer-return-path closure). */
+export interface WizardPageProps {
+  /**
+   * The draft's app id (`#/wizard?app=<id>`).
+   * Absent on a fresh create — the page is
+   * then a blank wizard exactly as before.
+   */
+  appId?: string;
+  /**
+   * The step the user left (`&step=<n>`). The
+   * session snapshot wins when both exist;
+   * the route step is the deep-link fallback
+   * (Task 2 closes that leg).
+   */
+  step?: number;
+}
+
+export function WizardPage({ appId }: WizardPageProps): ReactElement {
   // One api client for the wizard's lifetime —
   // the 401 hook fires once (the redirect), so
   // a burst of refusals cannot loop.
@@ -129,6 +151,54 @@ export function WizardPage(): ReactElement {
   const [busy, setBusy] = useState(false);
   const [stepError, setStepError] = useState<StepError | null>(null);
   const [done, setDone] = useState(false);
+
+  /**
+   * Resume the step the user left (G-06-7).
+   * On mount with a draft app id, the session
+   * snapshot seeds the step and the four
+   * in-progress values exactly once — the ref
+   * guards so a re-render can never
+   * re-hydrate over the user's live edits —
+   * and the draft itself is re-read from the
+   * server, so the resumed wizard holds the
+   * definition's version and form schema and
+   * every later PATCH binds to the draft's
+   * app id. With no app id (`#/wizard`) the
+   * page is a fresh wizard exactly as before.
+   */
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) {
+      return;
+    }
+    hydratedRef.current = true;
+    if (appId === undefined) {
+      return;
+    }
+    const snapshot = readWizardSnapshot(appId);
+    if (snapshot !== null) {
+      setStep(snapshot.step);
+      setBasics(snapshot.basics);
+      setTriggers(snapshot.triggers);
+      setRbac(snapshot.rbac);
+      setRouting(snapshot.routing);
+    }
+    void (async () => {
+      try {
+        const restored = await client.get(
+          `/apps/${appId}`,
+          AppDefinitionSchema,
+        );
+        setDraft(restored);
+      } catch {
+        // The fetch's loading and failure
+        // surfaces are Task 2's leg (Skeleton
+        // while in flight, InlineError on
+        // refusal) — the round trip only
+        // exercises the success path.
+      }
+    })();
+  }, [appId, client]);
 
   /** The current step's required fields pass inline validation. */
   const stepValid = (index: number): boolean => {
@@ -249,6 +319,10 @@ export function WizardPage(): ReactElement {
       for (const { section, patch } of routingPatches(routing)) {
         await saveSection(section, patch);
       }
+      // The flow is complete — the session
+      // snapshot is working state, and a
+      // finished wizard leaves none behind.
+      clearWizardSnapshot(draft.app_id);
       setDone(true);
     } catch (error) {
       setStepError({
@@ -265,6 +339,43 @@ export function WizardPage(): ReactElement {
     setStepError(null);
     setStep(Math.max(0, step - 1));
   };
+
+  /**
+   * Survive the designer round trip (G-06-7).
+   * On every change while the draft exists,
+   * the position and the in-progress inputs
+   * are snapshotted for the session — the
+   * designer link unmounts this page, and the
+   * snapshot is what the return leg resumes
+   * from — and the route is kept in step with
+   * the wizard through `history.replaceState`,
+   * deliberately NOT an assignment to
+   * `location.hash`: an assignment fires a
+   * `hashchange` that re-parses the route and
+   * remounts the page — the loop this fix
+   * must not introduce. Nothing is written
+   * once the flow is complete.
+   */
+  useEffect(() => {
+    if (draft === null || done) {
+      return;
+    }
+    writeWizardSnapshot({
+      appId: draft.app_id,
+      step,
+      basics,
+      triggers,
+      rbac,
+      routing,
+    });
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(
+        null,
+        '',
+        `#/wizard?app=${encodeURIComponent(draft.app_id)}&step=${step}`,
+      );
+    }
+  }, [draft, done, step, basics, triggers, rbac, routing]);
 
   // The wizard's completion panel — the draft
   // exists and every section is saved.

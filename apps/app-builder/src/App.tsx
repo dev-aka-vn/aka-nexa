@@ -62,6 +62,7 @@ import { useApiClient } from './apiHooks.js';
 import { InlineError } from './error/InlineError.js';
 import { Skeleton } from './ui/Skeleton.js';
 import { WizardPage } from './wizard/WizardPage.js';
+import { WIZARD_STEP_COUNT } from './wizard/wizardDraftStore.js';
 import { DashboardPage } from './dashboard/DashboardPage.js';
 import { FormDesignerPage } from './form-designer/FormDesignerPage.js';
 import { RolesPage } from './roles/RolesPage.js';
@@ -115,6 +116,14 @@ type RouteName =
 interface ParsedRoute {
   name: RouteName;
   appId?: string;
+  /**
+   * The wizard's resumable step (`#/wizard?app=<id>&step=<n>`,
+   * G-06-7). Present only when the query carries a
+   * finite integer inside the wizard's range — a
+   * hand-edited out-of-range index never reaches
+   * the page as an unusable step.
+   */
+  step?: number;
 }
 
 /**
@@ -136,7 +145,25 @@ function parseRoute(route: string): ParsedRoute {
     return { name: 'dashboard' };
   }
   if (head === 'wizard') {
-    return { name: 'wizard' };
+    // G-06-7's resume position: the wizard route
+    // carries the draft's app id and the step the
+    // user left, read exactly the way the
+    // submissions and connectors branches read
+    // `app`. `#/wizard` with no query still
+    // produces a fresh wizard.
+    const rawStep = params.get('step');
+    const parsedStep =
+      rawStep === null ? NaN : Number.parseInt(rawStep, 10);
+    return {
+      name: 'wizard',
+      appId: params.get('app') ?? undefined,
+      step:
+        Number.isInteger(parsedStep) &&
+        parsedStep >= 0 &&
+        parsedStep < WIZARD_STEP_COUNT
+          ? parsedStep
+          : undefined,
+    };
   }
   if (head === 'submissions') {
     return {
@@ -583,7 +610,22 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
     case 'dashboard':
       return <DashboardPage />;
     case 'wizard':
-      return <WizardPage />;
+      // G-06-7: keyed by the resumable draft —
+      // an app-id change (the sidebar's Create
+      // app link mid-flow, a deep link) remounts
+      // into a fresh hydration instead of
+      // carrying the previous draft's live
+      // edits across. Step syncs inside the
+      // mount use replaceState, which fires no
+      // hashchange, so the key never churns
+      // mid-flow.
+      return (
+        <WizardPage
+          key={route.appId ?? 'fresh'}
+          appId={route.appId}
+          step={route.step}
+        />
+      );
     case 'designer':
       return <FormDesignerPage appId={route.appId ?? ''} />;
     case 'roles':

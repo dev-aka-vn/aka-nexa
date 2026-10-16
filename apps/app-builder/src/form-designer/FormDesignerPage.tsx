@@ -55,6 +55,7 @@ import {
 import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
+import { readWizardSnapshot } from '../wizard/wizardDraftStore.js';
 import {
   FormioBuilderField,
   type FormioBuilderHandle,
@@ -351,6 +352,24 @@ export function FormDesignerPage({
     canRedo: false,
   });
 
+  /**
+   * G-06-7's return leg: the wizard position
+   * the user left, when there is one. Read
+   * once — the designer mounts because the
+   * wizard unmounted, so no snapshot can
+   * appear mid-visit. With no snapshot there
+   * is no retained step to resume, and no
+   * control renders: a link that silently
+   * drops the user at a fresh wizard is the
+   * dead end the gap reports. (No
+   * back-to-app-editor breadcrumb — explicitly
+   * not required.)
+   */
+  const [wizardReturnStep] = useState<number | null>(() => {
+    const snapshot = readWizardSnapshot(appId);
+    return snapshot === null ? null : snapshot.step;
+  });
+
   const load = useCallback(async (): Promise<void> => {
     setLoadError(null);
     try {
@@ -449,6 +468,15 @@ export function FormDesignerPage({
             {definition?.version ?? '…'}
           </p>
         </div>
+        {wizardReturnStep !== null ? (
+          <a
+            className="btn btn-sm"
+            data-testid="designer-back-to-wizard"
+            href={`#/wizard?app=${encodeURIComponent(appId)}&step=${wizardReturnStep}`}
+          >
+            Back to the wizard
+          </a>
+        ) : null}
       </div>
 
       {loadError !== null ? (
