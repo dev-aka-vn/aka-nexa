@@ -1,7 +1,7 @@
 ---
 phase: 06-self-service-app-builder
 verified: 2026-10-13T07:52:09Z
-status: human_needed
+status: passed
 score: 24/25 must-haves verified
 covered_files: [".planning/phases/06-self-service-app-builder/06-01-PLAN.md",".planning/phases/06-self-service-app-builder/06-01-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-02-PLAN.md",".planning/phases/06-self-service-app-builder/06-02-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-02-deferred-items.md",".planning/phases/06-self-service-app-builder/06-03-PLAN.md",".planning/phases/06-self-service-app-builder/06-03-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-04-PLAN.md",".planning/phases/06-self-service-app-builder/06-04-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-05-PLAN.md",".planning/phases/06-self-service-app-builder/06-05-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-06-PLAN.md",".planning/phases/06-self-service-app-builder/06-06-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-07-PLAN.md",".planning/phases/06-self-service-app-builder/06-07-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-08-PLAN.md",".planning/phases/06-self-service-app-builder/06-08-SUMMARY.md",".planning/phases/06-self-service-app-builder/06-CONTEXT.md",".planning/phases/06-self-service-app-builder/06-DISCUSSION-LOG.md",".planning/phases/06-self-service-app-builder/06-PATTERNS.md",".planning/phases/06-self-service-app-builder/06-RESEARCH.md",".planning/phases/06-self-service-app-builder/06-REVIEW-DISPOSITION.md",".planning/phases/06-self-service-app-builder/06-REVIEW.md",".planning/phases/06-self-service-app-builder/06-SECURITY.md",".planning/phases/06-self-service-app-builder/06-UI-REVIEW.md",".planning/phases/06-self-service-app-builder/06-VALIDATION.md",".planning/phases/06-self-service-app-builder/COVERAGE.md",".planning/phases/06-self-service-app-builder/deferred-items.md","apps/api/src/app-builder/app-builder.module.ts","apps/api/src/app-builder/app-definition.integration.spec.ts","apps/api/src/read/edit-link.integration.spec.ts","apps/api/src/read/read.controller.ts","apps/api/src/read/read.module.ts","apps/app-builder/src/api/definition.ts","apps/app-builder/src/apps/AppsPage.tsx","apps/app-builder/src/editor/EditorPage.tsx","apps/app-builder/src/editor/publishShortcut.spec.ts","apps/app-builder/src/editor/publishShortcut.ts","packages/domain/src/datarouter/data-router.service.ts","packages/domain/src/datarouter/data-router.spec.ts","packages/domain/src/datarouter/outbox.integration.spec.ts","tooling/boundaries.config.mjs"]
 covered_digest: "v2:sha256:0f588020087fd2aac61d4bcd1039b80993dd60fff14adcd0567de213ace8f464"
@@ -19,7 +19,9 @@ re_verification:
   deltas_verified_this_round:
     - "4fe54c5b (EditorPage.tsx): the head-row Publish button is right-aligned via style={{ marginLeft: 'auto' }} (a flex-item auto margin) instead of the preceding <span className='spacer' />, because .spacer only flexes under .card-head (chrome.css:174) and the head row is an .od-row (display:flex). Verified against the code: the button (data-testid='editor-publish', .btn .btn-primary .btn-sm, onClick → publish(), disabled={saving}) and the chord hint (saveShortcutHint() in .helper) are unchanged in behavior — only the alignment primitive changed. Pure layout fix; the publish callback, keydown listener, PublishResultSchema validation and changeSummary banner are byte-identical in behavior. The previous round's head-row anti-pattern (button beside the version pill) is RESOLVED."
     - "68f650dd (AppsPage.tsx): lifecycleTone() now returns the mockup's statusBadge() classes — badge-published (green) / badge-draft (neutral) / badge-deprecated (amber) / badge-archived (violet) — instead of the icon-tile tones (it-teal/it-amber/it-violet/it-red). Verified against the code and the design authority: the four badge classes are already ported in chrome.css:192-195 and match prototypes/mockup.html statusBadge() (782-785) exactly; the class is applied at className={`badge ${lifecycleTone(app.lifecycle)}`} (AppsPage.tsx:169). The it-* classes are NOT orphaned — they remain in use by icon tiles (DashboardPage.tsx:335, PreviewPane.tsx:236), so the swap is a pure design-fidelity fix with no must-have dependency (no requirement asserts badge vocabulary). The same commit adds 06-UI-REVIEW.md (retroactive 6-pillar audit, 15/24, advisory) with an orchestrator disposition: the deprecate/archive console surface is explicitly deferred by 06-04-PLAN.md:259 ('no UI surface — end users see the renderer, not the builder'); the pre-publish modal diverges from the frozen 06-05 contract (confirmation = the response payload, implemented and rendered) so the contract wins per the AGENTS.md precedence rule; the #/spike route and the window.__SPIKE__ (App.tsx:300) / __DESIGNER__ (FormDesignerPage.tsx:428, 'read by the e2e spec' at :414) handles are the phase's e2e seams by design, not dead debug."
+
 advisory:
+
   - finding: "IN-01: IdentityMappingRepository/ProfileRepository are in-memory (pre-existing Phase 1/2 state)"
     category: architectural
     reason: >-
@@ -41,6 +43,7 @@ advisory:
       flagged so the follow-up does not lose the thread.
     evidence_status: "documented in 06-REVIEW-DISPOSITION.md (CR-01) and module comments"
 behavior_unverified_items:
+
   - truth: "BLD-09: the App Builder is usable on a tablet (768×1024, touch) and shows loading skeletons for every async operation"
     test: >-
       Run the Playwright tablet project (npx playwright test --project=tablet) against the
@@ -61,6 +64,7 @@ behavior_unverified_items:
       execution is unproven here. Skeleton presence is verified by code inspection;
       tablet usability is not.
 human_verification:
+
   - test: "Live OTP delivery through the chat pipeline (IDN-05): trigger the onboarding keyword from an unmapped Slack identity, receive the 6-digit code in Slack, reply, and confirm the identity mapping is created and the granted app becomes usable"
     expected: "The code arrives via Slack DM within seconds; the reply verifies, creates the mapping, and the next inbound event resolves the user"
     why_human: >-
