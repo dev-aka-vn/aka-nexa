@@ -33,6 +33,12 @@
  *     form's fields beside the connector's
  *     fields, and a saved pairing PUTs
  *     /apps/:id/routing/mapping.
+ *  5. G-06-6: the builder canvas and the preview
+ *     render identical scoped Bootstrap styling —
+ *     a populated theme token, wrapping flex
+ *     rows, fractional grid columns, and
+ *     Bootstrap-geometry form controls on both
+ *     surfaces, measured by computed style.
  *
  * The tablet project (768×1024, touch) runs
  * this same spec (BLD-09).
@@ -150,6 +156,37 @@ function designerDefinition(): Record<string, unknown> {
           label: 'Days of leave',
           input: true,
           validate: { min: 1, max: 30 },
+        },
+        {
+          // The layout pair (G-06-6): a real row and real column classes
+          // rendered deterministically from the seed, so the canvas and
+          // the preview each carry a grid to prove the scoped sheet.
+          type: 'columns',
+          key: 'leaveColumns',
+          columns: [
+            {
+              width: 2,
+              components: [
+                {
+                  type: 'textfield',
+                  key: 'layoutFirst',
+                  label: 'Layout first',
+                  input: true,
+                },
+              ],
+            },
+            {
+              width: 10,
+              components: [
+                {
+                  type: 'textfield',
+                  key: 'layoutLast',
+                  label: 'Layout last',
+                  input: true,
+                },
+              ],
+            },
+          ],
         },
         {
           type: 'button',
@@ -437,6 +474,88 @@ async function waitForSettledPreview(page: Page): Promise<void> {
     .toBe(true);
 }
 
+  /**
+   * Asserts real Bootstrap 5 styling by computed style on one FormIO
+   * surface beneath its scope root (G-06-6): a populated theme token,
+   * wrapping flex rows, fractional grid columns, and Bootstrap-geometry
+   * form controls. The guard is about the FormIO subtree beneath the scope
+   * root — exactly the boundary the scope class draws — and never asserts
+   * on the chrome around the mounts.
+   */
+  async function expectScopedBootstrapGeometry(
+    page: Page,
+    scopeTestId: string,
+    surface: string,
+  ): Promise<void> {
+    const scope = page.getByTestId(scopeTestId);
+
+    // Without the scoped sheet the token is an empty string.
+    const primary = await scope.evaluate(
+      (el) => getComputedStyle(el).getPropertyValue('--bs-primary').trim(),
+    );
+    expect(primary, `${surface}: empty --bs-primary — the scoped sheet is absent`).not.toBe('');
+
+    // Without the sheet a row computes display:block / flex-wrap:nowrap.
+    const rows = await scope.evaluate((el) =>
+      [...el.querySelectorAll('.row')].map((row) => {
+        const style = getComputedStyle(row);
+        return { display: style.display, wrap: style.flexWrap };
+      }),
+    );
+    expect(rows.length, `${surface}: no .row — the layout pair did not render`).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.display).toBe('flex');
+      expect(row.wrap).toBe('wrap');
+    }
+
+    // Without the sheet both columns span the full canvas. Scoped to rows
+    // with at least two grid columns; the sum carries gutter headroom
+    // (border-box column widths include half-gutters).
+    const grids = await scope.evaluate((el) =>
+      [...el.querySelectorAll('.row')]
+        .map((row) => {
+          const rowWidth = row.getBoundingClientRect().width;
+          const columns = [...row.children].filter((child) =>
+            /col-(sm|md|lg|xl|xxl)-\d+/.test(child.className),
+          );
+          return {
+            rowWidth,
+            widths: columns.map(
+              (child) => child.getBoundingClientRect().width,
+            ),
+          };
+        })
+        .filter((grid) => grid.widths.length >= 2),
+    );
+    expect(grids.length, `${surface}: no row with two grid columns — the layout pair did not render`).toBeGreaterThan(0);
+    for (const grid of grids) {
+      for (const width of grid.widths) {
+        expect(width).toBeLessThan(grid.rowWidth);
+      }
+      const total = grid.widths.reduce((a, b) => a + b, 0);
+      expect(Math.abs(total - grid.rowWidth)).toBeLessThanOrEqual(
+        grid.rowWidth * 0.05 + 32,
+      );
+    }
+
+    // Without the sheet a control carries the browser default (a 2px inset
+    // border, 1px/2px padding). The count keeps the loop non-vacuous.
+    const controls = await scope.evaluate((el) =>
+      [...el.querySelectorAll('.form-control')].map((control) => {
+        const style = getComputedStyle(control);
+        return {
+          borderTop: style.borderTopWidth,
+          paddingLeft: style.paddingLeft,
+        };
+      }),
+    );
+    expect(controls.length, `${surface}: no .form-control — nothing to check geometry on`).toBeGreaterThan(0);
+    for (const control of controls) {
+      expect(control.borderTop).toBe('1px');
+      expect(control.paddingLeft).toBe('12px');
+    }
+  }
+
 test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
   // The whole file drives the real FormIO builder
   // page; see DESIGNER_SPEC_TIMEOUT_MS. Scoped to
@@ -464,10 +583,10 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
       timeout: BUILDER_MOUNT_TIMEOUT_MS,
     });
 
-    // The served schema: two fields + the submit
+    // The served schema: two fields, the layout pair, + the submit
     // button.
     const initialCount = await builderComponentCount(page);
-    expect(initialCount).toBe(3);
+    expect(initialCount).toBe(4);
 
     // Undo is a no-op at the seeded history's
     // beginning — the toolbar reflects it.
@@ -489,7 +608,7 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
     // pre-add snapshot has landed. Polling fails on
     // timeout — a restore that never lands is red —
     // so this is a real assertion, not a sleep. The
-    // count is 3 here and 4 below, so the redo leg
+    // count is 4 here and 5 below, so the redo leg
     // cannot pass without the count actually moving.
     await expect
       .poll(() => builderComponentCount(page), {
@@ -648,6 +767,32 @@ test.describe('form designer (BLD-04/BLD-05/FRM-05/FRM-09)', () => {
     // FRM-09's guarantee: the sandbox submission
     // never reached a submissions endpoint.
     expect(submissionsRequests).toHaveLength(0);
+  });
+
+  test('the builder canvas and the preview render identical scoped Bootstrap styling (G-06-6)', async ({
+    page,
+  }) => {
+    await stubDesignerApi(page);
+    await page.goto('/#/apps/hr-leave-request/designer');
+
+    const host = page.getByTestId('formio-builder-host');
+    await expect(host.locator('.formio-builder-form')).toBeVisible({
+      timeout: BUILDER_MOUNT_TIMEOUT_MS,
+    });
+
+    // The preview is debounced and re-mounts on schema change — reuse the
+    // settled-preview helper rather than a fixed sleep.
+    await waitForSettledPreview(page);
+
+    // The seed's own column classes reach both surfaces.
+    const previewForm = page.getByTestId('designer-preview-form');
+    expect(await host.locator('.col-md-2').count()).toBeGreaterThanOrEqual(1);
+    expect(await host.locator('.col-md-10').count()).toBeGreaterThanOrEqual(1);
+    expect(await previewForm.locator('.col-md-2').count()).toBeGreaterThanOrEqual(1);
+    expect(await previewForm.locator('.col-md-10').count()).toBeGreaterThanOrEqual(1);
+
+    await expectScopedBootstrapGeometry(page, 'formio-builder-host', 'canvas');
+    await expectScopedBootstrapGeometry(page, 'designer-preview-form', 'preview');
   });
 
   test('the mapping surface lists the form fields beside the connector fields and saves a pairing (BLD-05)', async ({

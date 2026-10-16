@@ -39,6 +39,14 @@ import type { Ref } from 'react';
 import {
   registerPortedBootstrap5Templates,
 } from './bootstrap5Templates';
+// The scoped Bootstrap 5 sheet (G-06-6): the same consumption shape as
+// FormioBuilderField — a static module-scope import plus the `formio-scope`
+// class on the FormIO mount container below, so the signer-view preview
+// renders identically to the builder canvas. The class goes on the mount
+// container only — not on the surrounding card, the preview section, or
+// the sandbox buffer. The engine's dynamic stylesheet import and the
+// ported-template registration stay exactly as they are.
+import './formio-scope.css';
 import type { SubmissionSandbox } from './sandbox';
 
 /**
@@ -209,7 +217,11 @@ export function PreviewPane({
           land in the sandbox below — never in the real
           submissions collection.
         </p>
-        <div ref={containerRef} data-testid="designer-preview-form" />
+        <div
+          ref={containerRef}
+          className="formio-scope"
+          data-testid="designer-preview-form"
+        />
         <div
           className="divider"
           hidden={submissions.length === 0}
