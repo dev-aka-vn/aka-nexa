@@ -1,14 +1,14 @@
 ---
-status: diagnosed
+status: partial
 phase: 06-self-service-app-builder
 source: [06-VERIFICATION.md]
 started: 2026-10-13T08:48:15Z
-updated: 2026-10-16T07:49:35Z
+updated: 2026-10-16T21:50:00Z
 ---
 
 ## Current Test
 
-[testing paused — 2 items outstanding: test 2 issue diagnosed (G-06-6, G-06-7, G-06-8), test 4 blocked on hardware]
+[testing complete — 5 passed, 0 issues, 1 blocked on physical hardware (test 4)]
 
 ## Tests
 
@@ -25,8 +25,27 @@ result: pass
 ### 2. Walk the 5-step wizard with no prior context (BLD-01): create an app end-to-end without reading any documentation
 expected: Each step is self-explanatory; step 1 creates the draft and toasts 'Saved as a draft · continue through the wizard steps'; forward navigation blocks until each step validates
 why_human: "'Without documentation' is a human judgement (06-VALIDATION.md manual-only row). The wizard implementation matches the mockup's step rail and copy, and wizard.spec.ts encodes the flow — which now actually runs (66/66, test 3), so the flow is machine-verified; no assertion, however, can judge whether a first-time admin finds it self-explanatory."
-result: issue
+result: pass
+resolved: 2026-10-16 — user confirmed the full flow on the live stack after the
+  G-06-6/07/08 gap-closure plans and the G-06-9 inline fixes (dialog styling, form
+  save leg, dead chrome CSS removal, hover-toolbar leak, toolbox width, designer
+  exit, .view centering, editor designer entry, tab chevrons). Original findings
+  and their resolutions are preserved below for the audit trail.
 reported: "Form Desiger seems broken style, lost arrangement & style. After form design completion, how do I back to wizard?"
+retest: >-
+  2026-10-16 interactive session (live stack). After the G-06-6/07/08 gap-closure
+  plans landed, the walkthrough surfaced five further findings, all diagnosed and
+  fixed inline the same day (gap G-06-9 below): the component-settings dialog
+  mounted at document.body outside the formio-scope root (broken controls),
+  18px hover-toolbar buttons stretched by the chrome's global .btn min-height,
+  the designer had no form-save path at all (only local state), a no-snapshot
+  visit left the designer with no exit control, and dead unscoped chrome CSS
+  (.nav-item width:100%) stacked the dialog tabs vertically. Also fixed the same
+  day: toolbox width (col-md-2 → 200px), .view centering on >1440px viewports,
+  the editor Forms-tab designer entry, and the editor tab-bar scroll chevrons.
+  Each fix verified by computed-style probe and the e2e suite (18/18 chromium
+  designer+wizard+editor, then designer 5/5 after the toolbox change). This
+  retest asks the user to confirm the whole test-2 flow passes on the live stack.
 severity: major
 diagnosis: >-
   Two distinct findings, both surfaced while walking this test — the designer is step 4's
@@ -208,8 +227,8 @@ note: >-
 ## Summary
 
 total: 6
-passed: 4
-issues: 1
+passed: 5
+issues: 0
 pending: 0
 skipped: 0
 blocked: 1
@@ -547,5 +566,61 @@ blocked: 1
     signer pages. The two scoped sheets remain byte-identical under the plan-06-09 drift
     guard (`tooling/formio-scope-css.spec.ts`, green in this plan's 129-test vitest scope).
     Recorded as UAT test 6 above — the signer-renderer coverage this gap records as missing.
+  missing: []
+  debug_session: ""
+
+- gap_id: G-06-9
+  truth: "The designer's interactive surface works as a whole: styled component-settings dialog, compact hover toolbar, a form-save path, an exit control on every visit, one-line toolbox labels, and horizontal dialog tabs"
+  status: resolved
+  resolved_by: "inline UAT fix (no gap-closure plan) — apps/app-builder/src/form-designer/FormioBuilderField.tsx, formio-overrides.css (new), FormDesignerPage.tsx, apps/app-builder/src/editor/AppTabs.tsx, EditorPage.tsx, apps/app-builder/src/chrome.css"
+  resolved_at: 2026-10-16
+  reason: >-
+    Five user reports during the 2026-10-16 interactive test-2 walkthrough, each
+    reproduced by computed-style probe against the live SPA before fixing:
+    (1) "the dialog Text Field Component has broken style" — the component-settings
+    dialog mounts at document.body, outside the .formio-scope root, so the scoped
+    Bootstrap sheet never reached it; its form controls computed browser-default
+    geometry (2px inset borders, 1px/2px padding).
+    (2) "when I complete the design & back to the wizard, the form is not saved" —
+    the designer had NO persistence path: handleSchemaChange updated local React
+    state only; nothing ever called the API.
+    (3) "In Component dialog, the tab display incorrectly, it shows vertical tab not
+    horizontal" — dead, unscoped chrome sidebar CSS (.nav-item{width:100%}) matched
+    the dialog's li.nav-item tab items, wrapping each tab to its own line.
+    (4) "when hover on component, the floating buttons/toolbar broken" — the chrome's
+    global .btn{min-height:40px} beats FormIO's height:18px (min-height always wins),
+    stretching every hover-toolbar button to a 40px slab.
+    (5) "Toolbox is a bit narrow so the components are wrapped" — FormIO's builder
+    row places the toolbox in col-md-2 (16.7% ≈ 120px of the ~720px card), wrapping
+    every two-word label.
+  root_cause: >-
+    One class of defect with five faces: chrome.css global (unscoped) rules and
+    FormIO's body-mounted surfaces (the dialog; and the canvas, whose buttons carry
+    chrome-matching class names) collide, plus one missing feature (the save leg
+    the phase plans never scoped — BLD-04's persistence half).
+  severity: major
+  test: 2
+  artifacts:
+    - path: "apps/app-builder/src/form-designer/FormioBuilderField.tsx"
+      issue: "Dialog mounted at body escaped the G-06-6 scope root; MutationObserver now tags each .formio-dialog with formio-scope as it appears."
+    - path: "apps/app-builder/src/form-designer/FormDesignerPage.tsx"
+      issue: "No save path: added saveForm (PATCH /apps/:id {section:'forms', patch:{form_schema}}), Save button, dirty tracking, save-on-leave for both exit controls, saved/dirty indicators."
+    - path: "apps/app-builder/src/chrome.css"
+      issue: "Dead mockup-era sidebar chrome (.nav-item/.sidebar/.topbar...) leaked into FormIO surfaces; removed (the shell renders a top header; nothing used them). .view gained margin-inline:auto for >1440px viewports."
+    - path: "apps/app-builder/src/form-designer/formio-overrides.css"
+      issue: "New: scope-root guards the generated sheet cannot carry (it is regenerated) — min-height/gap zeroing for FormIO .btn, btn-default styling, and the 200px toolbox fix (col-md-2 override, md+ only)."
+    - path: "apps/app-builder/src/editor/AppTabs.tsx"
+      issue: "Twelve-section tab bar scrolled by trackpad only (scrollbar hidden) — added prev/next chevrons with settled measurement (rAF + fonts.ready + ResizeObserver) and active-tab scrollIntoView."
+    - path: "apps/app-builder/src/editor/EditorPage.tsx"
+      issue: "No designer entry point outside the wizard — added 'Open the form designer' to the Forms tab."
+  resolution: >-
+    Every fix verified empirically before moving on: dialog controls compute
+    Bootstrap geometry (1px/12px) and horizontal tabs; toolbar buttons compute
+    18x18 at padding 2px; Save PUTs the frozen contract shape and the UI shows
+    Saved — version N with the dirty pill cleared; exit control renders with or
+    without a wizard snapshot and navigates correctly; toolbox computes 200px with
+    zero wrapped labels across all 36 buttons; tab chevrons disabled-state correct
+    at both ends. Regression suites green after each fix (designer+wizard+editor
+    18/18 chromium; designer 5/5 after the toolbox change).
   missing: []
   debug_session: ""
