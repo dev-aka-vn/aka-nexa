@@ -24,7 +24,7 @@
  * specific, actionable error on failure (BLD-07).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { createApiClient } from '../api/client.js';
@@ -32,6 +32,7 @@ import {
   AppDefinitionSchema,
   type AppDefinition,
 } from '../api/definition.js';
+import { Skeleton } from '../ui/Skeleton.js';
 import { redirectToOidcBegin } from '../auth/oidc-redirect.js';
 import { InlineError } from '../error/InlineError.js';
 import {
@@ -61,6 +62,7 @@ import {
 import {
   clearWizardSnapshot,
   readWizardSnapshot,
+  WIZARD_STEP_COUNT,
   writeWizardSnapshot,
 } from './wizardDraftStore.js';
 
@@ -121,7 +123,7 @@ export interface WizardPageProps {
   step?: number;
 }
 
-export function WizardPage({ appId }: WizardPageProps): ReactElement {
+export function WizardPage({ appId, step: routeStep }: WizardPageProps): ReactElement {
   // One api client for the wizard's lifetime —
   // the 401 hook fires once (the redirect), so
   // a burst of refusals cannot loop.
@@ -158,15 +160,46 @@ export function WizardPage({ appId }: WizardPageProps): ReactElement {
    * snapshot seeds the step and the four
    * in-progress values exactly once — the ref
    * guards so a re-render can never
-   * re-hydrate over the user's live edits —
-   * and the draft itself is re-read from the
-   * server, so the resumed wizard holds the
-   * definition's version and form schema and
-   * every later PATCH binds to the draft's
-   * app id. With no app id (`#/wizard`) the
+   * re-hydrate over the user's live edits.
+   * With no snapshot (a deep link straight
+   * to a resumable position), the step comes
+   * from the route — clamped into the
+   * wizard's range — and the values start
+   * blank. With no app id (`#/wizard`) the
    * page is a fresh wizard exactly as before.
+   *
+   * Either way, the draft itself is re-read
+   * from the server through the session
+   * cookie (T-06-48): the snapshot carries
+   * working state, and the definition (with
+   * its version and form schema) is restored
+   * so the resumed wizard holds no other
+   * session's data and every later PATCH
+   * binds to the draft's app id.
    */
   const hydratedRef = useRef(false);
+  const [resuming, setResuming] = useState(appId !== undefined);
+  const [resumeError, setResumeError] = useState<unknown>(null);
+
+  const loadDraft = useCallback(async (): Promise<void> => {
+    if (appId === undefined) {
+      return;
+    }
+    setResuming(true);
+    setResumeError(null);
+    try {
+      const restored = await client.get(
+        `/apps/${appId}`,
+        AppDefinitionSchema,
+      );
+      setDraft(restored);
+    } catch (error) {
+      setResumeError(error);
+    } finally {
+      setResuming(false);
+    }
+  }, [appId, client]);
+
   useEffect(() => {
     if (hydratedRef.current) {
       return;
@@ -182,23 +215,13 @@ export function WizardPage({ appId }: WizardPageProps): ReactElement {
       setTriggers(snapshot.triggers);
       setRbac(snapshot.rbac);
       setRouting(snapshot.routing);
+    } else if (routeStep !== undefined) {
+      setStep(
+        Math.min(Math.max(routeStep, 0), WIZARD_STEP_COUNT - 1),
+      );
     }
-    void (async () => {
-      try {
-        const restored = await client.get(
-          `/apps/${appId}`,
-          AppDefinitionSchema,
-        );
-        setDraft(restored);
-      } catch {
-        // The fetch's loading and failure
-        // surfaces are Task 2's leg (Skeleton
-        // while in flight, InlineError on
-        // refusal) — the round trip only
-        // exercises the success path.
-      }
-    })();
-  }, [appId, client]);
+    void loadDraft();
+  }, [appId, routeStep, loadDraft]);
 
   /** The current step's required fields pass inline validation. */
   const stepValid = (index: number): boolean => {
@@ -418,6 +441,45 @@ export function WizardPage({ appId }: WizardPageProps): ReactElement {
             </a>
           </div>
         </section>
+      </div>
+    );
+  }
+
+  // The deep-link resume (G-06-7): the draft
+  // is still in flight — a layout-shaped
+  // skeleton, never a blank wizard (BLD-09).
+  if (resuming) {
+    return (
+      <div className="view" data-testid="wizard-page">
+        <div className="page-head">
+          <div className="titles">
+            <h1>Create a new app</h1>
+            <p className="sub">Resuming the draft…</p>
+          </div>
+        </div>
+        <Skeleton label="Loading the wizard draft" />
+      </div>
+    );
+  }
+
+  // The resume refused — an app the session
+  // may not open, or one that does not exist:
+  // an actionable retryable error (BLD-07),
+  // never another user's data.
+  if (resumeError !== null) {
+    return (
+      <div className="view" data-testid="wizard-page">
+        <div className="page-head">
+          <div className="titles">
+            <h1>Create a new app</h1>
+            <p className="sub">The draft could not be resumed</p>
+          </div>
+        </div>
+        <InlineError
+          operation="load the app draft"
+          error={resumeError}
+          onRetry={() => void loadDraft()}
+        />
       </div>
     );
   }

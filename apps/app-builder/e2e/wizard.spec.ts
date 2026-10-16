@@ -577,4 +577,53 @@ test.describe('create wizard (BLD-01)', () => {
       'Leave Request',
     );
   });
+
+  test('a deep link to a resumable wizard position with no local snapshot resumes on the route step with the draft loaded', async ({
+    page,
+  }) => {
+    await stubBuilderApi(page);
+
+    // Straight to step 4 (Form) with no wizard
+    // history in this session: no snapshot, no
+    // step-1 basics form, no empty-wizard state.
+    await page.goto('/#/wizard?app=hr-leave-request&step=3');
+
+    await expect(page.getByTestId('wizard-page')).toBeVisible();
+    const rail = page.getByTestId('wizard-step-rail');
+    await expect(
+      rail.locator('.step.now [data-testid="wizard-step-label"]'),
+    ).toHaveText('Form');
+
+    // The draft loaded: the Form step renders
+    // against it (no schema yet on the stubbed
+    // draft) instead of an empty wizard.
+    await expect(
+      page.getByTestId('wizard-step-form'),
+    ).toBeVisible();
+    await expect(page.getByTestId('wizard-app-name')).toHaveCount(
+      0,
+    );
+  });
+
+  test('a wizard route with no query still starts a blank five-step wizard at Basics', async ({
+    page,
+  }) => {
+    await stubBuilderApi(page);
+    await page.goto('/#/wizard');
+
+    // Basics is current, the name is empty, and
+    // forward navigation is blocked — the
+    // persistence this plan adds cannot turn
+    // the fresh create flow into a resume.
+    const rail = page.getByTestId('wizard-step-rail');
+    await expect(
+      rail.locator('.step.now [data-testid="wizard-step-label"]'),
+    ).toHaveText('Basics');
+    await expect(page.getByTestId('wizard-app-name')).toHaveValue(
+      '',
+    );
+    await expect(
+      page.getByTestId('wizard-create-button'),
+    ).toBeDisabled();
+  });
 });
