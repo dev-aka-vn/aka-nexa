@@ -19,7 +19,7 @@ affects: [06-10 (owns the G-06-4 register closure in 06-UAT.md), verify-work (BL
 actuals:
   tokens: 4800
   tasks: 2
-  commits: 3
+  commits: 4
 
 # Tech tracking
 tech-stack:
@@ -99,7 +99,7 @@ Each task was committed atomically:
 1. **Task 1: End-to-end publish confirmation** - `500983c` (feat)
 2. **Task 2: Dirty-chord guard + predicates** - `c3bb18e` (feat)
 
-**Plan metadata:** `a062b23` (docs: complete plan)
+**Plan metadata:** `1806aca` (docs: SUMMARY + STATE + ROADMAP) plus a SUMMARY hash-correction fixup on top (see file history)
 
 ## Files Created/Modified
 
