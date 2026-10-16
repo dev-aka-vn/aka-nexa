@@ -1,4 +1,5 @@
 import '@formio/js/dist/formio.full.min.css';
+import './formio-scope.css';
 import { Formio } from '@formio/js';
 
 import {
