@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 current_phase: 06
 current_phase_name: Self-Service App Builder
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Completed 06-12-PLAN.md
-last_updated: "2026-10-16T07:11:44.587Z"
-state_head: 3317e6cdb1f8d12a61849d2493627431803cd320
+stopped_at: Completed 06-10-PLAN.md
+last_updated: "2026-10-16T08:25:53.575Z"
+state_head: 483544405047afa35bac6abe81ed4c348a7ff2d3
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 49
-  completed_plans: 48
+  completed_plans: 49
   percent: 50
 last_activity: 2026-10-15
 last_activity_desc: Completed quick task 261015-p1h — the App Builder dev proxy now preserves the browser Host, so state-changing requests from the SPA stop answering 403 CSRF_ORIGIN_MISMATCH.
@@ -20,15 +20,15 @@ last_activity_desc: Completed quick task 261015-p1h — the App Builder dev prox
 ## Current Position
 
 Phase: 06 (Self-Service App Builder) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 Status: Ready to execute
-Current Plan: 4
+Current Plan: 5
 Total Plans in Phase: 12
 
 ## Session
 
-**Last session:** 2026-10-16T07:11:42.932Z
-**Stopped at:** Completed 06-12-PLAN.md
+**Last session:** 2026-10-16T08:25:42.807Z
+**Stopped at:** Completed 06-10-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -58,6 +58,7 @@ Total Plans in Phase: 12
 | Phase 06-self-service-app-builder P09 | 50min | 3 tasks | 10 files |
 | Phase 06-self-service-app-builder P11 | 55min | 2 tasks | 4 files |
 | Phase 06-self-service-app-builder P12 | 40min | 2 tasks | 6 files |
+| Phase 06-self-service-app-builder P10 | 55min | 2 tasks | 8 files |
 
 ## Decisions
 
@@ -129,6 +130,9 @@ Total Plans in Phase: 12
 - [Phase 06]: [Phase 06-12]: Wizard route sync uses history.replaceState, never location.hash assignment — no hashchange, no remount loop (T-06-49)
 - [Phase 06]: [Phase 06-12]: RoutedPage keys the wizard by app id so an app-id change remounts into exact fresh hydration — sidebar Create mid-flow stays a fresh wizard
 - [Phase 06]: [Phase 06-12]: Designer return control renders only with a live snapshot; no back-to-app-editor breadcrumb (explicitly not required)
+- [Phase 06]: [Phase 06-10]: One generator two byte-identical artifacts holds - the renderer wires plan-06-09 formio-scope.css as-is, never regenerates or forks it
+- [Phase 06]: [Phase 06-10]: Renderer e2e shares one geometry helper across read+edit pages; edit stub is a live link (no editOutcome) so the form renders
+- [Phase 06]: [Phase 06-10]: Whole-suite-as-one-set green environmentally unproven (orphaned vite/playwright processes + OOM), not code-unproven - rerun npx playwright test --workers=1 on a healthy box
 
 ## Blockers/Concerns
 

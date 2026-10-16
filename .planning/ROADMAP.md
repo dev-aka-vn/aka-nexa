@@ -250,7 +250,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
   4. A submission viewer lists an app's submissions with filters, a detail view, and an export; ownership transfer requires global admin approval and auto-cancels after 7 days; a delegated workflow manager operates the app without holding ownership.
   5. The builder is usable on a tablet, every async operation shows a loading skeleton, and every error is inline, specific, and actionable — never a generic "something went wrong".
 
-**Plans**: 11/12 plans executed — 8 executed, 4 gap-closure pending
+**Plans**: 12/12 plans executed — 8 executed, 4 gap-closure pending
 
 Plans:
 **Wave 1**
@@ -295,7 +295,7 @@ Plans:
 
 **Wave 10** *(blocked on Wave 9)*
 
-- [ ] 06-10-PLAN.md — G-06-8: the signer renderer consumes the same scoped stylesheet, gains its own dev server and Playwright projects, and the UAT record gains renderer coverage (FRM-09)
+- [x] 06-10-PLAN.md — G-06-8: the signer renderer consumes the same scoped stylesheet, gains its own dev server and Playwright projects, and the UAT record gains renderer coverage (FRM-09)
 
 **UI hint**: yes
 **Notes**: Highest-value, lowest-risk slice: by now the APIs are stable, so this is a CRUD skin rather than a design against moving targets. Research explicitly resolved the DH-2 tension by **not** moving the builder earlier. The pre-builder story is made credible by shipping the **~10-app seed template gallery plus tag filtering** (`APP-09`) — do not drop it. Editing a published form must not disturb an in-flight submission.
@@ -395,7 +395,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 3. Natural-Language Routing | 3/3 | In Progress | - |
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
-| 6. Self-Service App Builder | 11/12 | In Progress|  |
+| 6. Self-Service App Builder | 12/12 | In Progress|  |
 | 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 8. Production Readiness | 0/TBD | Not started | - |
 
