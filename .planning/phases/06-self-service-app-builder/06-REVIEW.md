@@ -30,6 +30,17 @@ findings:
   warning: 2
   info: 5
   total: 7
+gap_closure_review:
+  reviewed: 2026-10-16
+  depth: standard
+  scope: d37aef6..HEAD (plans 06-09..06-12)
+  files_reviewed: 9
+  findings:
+    critical: 0
+    warning: 0
+    info: 3
+    total: 3
+  note: partial - pure-logic core read in depth; React wiring covered by executor e2e (gsd-code-reviewer subagent unavailable on this endpoint)
 status: issues_found
 ---
 
@@ -294,3 +305,45 @@ point, in the shape of `app-definition.integration.spec.ts`'s "APP-06 both ways"
 _Reviewed: 2026-10-14T02:45:50Z_
 _Reviewer: the agent (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Gap-closure review (06-09..06-12)
+
+**Reviewed:** 2026-10-16
+**Depth:** standard (partial — see scope note)
+**Diff:** `d37aef6..HEAD`, plans 06-09, 06-10, 06-11, 06-12
+**Findings: 0 Critical, 0 Warning, 3 Info**
+
+**Scope note:** the `gsd-code-reviewer` subagent overflowed this endpoint's context ceiling twice (~219k output tokens), so the orchestrator performed the review inline. The three new pure-logic modules were read in depth; the React wiring (`EditorPage`, `WizardPage`, `FormDesignerPage`, `FormioBuilderField`, `PreviewPane`, `edit.ts`) is covered by the executors' green e2e suites rather than a line-by-line read.
+
+**Resolved from the prior review:**
+- **WR-02 (Ctrl/Cmd+S bypasses the `saving` guard)** — resolved by `06-11`: `shortcutMayPublish()` returns `!state.dirty && !state.saving`, so a held chord repeat cannot queue a second publish while a save is in flight. `publishGuards.spec.ts` (5 tests) and `editor.spec.ts` assert it.
+
+**Info:**
+
+### GC-IN-01: `wizardDraftStore` hydrates on a top-level `isRecord` check only
+**File:** `apps/app-builder/src/wizard/wizardDraftStore.ts:140-155`
+**Issue:** `readWizardSnapshot` validates that `basics`/`triggers`/`rbac`/`routing` are records, then casts each `as unknown as <StepValue>` without validating the nested field shape. A structurally-corrupt-but-record-valued entry hydrates with undefined fields rather than as absent.
+**Impact:** low — the snapshot is session-scoped working state, the server draft is the source of truth, and the version field plus top-level checks already discard the common corruption cases. A malformed entry would surface as empty wizard fields, not as a crash or a security issue.
+**Fix:** optional — deepen the per-step guards if a field-level schema is ever added; not required for the closure.
+
+### GC-IN-02: `stripComments` is a blunt regex over the selector head
+**File:** `tooling/formio-scope-css.mjs:204-206`
+**Issue:** `stripComments` (`/\*[\s\S]*?\*\//g`) would also remove a `/*` appearing inside a string literal in a selector head. The surrounding scanners (`indexOfTopLevel`, `findBlockEnd`, `splitSelectorList`) are string- and comment-aware, but `stripComments` is not.
+**Impact:** none in practice — it is applied only to the selector head (`rawHead`), and Bootstrap 5.3.8's minified selectors contain no string literals. Noted for completeness.
+**Fix:** optional — route `rawHead` through the string-aware scanner if the pinned Bootstrap version ever gains string-bearing selectors.
+
+### GC-IN-03: WR-01 from the prior review remains open (out of gap-closure scope)
+**File:** `packages/domain` / `apps/api` — the `editPost` error-mapping warning (WR-01) concerns API error handling no gap-closure plan touched.
+**Issue:** `editPost` maps only `SubmissionRefusedError`; `AppNotFoundError` can still surface as a 500.
+**Impact:** unchanged from the 2026-10-14 review — not a regression, and not in the 06-09..06-12 scope. Carried forward as still-open.
+**Fix:** separate fix plan if desired; does not block the gap-closure phase.
+
+**Net:** the gap-closure diff is clean at Critical/Warning. The one substantive prior finding it targeted (WR-02) is resolved; WR-01 is carried forward as still-open.
+
+---
+
+_Reviewed: 2026-10-16_
+_Reviewer: orchestrator (inline; gsd-code-reviewer subagent unavailable on this endpoint)_
+_Depth: standard (partial)_
