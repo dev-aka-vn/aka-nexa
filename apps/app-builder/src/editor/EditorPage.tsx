@@ -49,6 +49,10 @@ import {
   sectionValue,
 } from '../sections.js';
 import { AppTabs } from './AppTabs.js';
+import {
+  jsonDraftIsDirty,
+  shortcutMayPublish,
+} from './publishGuards.js';
 import { isPublishShortcut } from './publishShortcut.js';
 
 export interface EditorPageProps {
@@ -125,6 +129,17 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
    * than inventing a diff.
    */
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /**
+   * The BLD-06 blocked-chord notice — the
+   * inline refusal the shortcut renders
+   * when the active section's JSON editor
+   * holds an unsaved edit (G-06-4's second
+   * clause). It names the section and tells
+   * the admin to save before publishing.
+   */
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(
+    null,
+  );
 
   // The data-routing tab's provisioned-connector
   // read (the app's connector-request queue).
@@ -171,6 +186,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
       setPublished(false);
       setConfirmation(null);
       setConfirmOpen(false);
+      setBlockedNotice(null);
       if (isJsonSection(section) && definition !== null) {
         setJsonText(
           formatJson(sectionValue(section as never, definition)),
@@ -256,6 +272,36 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   );
 
   /**
+   * The active section's persisted JSON —
+   * the `formatJson` of the section's value
+   * read off the loaded definition. Only
+   * JSON sections have one: the
+   * named-control tabs (general, metadata)
+   * have no JSON editor to be mid-edit in,
+   * so they read as empty and never as
+   * dirty.
+   */
+  const persistedJson = useMemo((): string => {
+    if (!isJsonSection(activeSection) || definition === null) {
+      return '';
+    }
+    return formatJson(
+      sectionValue(activeSection as never, definition),
+    );
+  }, [activeSection, definition]);
+
+  /**
+   * Whether the active section's JSON
+   * editor holds an unsaved edit (BLD-06,
+   * G-06-4). True only on a JSON section
+   * whose draft text differs from the
+   * persisted value.
+   */
+  const dirty =
+    isJsonSection(activeSection) &&
+    jsonDraftIsDirty(jsonText, persistedJson);
+
+  /**
    * Save the active section (BLD-02). The patch is
    * built from the tab's controls; an invalid JSON
    * payload is refused inline, naming the section —
@@ -267,6 +313,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
     setPublished(false);
     setConfirmation(null);
     setConfirmOpen(false);
+    setBlockedNotice(null);
 
     let patch: Record<string, unknown>;
     if (activeSection === 'general') {
@@ -387,6 +434,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
    * `publish()`.
    */
   const requestPublish = useCallback((): void => {
+    setBlockedNotice(null);
     setConfirmOpen(true);
   }, []);
 
@@ -395,17 +443,34 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
   // confirmation gate the publish surface
   // opens — one gate, so the two cannot
   // diverge (06-05's contract, G-06-4).
+  // The chord carries one extra guard the
+  // button does not: over a mid-edit JSON
+  // section it is blocked inline, naming
+  // the section, instead of opening the
+  // gate — a click is an explicit act the
+  // gate already confirms, but the chord
+  // would otherwise publish the section's
+  // persisted state from under the admin's
+  // typing. The browser default is always
+  // prevented so the chord never reaches
+  // the browser's own save dialog.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!isPublishShortcut(event)) {
         return;
       }
       event.preventDefault();
+      if (!shortcutMayPublish({ dirty, saving })) {
+        setBlockedNotice(
+          `The ${sectionLabel(activeSection)} section has unsaved changes — save the section before publishing.`,
+        );
+        return;
+      }
       requestPublish();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [requestPublish]);
+  }, [requestPublish, dirty, saving, activeSection]);
 
   /* ======================= The loading states ======================= */
 
@@ -560,6 +625,24 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             }}
           >
             {saveError}
+          </div>
+        ) : null}
+
+        {blockedNotice ? (
+          <div
+            data-testid="editor-publish-blocked"
+            role="alert"
+            style={{
+              border: '1px solid var(--amber)',
+              background: 'var(--amber-soft)',
+              borderRadius: 'var(--radius)',
+              padding: '10px 14px',
+              color: 'var(--ink)',
+              fontSize: 14,
+              marginBottom: 16,
+            }}
+          >
+            {blockedNotice}
           </div>
         ) : null}
 

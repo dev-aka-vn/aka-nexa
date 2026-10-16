@@ -159,12 +159,30 @@ async function stubEditorApi(
     }
 
     if (method === 'PATCH') {
-      const body = route.request().postDataJSON();
+      const body = route.request().postDataJSON() as Record<
+        string,
+        unknown
+      >;
       hooks.onPatch?.(body);
+      // Echo a forms-section patch back into the
+      // served definition: the page re-reads the
+      // persisted value off the PATCH response,
+      // so a saved edit stops reading as dirty.
+      const updated = definition({ version: 2 });
+      if (body['section'] === 'forms') {
+        const patch = body['patch'] as Record<string, unknown>;
+        if (
+          typeof patch === 'object' &&
+          patch !== null &&
+          'form_schema' in patch
+        ) {
+          updated['form_schema'] = patch['form_schema'];
+        }
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(definition({ version: 2 })),
+        body: JSON.stringify(updated),
       });
     }
 
@@ -284,6 +302,51 @@ test('publish opens a confirmation naming the app and posts only on confirm (BLD
   await expect(page.getByTestId('editor-published')).toBeVisible();
   await expect(page.getByTestId('publish-change-row')).toHaveCount(1);
   expect(publishes).toHaveLength(1);
+});
+
+test('the chord over a mid-edit section is blocked and names the section (BLD-06)', async ({
+  page,
+}) => {
+  const publishes: Array<Record<string, unknown>> = [];
+  await stubEditorApi(page, {
+    onPublish: (body) => publishes.push(body),
+  });
+
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+
+  // Edit the forms JSON without saving: a content
+  // change that stays valid JSON, so the save path
+  // would accept it — only the chord must refuse.
+  await page.getByTestId('editor-tab-forms').click();
+  const json = page.getByTestId('section-json');
+  await expect(json).toHaveValue(/"fullName"/);
+  const before = await json.inputValue();
+  await json.fill(before.replace('Full name', 'Full name!'));
+
+  // The chord is blocked inline: no gate, a notice
+  // naming the section, and no publish request.
+  await page.keyboard.press('Control+s');
+  await expect(
+    page.getByTestId('editor-publish-confirm'),
+  ).toHaveCount(0);
+  const blocked = page.getByTestId('editor-publish-blocked');
+  await expect(blocked).toBeVisible();
+  await expect(blocked).toContainText('Forms');
+  expect(publishes).toHaveLength(0);
+
+  // Saving the section clears the notice, and the
+  // chord then opens the confirmation gate. The
+  // assertion on the recorded requests is explicit
+  // so the test cannot pass on a mis-wired hook.
+  await page.getByTestId('save-section').click();
+  await expect(page.getByTestId('editor-saved')).toBeVisible();
+  await expect(blocked).toHaveCount(0);
+  await page.keyboard.press('Control+s');
+  await expect(
+    page.getByTestId('editor-publish-confirm'),
+  ).toBeVisible();
+  expect(publishes).toHaveLength(0);
 });
 
 test('an invalid section payload is refused inline, naming the section (BLD-07)', async ({
