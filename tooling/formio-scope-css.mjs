@@ -44,6 +44,12 @@
  * Usage:
  *   node tooling/formio-scope-css.mjs          # regenerate the artifact(s)
  *   node tooling/formio-scope-css.mjs --check  # exit 0 iff on-disk matches
+ *   npm run build:formio-scope-css             # the discoverable regeneration
+ *   node tooling/formio-scope-css.mjs --check --out <path>
+ *                                            # check a single file instead
+ *                                            # of the default consumers
+ *                                            # (FORMIO_SCOPE_CSS_OUT env
+ *                                            # override works too)
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -81,7 +87,35 @@ const OUTPUTS = [
     'form-designer',
     'formio-scope.css',
   ),
+  // The signer renderer (G-06-8): the same transform, the same input, the
+  // same bytes — one generator, two consumers. A second transform path or
+  // a second source read would defeat the point. Consumed in plan 06-10.
+  path.join(
+    REPO_ROOT,
+    'apps',
+    'renderer',
+    'src',
+    'read',
+    'formio-scope.css',
+  ),
 ];
+
+/**
+ * Resolve the output paths for this run. Default: every consumer above.
+ * `--out <path>` (or the `FORMIO_SCOPE_CSS_OUT` env override) narrows to a
+ * single file — the seam the drift-guard spec's perturb-a-copy branch uses
+ * to prove `--check` reports drift in the negative direction.
+ */
+function resolveOutputs(args) {
+  const flagAt = args.indexOf('--out');
+  const override =
+    (flagAt !== -1 ? args[flagAt + 1] : undefined) ??
+    process.env.FORMIO_SCOPE_CSS_OUT;
+  if (override !== undefined && override !== '') {
+    return [path.resolve(REPO_ROOT, override)];
+  }
+  return OUTPUTS;
+}
 
 /**
  * Group at-rules whose bodies are rule lists: nested selectors are
@@ -332,16 +366,28 @@ function generate() {
     `/* Generated from bootstrap@${version} ` +
     `(node_modules/bootstrap/dist/css/bootstrap.min.css) ` +
     `by tooling/formio-scope-css.mjs - do not edit by hand. ` +
-    `Regenerate: node tooling/formio-scope-css.mjs */`;
+    `Regenerate: npm run build:formio-scope-css */`;
   return `${header}\n${transformRuleList(source)}\n`;
+}
+
+/**
+ * Normalise checkout line endings before comparing. `core.autocrlf=true`
+ * checkouts materialise CRLF in the working tree while the generator always
+ * emits LF; a line-ending-only difference is a checkout artefact, not source
+ * drift, so `--check` compares on normalised text. Generation always writes
+ * LF — the committed blob is the canonical form.
+ */
+function normaliseEndings(text) {
+  return text.replace(/\r\n/g, '\n');
 }
 
 function main() {
   const args = process.argv.slice(2);
   const check = args.includes('--check');
+  const outputs = resolveOutputs(args);
   const text = generate();
   let failed = false;
-  for (const output of OUTPUTS) {
+  for (const output of outputs) {
     let current = null;
     try {
       current = readFileSync(output, 'utf8');
@@ -349,11 +395,11 @@ function main() {
       current = null;
     }
     if (check) {
-      if (current === text) {
+      if (current !== null && normaliseEndings(current) === text) {
         process.stdout.write(`ok   ${output}\n`);
       } else {
         process.stderr.write(
-          `drift ${output} — regenerate with: node tooling/formio-scope-css.mjs\n`,
+          `drift ${output} — regenerate with: npm run build:formio-scope-css\n`,
         );
         failed = true;
       }

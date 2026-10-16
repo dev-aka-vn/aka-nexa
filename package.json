@@ -17,6 +17,7 @@
     "test": "vitest run",
     "dev:app-builder": "vite --config apps/app-builder/vite.config.ts",
     "build:app-builder": "vite build --config apps/app-builder/vite.config.ts",
+    "build:formio-scope-css": "node tooling/formio-scope-css.mjs",
     "test:e2e": "playwright test",
     "start:api": "node --import ./apps/api/otel.mjs ./apps/api/dist/main.js",
     "start:worker": "node --import ./apps/worker/otel.mjs ./apps/worker/dist/main.js",
