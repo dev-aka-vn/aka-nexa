@@ -53,10 +53,10 @@
  * container), so pin the sidebar to that and let the canvas take the
  * rest. Media-scoped to md+ exactly like the col-md-* rules it
  * overrides — below 768px the builder stacks and keeps its natural
- * full-width toolbox. Same-specificity tie with the scoped sheet's
- * `.formio-scope .col-md-2` resolves by order: this file imports
- * after `formio-scope.css`, and the dynamically imported engine sheet
- * sets no column widths (verified).
+ * full-width toolbox. The override wins by specificity (0,3,0 with the
+ * child combinator vs the scoped sheet's 0,2,0 `.formio-scope
+ * .col-md-2`); order only matters against other (0,3,0) rules. The
+ * dynamically imported engine sheet sets no column widths (verified).
  */
 @media (min-width: 768px) {
   .formio-scope .formbuilder > .formcomponents {

@@ -231,6 +231,22 @@ export function FormioBuilderField({
     // scoped sheet's `.formio-scope .btn` (0,2,0) outranks the app
     // chrome's global `.btn` (0,1,0), so the dialog styles as
     // Bootstrap inside exactly where the canvas does.
+    // A dialog already in the DOM when this mount
+    // effect runs (a remount over a live builder)
+    // never passes the observer — sweep once at
+    // connect. Deliberate breadth: every FormIO
+    // dialog this SPA mounts (builder edit dialogs
+    // at body level) wants the scoped Bootstrap
+    // sheet — the preview renders read-only forms
+    // that open none — so tagging any .formio-dialog
+    // is the intended boundary here, not an
+    // over-reach; the scoped sheet's selectors only
+    // reach the FormIO subtree beneath the tag.
+    for (const dialog of document.body.querySelectorAll<HTMLElement>(
+      '.formio-dialog',
+    )) {
+      dialog.classList.add('formio-scope');
+    }
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {

@@ -465,11 +465,25 @@ export function FormDesignerPage({
    * {form_schema}}` — the same version-bumped,
    * audited transition the editor's section saves
    * use. Returns whether the save landed, so the
-   * back-to-wizard link can refuse to navigate away
-   * from a failed save (a silent discard is the
-   * exact defect this closes).
+   * exit controls can refuse to navigate away from
+   * a failed save (a silent discard is the exact
+   * defect this closes).
+   *
+   * The in-flight guard is a ref, not state: the
+   * exit controls and the InlineError retry call
+   * saveForm() directly, bypassing the Save
+   * button's disabled attribute, and state updates
+   * read stale within the same tick — a second call
+   * while the first PATCH is in flight would
+   * double-bump the version and duplicate the audit
+   * row.
    */
+  const saveInFlightRef = useRef(false);
   const saveForm = useCallback(async (): Promise<boolean> => {
+    if (saveInFlightRef.current) {
+      return false;
+    }
+    saveInFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -482,14 +496,31 @@ export function FormDesignerPage({
       );
       setDefinition(response);
       lastSavedJsonRef.current = JSON.stringify(current);
-      setDirty(false);
+      // Re-derive dirty against the LIVE builder
+      // schema, not the saved snapshot: edits made
+      // while the PATCH was in flight fired their own
+      // change events, and resetting dirty to false
+      // unconditionally would read the builder as
+      // clean while it still holds unsaved work —
+      // reopening, through a race window, the very
+      // silent-discard defect this control closes.
+      const live = builderFieldRef.current?.builder?.schema;
+      setDirty(
+        live === undefined
+          ? false
+          : JSON.stringify(live) !== lastSavedJsonRef.current,
+      );
       setSavedVersion(response.version);
       return true;
     } catch (error) {
-      setSavedVersion(null);
+      // savedVersion deliberately stays: a failed
+      // save must not wipe the record of the last
+      // successful one — the indicator keeps
+      // agreeing with server reality mid-failure.
       setSaveError(error);
       return false;
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }, [appId, client, schema]);
