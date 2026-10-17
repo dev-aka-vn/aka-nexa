@@ -161,12 +161,14 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **APP-01**: An app moves through `draft` → `published` → `deprecated` → `archived`
 - [ ] **APP-02**: A draft app is not reachable by any link, trigger, or route
 - [x] **APP-03**: An app definition is versioned and the last 20 versions are retained for rollback
-- [ ] **APP-04**: A published app declares intents and slash commands that activate it
+- [ ] **APP-04**: A published app declares intents and slash commands that activate it *(amended by Phase 7: a published **form** declares the triggers that activate it — see `APP-12`)*
 - [x] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
 - [x] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
 - [x] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
 - [x] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
 - [x] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
+- [ ] **APP-11**: An app owns one or more forms; each form declares a kind — `submit` (new), `list`, `view` (show), `edit` — and is versioned independently with its own `form_version`
+- [ ] **APP-12**: A trigger (intent or slash command) activates exactly one form, not the app; a trigger that resolves to more than one form is rejected at publish
 
 ### Form Engine & Renderer
 
@@ -179,6 +181,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
 - [x] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
 - [x] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
+- [ ] **FRM-14**: Every form in an app shares the app's MongoDB collection, role assignments, and data-routing destination; a form's schema is scoped to its declared kind
 
 ### Links & Token Security
 
@@ -451,7 +454,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | IM-11 | Phase 2 | Pending |
 | APP-01 | Phase 2 | Pending |
 | APP-02 | Phase 2 | Pending |
-| APP-04 | Phase 2 | Pending |
+| APP-04 | Phase 2 | Pending *(amended by `APP-12`, Phase 7)* |
 | FRM-01 | Phase 2 | Pending |
 | FRM-02 | Phase 2 | Pending |
 | FRM-03 | Phase 2 | Pending |
@@ -532,25 +535,28 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACL-05 | Phase 6 | Complete |
 | ACL-10 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
-| IM-10 | Phase 7 | Pending |
-| NOT-01 | Phase 7 | Pending |
-| NOT-02 | Phase 7 | Pending |
-| NOT-03 | Phase 7 | Pending |
-| NOT-04 | Phase 7 | Pending |
-| NOT-05 | Phase 7 | Pending |
-| AUD-03 | Phase 8 | Pending |
-| AUD-04 | Phase 8 | Pending |
-| AUD-05 | Phase 8 | Pending |
-| AUD-06 | Phase 8 | Pending |
-| AUD-07 | Phase 8 | Pending |
-| AUD-08 | Phase 8 | Pending |
-| AUD-09 | Phase 8 | Pending |
-| OBS-03 | Phase 8 | Pending |
-| OBS-06 | Phase 8 | Pending |
-| OBS-07 | Phase 8 | Pending |
-| OBS-08 | Phase 8 | Pending |
-| OBS-09 | Phase 8 | Pending |
-| OBS-10 | Phase 8 | Pending |
+| APP-11 | Phase 7 | Pending |
+| APP-12 | Phase 7 | Pending |
+| FRM-14 | Phase 7 | Pending |
+| IM-10 | Phase 8 | Pending |
+| NOT-01 | Phase 8 | Pending |
+| NOT-02 | Phase 8 | Pending |
+| NOT-03 | Phase 8 | Pending |
+| NOT-04 | Phase 8 | Pending |
+| NOT-05 | Phase 8 | Pending |
+| AUD-03 | Phase 9 | Pending |
+| AUD-04 | Phase 9 | Pending |
+| AUD-05 | Phase 9 | Pending |
+| AUD-06 | Phase 9 | Pending |
+| AUD-07 | Phase 9 | Pending |
+| AUD-08 | Phase 9 | Pending |
+| AUD-09 | Phase 9 | Pending |
+| OBS-03 | Phase 9 | Pending |
+| OBS-06 | Phase 9 | Pending |
+| OBS-07 | Phase 9 | Pending |
+| OBS-08 | Phase 9 | Pending |
+| OBS-09 | Phase 9 | Pending |
+| OBS-10 | Phase 9 | Pending |
 
 **Phase distribution:**
 
@@ -562,21 +568,22 @@ Which phases cover which requirements. Populated during roadmap creation.
 | 4 | Read Path & Query DSL | 6 |
 | 5 | Integration & Async Execution | 19 |
 | 6 | Self-Service App Builder | 25 |
-| 7 | Multi-IM Expansion & Two-Way Sync | 6 |
-| 8 | Production Readiness — Compliance, Observability & Load | 13 |
+| 7 | Multi-Form Apps & Per-Form Triggers | 3 |
+| 8 | Multi-IM Expansion & Two-Way Sync | 6 |
+| 9 | Production Readiness — Compliance, Observability & Load | 13 |
 
 **Coverage:**
-- v1 requirements: 142 total
-- Mapped to phases: 142
+- v1 requirements: 145 total
+- Mapped to phases: 145
 - Unmapped: 0 ✓
 - Duplicates (mapped to more than one phase): 0 ✓
 - v2 (deferred): 29
 - Resolved requirement conflicts recorded as v1: 3
   - Conflict 1 (per-IP loses) → `AUD-10` → Phase 1
-  - Conflict 2 (trace ID loses) → `FND-07` → Phase 1, enforced by `AUD-04` → Phase 8
-  - Conflict 3 (audit wins, erasure narrowed) → `FND-06` → Phase 1, delivered with `AUD-04` + `AUD-08` → Phase 8
+  - Conflict 2 (trace ID loses) → `FND-07` → Phase 1, enforced by `AUD-04` → Phase 9
+  - Conflict 3 (audit wins, erasure narrowed) → `FND-06` → Phase 1, delivered with `AUD-04` + `AUD-08` → Phase 9
   - `FR-D-12` write-once amendment → `DAT-13` → Phase 1, enforced with `CON-01`/`CON-09` → Phase 5
 
 ---
 *Requirements defined: 2026-10-01*
-*Last updated: 2026-10-01 after initial definition*
+*Last updated: 2026-10-17 — added `APP-11`, `APP-12`, `FRM-14` for Phase 7 (Multi-Form Apps); Multi-IM work renumbered Phase 7 → Phase 8, Production Readiness Phase 8 → Phase 9*

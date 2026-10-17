@@ -1,25 +1,25 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 7
-current_phase_name: Multi-IM Expansion & Two-Way Sync
+current_phase_name: Multi-Form Apps & Per-Form Triggers
 current_plan: Not started
 status: "Phase 06 shipped — PR #5"
 stopped_at: Phase 06 complete, ready to plan Phase 07
-last_updated: "2026-10-17T09:34:21.161Z"
-state_head: 588c346e700d6c30c2fb0d22965635cb5c566f02
+last_updated: "2026-10-17T12:02:24.021Z"
+state_head: ee6b227fba02677c155f5429e4786498630a305a
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 6
   total_plans: 61
   completed_plans: 61
-  percent: 75
+  percent: 67
 last_activity: 2026-10-17
 last_activity_desc: Phase 06 (Self-Service App Builder) marked complete — canonical verification regenerated to 25/25 passed, UAT 6/6, regression gate clean of phase-6 regressions.
 ---
 
 ## Current Position
 
-Phase: 7 — Multi-IM Expansion & Two-Way Sync
+Phase: 7 — Multi-Form Apps & Per-Form Triggers
 Plan: Not started
 Status: Phase 06 shipped — PR #5
 Current Plan: Not started
@@ -180,3 +180,9 @@ Total Plans in Phase: not yet planned
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261015-p1h | Fix the App Builder dev stack so same-origin state-changing requests from the SPA succeed — every write currently 403s with `CSRF_ORIGIN_MISMATCH` because the Vite dev proxy rewrites the Host header. | 2026-10-15 | d57aeca | [261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal](./quick/261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal/) |
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 7 edited: Phase 7 replaced: Multi-IM Expansion & Two-Way Sync -> Multi-Form Apps & Per-Form Triggers (APP-11, APP-12, FRM-14 added). Multi-IM renumbered to Phase 8; Production Readiness renumbered to Phase 9. Milestone scope 8 -> 9 phases.

@@ -26,7 +26,7 @@ path depends on Phase 2's `perm_version` epoch primitive.
 
 ## Granularity: stated deviation from `coarse`
 
-`config.json` sets `granularity: coarse` (nominally 3â€“5 phases). **This roadmap has 8 phases.**
+`config.json` sets `granularity: coarse` (nominally 3â€“5 phases). **This roadmap has 9 phases.**
 The deviation is deliberate and is honoured through phase *breadth*, not phase *count*:
 
 - **Breadth honoured.** Phases 2 and 6 are complete vertical capabilities carrying 47 and 25
@@ -52,7 +52,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 
 **Phase Numbering:**
 
-- Integer phases (1â€“8): the whole of v1, executed in numeric order.
+- Integer phases (1–9): the whole of v1, executed in numeric order.
 
 - [x] **Phase 1: Foundations & Platform** - Three pinned entrypoints, build-failing module boundaries, and the four irreversible contracts + three conflict rulings encoded in code (completed 2026-10-03)
 - [x] **Phase 2: The Vertical Slice â€” Slack + Internal Routing** - `/leave request` in Slack â†’ signed link â†’ rendered form â†’ audited submission in chat, with identity, per-app RBAC, and one-time link security (completed 2026-10-06)
@@ -60,8 +60,9 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] **Phase 4: Read Path & Query DSL** - 90-day stateless view/query links that die the instant permission changes, with auto-injected authorization filters (plans created)
 - [x] **Phase 5: Integration & Async Execution** - Connectors, transactional outbox, hybrid routing, three-state outbound model, and visible `partial` status (completed 2026-10-11)
 - [x] **Phase 6: Self-Service App Builder** - A department admin builds and publishes a working app with no engineering ticket and no platform admin (completed 2026-10-17)
-- [ ] **Phase 7: Multi-IM Expansion & Two-Way Sync** - Teams parity plus signed inbound webhooks that notify the original submitter
-- [ ] **Phase 8: Production Readiness â€” Compliance, Observability & Load** - 3-year auditable trail, erasure/purge workflows, full metric + alert suite, 1,000-user load test
+- [ ] **Phase 7: Multi-Form Apps & Per-Form Triggers** - One app, many forms (submit/list/view/edit) over a shared collection, shared roles and a single routing destination, each form activated by its own trigger
+- [ ] **Phase 8: Multi-IM Expansion & Two-Way Sync** - Teams parity plus signed inbound webhooks that notify the original submitter
+- [ ] **Phase 9: Production Readiness â€” Compliance, Observability & Load** - 3-year auditable trail, erasure/purge workflows, full metric + alert suite, 1,000-user load test
 
 ## Phase Details
 
@@ -302,11 +303,30 @@ Plans:
 **Spike**: S1 â€” **FormIO 5.6.1 migration, blocks this phase.** Half-day: render and build a representative form, port one Bootstrap-4-era template, verify `component.errors` and `EditGrid.validateRows` changes. `@formio/js` 5.x has *fewer* weekly downloads (52K) than the 4.x it replaces (57K), so most docs and examples online are still 4.x. Fallback is `formiojs@4.21.7` (MIT, maintenance mode) â€” acceptable, but it must be a decision, not drift.
 **Research**: `/gsd-plan-phase 6 --research-phase` â€” FormIO builder integration (spike S1) and the connector-request workflow, which is a new flow with no PRD section.
 
-### Phase 7: Multi-IM Expansion & Two-Way Sync
+### Phase 7: Multi-Form Apps & Per-Form Triggers
+
+**Goal**: A department admin ships **one app that serves a full CRUD experience** — separate create, list, view and edit forms over one shared collection, one role set and one routing destination — with each form activated by its own trigger.
+**Mode:** mvp
+**Depends on**: Phase 6
+**Requirements**: APP-11, APP-12, FRM-14
+**Success Criteria** (what must be TRUE):
+
+  1. An app declares **more than one form**, each with a declared kind — `submit` (new), `list`, `view` (show), `edit` — laid out independently and versioned independently, so one form's schema change never moves another form's version.
+  2. A trigger (intent or slash command) resolves to **exactly one form**, not the app: two forms in one app can be activated by different triggers, and a trigger that resolves to more than one form is rejected at publish, not at routing time.
+  3. Every form in an app reads from and writes to the **same collection**, with the **same role assignments** and the **same data-routing destination** — a record created through the `submit` form is visible through the `list`/`view` forms to the same users, with no per-form collection, per-form roles, or per-form connector.
+  4. The read path stops being a separate link class: a `list` or `view` form's signed link is issued by the same form-driven path as a `submit` form's link, and a `view` link still dies the instant the user's `perm_version` changes.
+  5. Editing a published form changes nothing for an in-flight submission of **that** form and nothing at all for the app's other forms; a submission records the `form_id` it was created through alongside that form's `form_version`.
+
+**Plans**: TBD
+**UI hint**: yes
+**Notes**: This phase **re-opens surfaces shipped in Phases 2, 4, 5 and 6**. The app definition grows from one embedded form to a **form set**; the read path (Phase 4's `view`/`query`) and the edit link (Phase 5) become *form kinds* rather than standalone link classes; and the App Builder's Form tab (Phase 6, `BLD-04`) becomes a form **manager** with a per-form designer. `APP-04` is **amended**: a published *form* declares the intents and slash commands that activate it, not the app (encoded as `APP-12`). Decide early whether the four kinds are a fixed enum or an open registry — it drives the read-link claim shape, where `LNK-07`'s frozen `form_version` becomes per-form. Existing single-form apps must keep working: the migration is part of this phase, not a data-loss event.
+**Research**: `/gsd-plan-phase 7 --research-phase` — the app-definition migration (single-form → form-set), the per-form `form_version` claim against the frozen `LNK-07` shape, and the trigger→form resolution contract.
+
+### Phase 8: Multi-IM Expansion & Two-Way Sync
 
 **Goal**: A Microsoft Teams employee gets the identical experience, and an external system can push status back to the person who originally submitted.
 **Mode:** mvp
-**Depends on**: Phase 6
+**Depends on**: Phase 7
 **Requirements**: IM-10, NOT-01, NOT-02, NOT-03, NOT-04, NOT-05
 **Success Criteria** (what must be TRUE):
 
@@ -318,13 +338,13 @@ Plans:
 
 **Plans**: TBD
 **Notes**: The adapter is now a *known* shape â€” Phase 2 defined the `InboundEvent`/`OutboundMessage` contract â€” so adding a platform is additive rather than inventive. Teams uses `@microsoft/agents-hosting` 1.9.1 + `-msteams`; the Bot Framework SDK is retired (support ended 2025-12-31) and the package the PRD names does not exist on npm. **Zalo and Telegram are v2** â€” this phase does not include them, which is why spike S2 does not block the critical path.
-**Research**: `/gsd-plan-phase 7 --research-phase` â€” Microsoft Teams activity-delivery retry semantics beyond retry-on-429/502; the relevant Microsoft Learn pages returned 404 during research.
+**Research**: `/gsd-plan-phase 8 --research-phase` â€” Microsoft Teams activity-delivery retry semantics beyond retry-on-429/502; the relevant Microsoft Learn pages returned 404 during research.
 
-### Phase 8: Production Readiness â€” Compliance, Observability & Load
+### Phase 9: Production Readiness â€” Compliance, Observability & Load
 
 **Goal**: The deployment is operable at target scale and can answer a compliance question about any action taken in the last three years.
 **Mode:** mvp
-**Depends on**: Phase 7
+**Depends on**: Phase 8
 **Requirements**: AUD-03, AUD-04, AUD-05, AUD-06, AUD-07, AUD-08, AUD-09, OBS-03, OBS-06, OBS-07, OBS-08, OBS-09, OBS-10
 **Success Criteria** (what must be TRUE):
 
@@ -342,7 +362,7 @@ Plans:
 
 ## Timing
 
-**Total: ~43 weeks P50 (range 38â€“49).**
+**Total: ~47 weeks P50 (range 42–53).**
 
 This **supersedes** the inherited 26â€“34 week figure in PROJECT.md. That figure was never re-derived
 against an 8-phase structure â€” `research/SUMMARY.md` supports the *order* strongly but explicitly
@@ -356,8 +376,9 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 4 | Read Path & Query DSL | 3.5 wk | 3â€“4 |
 | 5 | Integration & Async Execution | 7 wk | 6â€“8 |
 | 6 | Self-Service App Builder | 9 wk | 8â€“10 |
-| 7 | Multi-IM Expansion & Two-Way Sync | 3 wk | 3â€“4 |
-| 8 | Production Readiness | 4.5 wk | 4â€“5 |
+| 7 | Multi-Form Apps & Per-Form Triggers | 4 wk | 3.5–4.5 |
+| 8 | Multi-IM Expansion & Two-Way Sync | 3 wk | 3â€“4 |
+| 9 | Production Readiness | 4.5 wk | 4â€“5 |
 
 **Basis:**
 
@@ -373,7 +394,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 - Phase 3 is sized for **unknown** provider cost, not for the requirement count (11). The AI-SPEC
   and the research pass land inside this phase.
 - **Includes** spikes S1 (half-day, Phase 6) and S3 (Phase 1 discovery).
-- **Excludes** all 29 v2 requirements, all Phase 7 post-MVP scope, and legal review time for the
+- **Excludes** all 29 v2 requirements, all Phase 8 post-MVP scope, and legal review time for the
   audit-retention framing.
 - **Contingency, not included:** if spike S3 shows SAML is genuinely required, add **2â€“3 weeks**
   for `@node-saml/node-saml`, which has been unmaintained since 2025-07-21 and needs its own spike
@@ -386,7 +407,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 
 ## Progress
 
-**Execution Order:** Phases execute in numeric order: 1 â†’ 2 â†’ 3 â†’ 4 â†’ 5 â†’ 6 â†’ 7 â†’ 8
+**Execution Order:** Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -396,8 +417,9 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
-| 7. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
-| 8. Production Readiness | 0/TBD | Not started | - |
+| 7. Multi-Form Apps & Per-Form Triggers | 0/TBD | Not started | - |
+| 8. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
+| 9. Production Readiness | 0/TBD | Not started | - |
 
 ---
-*Roadmap created: 2026-10-01 â€” v1, 142/142 requirements mapped across 8 phases*
+*Roadmap created: 2026-10-01 â€” v1, 145/145 requirements mapped across 9 phases*
