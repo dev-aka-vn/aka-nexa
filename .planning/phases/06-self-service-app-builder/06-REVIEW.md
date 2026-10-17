@@ -41,6 +41,25 @@ gap_closure_review:
     info: 3
     total: 3
   note: partial - pure-logic core read in depth; React wiring covered by executor e2e (gsd-code-reviewer subagent unavailable on this endpoint)
+delta_review:
+  reviewed: 2026-10-17
+  depth: compact (gsd-code-reviewer.compact subagent)
+  scope: d37aef6..HEAD delta after the gap-closure review — commit 5fe41c5 (G-06-9 interactive fixes, 8 files) + 0ee36ab (tablet-touch spec, clean)
+  findings:
+    critical: 1
+    warning: 4
+    info: 6
+    total: 11
+  disposition: >-
+    CR-01 (blocker: saveForm dirty-reset race silently discarding
+    in-flight-save edits) FIXED at 1a0f406 with WR-01 (in-flight guard),
+    IN-04 (saved-version indicator), WR-02 partial (initial dialog
+    sweep), WR-03/IN-05 (dev-idp portability + port comment), IN-01
+    (specificity comment). Deferred: WR-04 (editor designer-link dirty
+    gate — same pattern as the pre-existing tab-switch exits, not a
+    regression), IN-03 (mount-normalization baseline seeding),
+    IN-06 (probe placement). Security: no findings. Frozen contracts:
+    PATCH forms shape matches the server contract; scope boundary holds.
 status: issues_found
 ---
 
