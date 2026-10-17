@@ -63,6 +63,23 @@ const API_ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:3000';
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
+  /**
+   * Pre-bundle the FormIO engine at server start, deterministically.
+   *
+   * The engine is imported dynamically (Pattern 1's browser guard), so
+   * vite only *discovers* it when a browser first fetches the module —
+   * and with several Playwright workers cold-hitting the server at once,
+   * that discovery lands mid-suite: the optimizer re-bundles while
+   * workers hold the old dep graph, and every FormIO import answers
+   * "Failed to fetch dynamically imported module …/@formio_js.js".
+   * Including it here moves discovery to server start, before any
+   * worker connects, so the cold-start race cannot happen — a fresh
+   * checkout (no warm `.vite`) runs the suite exactly as warmly as a
+   * long-lived dev server.
+   */
+  optimizeDeps: {
+    include: ['@formio/js'],
+  },
   server: {
     port: 5173,
     proxy: {

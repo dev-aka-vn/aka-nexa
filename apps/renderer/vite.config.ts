@@ -35,6 +35,16 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
+  /**
+   * Pre-bundle the FormIO engine at server start, deterministically —
+   * same rationale as the app-builder config: both signer pages import
+   * the engine dynamically, and a cold Playwright run (no warm `.vite`)
+   * discovers it mid-suite, racing the optimizer while workers hold the
+   * old dep graph. `include` moves discovery to server start.
+   */
+  optimizeDeps: {
+    include: ['@formio/js'],
+  },
   server: {
     port: 5174,
   },

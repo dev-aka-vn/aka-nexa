@@ -274,6 +274,14 @@ async function stubDashboardApi(
       servedUrls.push(route.request().url());
       await delay(500);
       if (options.auditFails) {
+      // The failing read holds longer than the success path: the
+      // test asserts the submissions widget's skeleton FIRST, then
+      // the activity widget's — a 500 ms window can be spent by the
+      // first assertion's poll before the second one starts (a cold
+      // browser context mounts slower than a warm one), leaving no
+      // skeleton to observe. The roles.spec precedent: hold the read
+      // open long enough for both sequential polls to land inside it.
+      await delay(1000);
       return route.fulfill({
         status: 500,
         contentType: 'application/json',
