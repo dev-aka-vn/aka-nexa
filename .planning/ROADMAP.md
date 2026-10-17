@@ -317,10 +317,29 @@ Plans:
   4. The read path stops being a separate link class: a `list` or `view` form's signed link is issued by the same form-driven path as a `submit` form's link, and a `view` link still dies the instant the user's `perm_version` changes.
   5. Editing a published form changes nothing for an in-flight submission of **that** form and nothing at all for the app's other forms; a submission records the `form_id` it was created through alongside that form's `form_version`.
 
-**Plans**: TBD
-**UI hint**: yes
-**Notes**: This phase **re-opens surfaces shipped in Phases 2, 4, 5 and 6**. The app definition grows from one embedded form to a **form set**; the read path (Phase 4's `view`/`query`) and the edit link (Phase 5) become *form kinds* rather than standalone link classes; and the App Builder's Form tab (Phase 6, `BLD-04`) becomes a form **manager** with a per-form designer. `APP-04` is **amended**: a published *form* declares the intents and slash commands that activate it, not the app (encoded as `APP-12`). Decide early whether the four kinds are a fixed enum or an open registry — it drives the read-link claim shape, where `LNK-07`'s frozen `form_version` becomes per-form. Existing single-form apps must keep working: the migration is part of this phase, not a data-loss event.
-**Research**: `/gsd-plan-phase 7 --research-phase` — the app-definition migration (single-form → form-set), the per-form `form_version` claim against the frozen `LNK-07` shape, and the trigger→form resolution contract.
+**Plans:** 8 plans
+**Plans list:**
+
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — Tracer: the atomic `forms[]` cutover — contract schemas + bijection, domain document/repository/service/gate, 10 seeds, SPA wizard/designer save path, forms-fixture, full-suite sweep
+- [ ] 07-05-PLAN.md — U-1…U-6 undepicted-surface design rulings (six blocking decision checkpoints; no auto-select)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 07-02-PLAN.md — retire the `triggers` section (13→12): contract enum + four mirror lists + drift-guard spec + editor/permission-matrix shrink
+- [ ] 07-03-PLAN.md — seed gallery goes multi-form: per-kind `config` validation, `list`/`show` forms in seeds, stale `provisioning/forms` artifact removed
+- [ ] 07-04-PLAN.md — two-collection idempotent migration (`apps` + `app_definition_versions` snapshots), role-grant rewrite, api + worker boot wiring
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 07-06-PLAN.md — Forms tab becomes the form manager (rows, add/remove by kind per U-3/U-4/U-6, Versioning card, submission-survival test, e2e)
+- [ ] 07-08-PLAN.md — publish-gate rules (≥1 submit, trigger→form uniqueness, D-08 kinds, config completeness) + form-derived catalog (RBAC-filter-before-projection) + worker de-hardcode + form-driven issuance (SC#2/SC#4)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 07-07-PLAN.md — per-form designer `?form=` + U-1 in-form trigger panel + U-2 `list`/`show` config surfaces + designer e2e
+
 
 ### Phase 8: Multi-IM Expansion & Two-Way Sync
 
