@@ -140,7 +140,7 @@ export class ClarificationSessionService {
     channelId: string,
     threadTs: string,
     reply: ClarificationReply,
-    displayedChoiceIds?: string[],
+    displayedChoiceIds?: readonly string[],
   ): Promise<ClarificationSession | null> {
     const session = await this.getSession(realUserId, channelId, threadTs);
     if (!session) {

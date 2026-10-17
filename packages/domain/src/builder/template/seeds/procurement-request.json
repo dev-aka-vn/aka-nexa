@@ -1,0 +1,26 @@
+{
+  "template_id": "procurement-request",
+  "name": "Procurement Request",
+  "description": "Purchase requisition — goods and services through procurement approval",
+  "domain": "procurement",
+  "tags": ["procurement", "finance"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "textfield", "key": "item", "label": "Item", "input": true },
+      { "type": "number", "key": "quantity", "label": "Quantity", "input": true },
+      { "type": "number", "key": "estimated_cost", "label": "Estimated cost", "input": true },
+      { "type": "textarea", "key": "justification", "label": "Justification", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "procure", "type": "slash", "command": "/procure", "description": "Request a purchase" }
+  ]
+}

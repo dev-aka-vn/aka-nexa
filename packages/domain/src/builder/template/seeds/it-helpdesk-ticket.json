@@ -1,0 +1,25 @@
+{
+  "template_id": "it-helpdesk-ticket",
+  "name": "IT Helpdesk Ticket",
+  "description": "IT support — access, device, and software tickets",
+  "domain": "ticketing",
+  "tags": ["it"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "select", "key": "issue_type", "label": "Issue type", "input": true, "data": { "values": [{ "label": "Access", "value": "access" }, { "label": "Device", "value": "device" }, { "label": "Software", "value": "software" }, { "label": "Other", "value": "other" }] } },
+      { "type": "select", "key": "priority", "label": "Priority", "input": true, "data": { "values": [{ "label": "Low", "value": "low" }, { "label": "Normal", "value": "normal" }, { "label": "High", "value": "high" }] } },
+      { "type": "textarea", "key": "description", "label": "Description", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "it", "type": "slash", "command": "/it", "description": "Open an IT ticket" }
+  ]
+}

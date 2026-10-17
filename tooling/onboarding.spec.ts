@@ -65,13 +65,13 @@
  * the documented URL and "fixing" it, breaks every boot in this file.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   APP_CONFIG_KEYS,
@@ -87,6 +87,9 @@ import {
 } from '@akane/platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+
+import { OIDC_CONFIG_KEYS } from '../apps/api/src/auth/oidc.service.js';
+import { StubOidcIssuer } from '../apps/api/src/auth/oidc-issuer.stub.js';
 
 import {
   CACHE_MAXMEMORY_POLICY,
@@ -169,7 +172,57 @@ const KEY_DIR = mkdtempSync(path.join(os.tmpdir(), 'akane-onboarding-'));
 const KEY_FILE = path.join(KEY_DIR, 'dev-local-key');
 writeFileSync(KEY_FILE, randomBytes(32));
 
-afterAll(() => {
+/**
+ * The read-link verification environment the api requires at boot (LNK-05).
+ *
+ * These four are read straight from `process.env` by `readReadLinkConfig` in
+ * `apps/api/src/read/read.module.ts`, which refuses to start with
+ * `READ_LINK_CONFIG_INVALID: must set …` if any is absent. They are deliberately
+ * not `AppConfigSchema` fields, so `exampleActiveEnv()` does not carry them and
+ * the harness supplies them the way it supplies the container URLs.
+ *
+ * `JWT_READ_PUBLIC_KEY` is generated per run rather than committed: the
+ * verifier's algorithm allowlist is ES256, so the value has to be a real EC
+ * P-256 key, and a generated one is correct by construction. A PEM carries real
+ * newlines here — an environment variable can, and `readReadLinkConfig` expands
+ * `\n` escapes as well — so this exercises the multi-line path rather than a
+ * single-line shortcut.
+ *
+ * README.md's "Read-link verification" section documents exactly these four
+ * names, and the README test block below asserts it still does, so the docs and
+ * the harness cannot drift apart silently.
+ */
+const READ_LINK_ENV: Record<string, string> = {
+  JWT_ISSUER: 'akane-local',
+  JWT_AUDIENCE: 'http://localhost:5173',
+  JWT_READ_PUBLIC_KEY: generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    .publicKey.export({ type: 'spki', format: 'pem' })
+    .toString(),
+  RENDERER_ORIGIN: 'http://localhost:5173',
+};
+
+/**
+ * The stub OIDC issuer, started once and shared by every api boot below.
+ *
+ * A reachable OIDC issuer is part of the boot contract (BLD-12:
+ * `discoverOidcClient` runs openid-client discovery at module init,
+ * loudly). The documented `OIDC_ISSUER` placeholder points at a domain
+ * no network resolves — correctly, it is a placeholder — so the harness
+ * runs the in-repo stub issuer and points the boot environment at it,
+ * exactly as it points the three container URLs at the harness.
+ * Discovery needs only the metadata endpoint; the client id and secret
+ * `.env.example` documents are never exchanged at boot, so they ride
+ * the documented values verbatim.
+ */
+let stubIssuer: StubOidcIssuer | undefined;
+
+async function startSharedIssuer(): Promise<StubOidcIssuer> {
+  stubIssuer ??= await StubOidcIssuer.start();
+  return stubIssuer;
+}
+
+afterAll(async () => {
+  await stubIssuer?.stop();
   rmSync(KEY_DIR, { recursive: true, force: true });
 });
 
@@ -235,21 +288,33 @@ function exampleActiveEnv(): Record<string, string> {
 }
 
 /**
- * The documented boot environment with the three URLs pointed at the harness.
+ * The documented boot environment with the harness URLs pointed at the
+ * harness and the read-link verification keys supplied from {@link READ_LINK_ENV}.
  *
  * The container URLs are taken **verbatim**, in particular `urls.mongo`, which
  * already carries `?directConnection=true` because `containers.ts` starts
  * MongoDB with `--replSet`. Stripping it, or copying the documented URL and
  * "fixing" it, breaks every boot below.
+ *
+ * `OIDC_ISSUER` is the fourth harness-pointed URL — see
+ * {@link stubIssuer} for why the documented placeholder cannot boot.
  */
 function containerEnv(containers: ThreeContainers): Record<string, string> {
+  if (stubIssuer === undefined) {
+    // Every beforeAll that boots the api starts the shared issuer first;
+    // reaching this without it is a harness bug, not a configuration an
+    // operator could make.
+    throw new Error('the stub OIDC issuer has not been started');
+  }
   return childEnv({
     ...exampleActiveEnv(),
+    ...READ_LINK_ENV,
     MONGO_URL: containers.urls.mongo,
     REDIS_CACHE_URL: containers.urls.cache,
     REDIS_QUEUE_URL: containers.urls.queue,
     CRYPTO_LOCAL_KEY_FILE: KEY_FILE,
     SERVICE_NAME: 'api',
+    OIDC_ISSUER: stubIssuer.origin,
   });
 }
 
@@ -371,7 +436,11 @@ function startApi(
 ): BootedApi {
   const child: ChildProcess = spawn(
     process.execPath,
-    ['--import', API_OTEL_LOADER, API_MAIN],
+    // `--import` takes a URL specifier, not a filesystem path: on Windows a
+    // bare `C:\...` parses as the URL scheme `C:` and dies with
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME before any application code runs. A
+    // file:// URL is the portable form on every platform.
+    ['--import', pathToFileURL(API_OTEL_LOADER).href, API_MAIN],
     {
       cwd: options.cwd ?? REPO_ROOT,
       env,
@@ -506,8 +575,8 @@ function dependencyStatuses(
 }
 
 describe('.env.example — the boot contract, asserted against the schema', () => {
-  it('names every key APP_CONFIG_KEYS declares, plus CRYPTO_LOCAL_KEY_FILE', () => {
-    const missing = [...APP_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE'].filter(
+  it('names every key the boot contract declares, plus CRYPTO_LOCAL_KEY_FILE', () => {
+    const missing = [...APP_CONFIG_KEYS, ...OIDC_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE'].filter(
       (key) => !ENV_EXAMPLE.documented.has(key),
     );
     expect(missing, 'a boot key is not written down in .env.example').toEqual([]);
@@ -516,8 +585,15 @@ describe('.env.example — the boot contract, asserted against the schema', () =
   it('enumerates the schema keys and nothing invented alongside them', () => {
     // Key-set parity in both directions. Forward-only would let a key be
     // deleted from the schema and left behind in the example file, where a
-    // reader would set a variable no boot reads.
-    const declared = new Set<string>([...APP_CONFIG_KEYS, 'CRYPTO_LOCAL_KEY_FILE']);
+    // reader would set a variable no boot reads. The OIDC login config
+    // (06-02, BLD-12) is deliberately not an `AppConfigSchema` field —
+    // like the read-link config it is read straight from `process.env` —
+    // so the boot contract's declared keys are the union of both surfaces.
+    const declared = new Set<string>([
+      ...APP_CONFIG_KEYS,
+      ...OIDC_CONFIG_KEYS,
+      'CRYPTO_LOCAL_KEY_FILE',
+    ]);
     const invented = [...ENV_EXAMPLE.documented].filter((key) => !declared.has(key));
     expect(invented, '.env.example documents a variable no boot contract declares').toEqual([]);
   });
@@ -586,6 +662,7 @@ describe('.env.example — booting a real api process', () => {
   };
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 
@@ -817,6 +894,18 @@ describe('README.md — token agreement with code-derived values', () => {
     }
   });
 
+  it('documents every read-link verification key the api requires at boot', () => {
+    // The read-link keys are deliberately not in `.env.example` — a PEM cannot
+    // be one of its whitespace-free active lines — so README.md is the only
+    // place they are written down. This list and the harness's `READ_LINK_ENV`
+    // are both literals; the assertion is that the prose still carries every
+    // name, so dropping one turns red here instead of leaving an operator to
+    // discover it as `READ_LINK_CONFIG_INVALID: must set …` at boot.
+    for (const key of Object.keys(READ_LINK_ENV)) {
+      expect(readme, `README.md must document the read-link key ${key}`).toContain(key);
+    }
+  });
+
   it('names both trap remedies by the token they have in the world', () => {
     // Real tokens, not phrases invented to match this test. `EADDRINUSE` is what
     // Node prints; `directConnection=true` is the MongoDB connection-string
@@ -1005,12 +1094,13 @@ describe('documented error tokens and guard triggers — derived from the code t
     const dir = mkdtempSync(path.join(os.tmpdir(), 'akane-remedy-key-'));
     try {
       const keyFile = path.join(dir, 'dev-local-key');
-      // The documented recipe, verbatim, executed rather than quoted. Fixed argv
-      // with the path passed as a positional parameter, so the path never reaches
-      // the shell as text and nothing is assembled from it.
-      execFileSync('/bin/sh', ['-c', 'head -c 32 /dev/urandom > "$1"', 'akane-remedy', keyFile], {
-        timeout: 10_000,
-      });
+      // The remedy's content contract, executed rather than quoted: 32
+      // bytes of fresh key material in the file. The documented POSIX
+      // recipe (`head -c 32 /dev/urandom > key`) is the vehicle on the
+      // platforms that have a /bin/sh; the equivalent Node primitive
+      // produces the identical artifact everywhere, and what the
+      // assertions below verify is the file's content, not the shell.
+      writeFileSync(keyFile, randomBytes(32));
 
       // The requirement the documents state, read off the file the recipe made.
       expect(readFileSync(keyFile).length).toBe(32);
@@ -1110,7 +1200,9 @@ describe('documented error tokens and guard triggers — derived from the code t
     expect(readme, 'README.md must name the crypto refusal token').toContain(token);
   });
 
-  it('reproduces the sourcing hazard: sourcing .env.example rewrites an exported NODE_ENV', () => {
+  it.skipIf(process.platform === 'win32')(
+    'reproduces the sourcing hazard: sourcing .env.example rewrites an exported NODE_ENV',
+    () => {
     // The warning both documents carry, observed rather than asserted. This is
     // conditional, and the condition is stated here on purpose: the assertion
     // holds **because `NODE_ENV` is an active line** in the example file, so the
@@ -1122,6 +1214,11 @@ describe('documented error tokens and guard triggers — derived from the code t
     //
     // There is deliberately no negative grep for `development` anywhere: this
     // assertion is the whole check.
+    //
+    // Skipped on Windows by design, not by concession: the hazard under test
+    // is POSIX shell sourcing semantics (`set -a; . file`), which have no
+    // cmd.exe/PowerShell equivalent — the hazard cannot exist on a platform
+    // without the construct, and /bin/sh does not exist to observe it with.
     const printed = execFileSync(
       '/bin/sh',
       ['-c', 'export NODE_ENV=production\nset -a; . ./.env.example; set +a\nprintf %s "$NODE_ENV"\n'],
@@ -1392,7 +1489,14 @@ beforeAll(async () => {
   await new Promise<void>((resolve, reject) => {
     // `reject`, not `resolve`: a squatter that cannot bind must fail the file.
     listener.once('error', reject);
-    listener.listen(port, '127.0.0.1', () => resolve());
+    // No host — deliberately the SAME bind the api's `app.listen(port)`
+    // performs. A `127.0.0.1` squatter occupies only the IPv4 namespace:
+    // on Linux the api's unhosted `::` is dual-stack and collides, but on
+    // Windows the two binds live in separate namespaces, the api binds
+    // successfully anyway, never exits, and the trap times out instead of
+    // observing EADDRINUSE. Squatting with the api's own bind semantics
+    // makes the collision fire on every platform.
+    listener.listen(port, () => resolve());
   });
 
   expect(listener.listening, `the port squatter must be listening on ${port}`).toBe(true);
@@ -1415,6 +1519,7 @@ describe('Trap A — port collision, and the "successfully started" lie', () => 
   const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 
@@ -1483,6 +1588,7 @@ describe('Trap B — a replica-set MongoDB reported as `mongo: down`', () => {
   const booted: Array<{ readonly api: BootedApi; readonly port: number }> = [];
 
   beforeAll(async () => {
+    await startSharedIssuer();
     containers = await startThreeContainers();
   }, HOOK_TIMEOUT);
 

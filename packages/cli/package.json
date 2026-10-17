@@ -1,0 +1,23 @@
+{
+  "name": "@akane/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "akane": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./provision": {
+      "types": "./dist/provision.d.ts",
+      "import": "./dist/provision.js",
+      "default": "./dist/provision.js"
+    }
+  }
+}

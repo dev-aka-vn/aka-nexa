@@ -96,6 +96,7 @@ Every failure is greppable and names the offending key:
 | `KMS_PROVIDER_BLOCKED:` | The KMS provider is selected and has no adapter yet. Named failure, on purpose. |
 | `LOCAL_KEY_FILE_MISSING:` | The **variable** `CRYPTO_LOCAL_KEY_FILE` is unset or empty. This is about the variable, never about the file. |
 | `ENOENT: no such file or directory, open '<path>'` | The variable is set and the **file** it names is not there — the normal state of a fresh checkout. A raw filesystem error from the key read, with nothing caught in front of it. Run the `head -c 32 /dev/urandom > .dev-local-key` recipe above; grepping for `LOCAL_KEY_FILE_MISSING:` after an `ENOENT` finds nothing, because the system never printed it. |
+| `READ_LINK_CONFIG_INVALID: must set <KEYS>` | The api's read-link verification config is incomplete; `<KEYS>` names the absent ones. Not carried by `.env.example` — see [Read-link verification](#read-link-verification-the-apis-second-key) below for why. |
 
 ### Two Redis deployments, not one
 
@@ -125,6 +126,134 @@ line: a plaintext local key is permitted only while the environment reads
 above a warning rather than a convenience — it is the line that sets the switch.
 `CRYPTO_KEY_PROVIDER=kms` is refused with `KMS_PROVIDER_BLOCKED:` until a deployment cloud is named.
 Both are the guards working.
+
+### Read-link verification (the api's second key)
+
+The `api` verifies the signed read link a user is handed from chat, and that verification needs its
+own key — separate from the envelope key above, because it is a **public** key that checks a signature
+rather than a secret key that decrypts. Four variables are required at boot:
+
+| Variable | What it is |
+|---|---|
+| `JWT_ISSUER` | The deployment id the link was minted under (D-21). |
+| `JWT_AUDIENCE` | The form-renderer origin. The renderer is a static web app, so a link's audience is an origin rather than an API. |
+| `JWT_READ_PUBLIC_KEY` | The P-256 public key a link's signature is verified against. |
+| `RENDERER_ORIGIN` | The renderer's origin, used to build links and check that the audience matches. |
+
+These are **not** in `.env.example`, and that is deliberate rather than an oversight: every active
+line there is a shell assignment of the form `KEY=value` with no whitespace in the value, and a PEM
+cannot satisfy that — its header line contains a space, and the key is multi-line even when its
+newlines are written escaped. So the file a reader can `source` and the file that can carry a public
+key are not the same file, and this section is the one that carries it.
+
+Generate a development pair once per checkout. Signing is a tracer stand-in today — the issuer
+returns a deterministic path and does not sign yet — so only the public half is read; generating the
+pair now means the real issuer can adopt it without a config change.
+
+```sh
+# A P-256 pair — the verifier's algorithm allowlist is ES256.
+openssl ecparam -name prime256v1 -genkey -noout -out read-link.pem
+openssl ec -in read-link.pem -pubout -out read-link.pub.pem
+
+# Export the public half, plus the three non-key values:
+export JWT_READ_PUBLIC_KEY="$(cat read-link.pub.pem)"
+export JWT_ISSUER=akane-local
+export JWT_AUDIENCE=http://localhost:5173
+export RENDERER_ORIGIN=http://localhost:5173
+```
+
+`JWT_READ_PUBLIC_KEY` accepts the PEM either as a real multi-line value or as one line with its
+newlines written `\n` — the module expands the escapes once, before the key is parsed — because an
+orchestrator commonly hands a value to a process as a single line.
+
+A boot missing any of the four is refused with `READ_LINK_CONFIG_INVALID: must set …`, naming the
+ones it is missing, rather than starting cleanly and failing on the first link it tries to verify.
+The keys are read straight from the environment, not declared as schema fields, so a deployment that
+sets a differently-named variable gets that refusal rather than a silent default.
+
+During the 90-day rotation window (LNK-12) a second key, `JWT_READ_PUBLIC_KEY_PREVIOUS`, is accepted
+as well. It is optional: omit it entirely outside a rotation, because an empty value trips the same
+`must set` refusal as an absent one.
+
+### Builder SSO authentication (BLD-12, D-101…D-104, IDN-08)
+
+The self-service App Builder authenticates department admins against the enterprise
+identity provider over OIDC. Four variables are required at boot, read straight from
+the environment like the read-link config (not declared as schema fields, so a
+differently-named variable gets a named refusal rather than a silent default):
+
+| Variable | What it is |
+|---|---|
+| `OIDC_ISSUER` | The corporate IdP's issuer URL. Discovery is fetched once at module init from `<OIDC_ISSUER>/.well-known/openid-configuration` (T-06-09: a slow IdP degrades login latency, not security). |
+| `OIDC_CLIENT_ID` | The builder's client registration at the IdP. |
+| `OIDC_CLIENT_SECRET` | The client secret. |
+| `OIDC_REDIRECT_URI` | The callback the `api` serves. **Production:** the API's own origin (`https://<api-host>/auth/oidc/callback`). **Dev via the Vite proxy:** the SPA origin (see below). |
+
+**Dev via the Vite proxy.** In a local stack the browser talks to the SPA on
+`http://127.0.0.1:5173`, and the SPA's Vite config proxies `/auth` to the `api`
+with the Host preserved — so the callback, whose `redirect_uri` the `api`
+re-derives from the live request as `${protocol}://${host}${originalUrl}`, lands
+back on the SPA origin rather than the API's bare root. Point `OIDC_REDIRECT_URI`
+at that origin, and open the SPA at the same spelling:
+
+```sh
+OIDC_REDIRECT_URI=http://127.0.0.1:5173/auth/oidc/callback
+```
+
+**One spelling, both places.** `localhost` and `127.0.0.1` are different *sites*
+for SameSite purposes, and the session cookie is `__Host-`-prefixed with
+`SameSite=Strict`: mix the two — open the SPA at `localhost` while the registered
+redirect URI says `127.0.0.1`, or the reverse — and the IdP's return navigation
+is cross-site, the cookie is dropped on the callback hop, and the callback answers
+`401 SESSION_MISSING`. Address `OIDC_ISSUER` at the same host spelling too, so the
+whole login round-trip stays on one site.
+
+A boot missing any of the four refuses to start with `OIDC_CONFIG_INVALID: must set …`,
+naming the absent ones. In non-production the issuer may be `http://` (the integration
+specs run an in-spec stub issuer on loopback); a production boot against an `http://`
+issuer still fails discovery.
+
+**The login flow** (`GET /auth/oidc/begin` → IdP → `GET /auth/oidc/callback`):
+
+1. `begin` generates a PKCE S256 pair and stashes the `code_verifier` and `state`
+   **server-side** in a pre-login Redis session (120 s, the authorization-code
+   exchange window) — the browser carries only the opaque session id.
+2. `callback` verifies the returned `state` against the stash **before** any network
+   call (T-06-05), exchanges the code with the stashed verifier, and gates the
+   login on the ID token's `acr`/`amr` claims (D-102): only the values in
+   `ACCEPTABLE_ACR_VALUES` (`mfa`, `phr` — the Keycloak-style pair; the enterprise
+   IdP's actual values are the S3 open question, and this one constant is the
+   single place to change them) count as MFA-strong. A password-only login answers
+   `403 AUTH_MFA_REQUIRED`.
+3. First login auto-provisions the `real_user` (D-104) — no admin pre-mapping step.
+
+**The session** (D-101): the authenticated session is an opaque Redis record
+(`ak:sess:<uuid>`), delivered as an httpOnly, Secure, SameSite=Strict
+`__Host-akane_sid` cookie — never a JWT, never readable by the SPA (T-06-07), and
+the OIDC subject lives only in the server-side record (the PII-in-JWT constraint:
+nothing of it is ever minted into our own tokens). The session middleware guards
+every builder route except the two login routes:
+
+- **CSRF** (T-06-04): SameSite=Strict is the structural layer; the second layer
+  refuses a state-changing call (POST/PUT/PATCH/DELETE) whose `Origin` is absent
+  or cross-origin with `403 CSRF_ORIGIN_MISMATCH`.
+- **Lifetime** (D-103): the IdP session is the only TTL input — there is no second,
+  independently-configured expiry. A session whose `idpSessionExp` has passed
+  answers `401 SESSION_EXPIRED`; inside the renewal window (less than half the
+  IdP session lifetime remaining) the server-stored refresh token is exchanged and
+  the Redis TTL extended to the refreshed IdP lifetime. When the IdP session has
+  ended, a full re-login is forced.
+- **Logout** (`POST /auth/logout`): destroys the Redis record and clears the cookie
+  (`Max-Age=0`, same five attributes).
+
+**The Users page's identity surface** (IDN-08, D-110): `POST /users/sso-mappings`
+maps an OIDC subject to an existing `real_user_id` with **no OTP** — the admin's
+global-admin session is the proof (deliberately separate from the employee OTP
+self-onboarding route, IDN-05). A non-global-admin answers `403 GLOBAL_ADMIN_REQUIRED`;
+a mapping to an unknown `real_user_id` answers a field-naming inline error
+(`REAL_USER_UNKNOWN`, field `realUserId`). `GET /users/sso-mappings?email=…` lists
+the mappings carrying that email (the IDN-07 search shape). Both endpoints are
+global-admin-only.
 
 ## Local infrastructure
 

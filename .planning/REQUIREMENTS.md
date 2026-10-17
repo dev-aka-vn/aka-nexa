@@ -123,10 +123,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **IDN-02**: An admin can bulk-import identity mappings from a CSV file
 - [ ] **IDN-03**: One real user can hold multiple chat identities across different IM platforms
 - [ ] **IDN-04**: An unmapped user receives an onboarding prompt with instructions, never a raw system error
-- [ ] **IDN-05**: A user can self-onboard by verifying an OTP sent through their IM account, expiring after 10 minutes with max 3 attempts and a 30-minute lockout
+- [x] **IDN-05**: A user can self-onboard by verifying an OTP sent through their IM account, expiring after 10 minutes with max 3 attempts and a 30-minute lockout
 - [ ] **IDN-06**: Deactivating a mapping stops future resolution without deleting that user's historical submissions
 - [ ] **IDN-07**: An admin can search mappings by email, `real_user_id`, or `chat_user_id`
-- [ ] **IDN-08**: An admin can map an SSO identity to a `real_user_id` without the user performing OTP verification
+- [x] **IDN-08**: An admin can map an SSO identity to a `real_user_id` without the user performing OTP verification
 
 ### Per-App Access Control
 
@@ -134,12 +134,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **ACL-02**: Roles are assignable only to `real_user_id`; no group or attribute-based assignment exists
 - [ ] **ACL-03**: Every app ships with the default roles `owner`, `admin`, `manager`, and `user`
 - [ ] **ACL-04**: An app has exactly one `owner` at all times
-- [ ] **ACL-05**: Ownership transfer requires global admin approval and auto-cancels after 7 days if unapproved
+- [x] **ACL-05**: Ownership transfer requires global admin approval and auto-cancels after 7 days if unapproved
 - [ ] **ACL-06**: A user's permissions are checked twice per request — once to filter the tool list before any decision-model call, and again at the execution boundary
 - [ ] **ACL-07**: Any permission change bumps a per-user-per-app `perm_version` epoch, and the epoch is embedded in the RBAC cache key
 - [ ] **ACL-08**: A stale cached permission entry is never served after an epoch bump, with or without a Pub/Sub message
 - [ ] **ACL-09**: A permission denial returns a clear user-facing message naming the missing permission, not a generic error
-- [ ] **ACL-10**: An app owner can view and modify all role assignments in their app except ownership transfer
+- [x] **ACL-10**: An app owner can view and modify all role assignments in their app except ownership transfer
 - [ ] **ACL-11**: There is no superuser bypass for app-level permissions; only platform operations use global admin
 
 ### Routing Decision
@@ -160,13 +160,13 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 - [ ] **APP-01**: An app moves through `draft` → `published` → `deprecated` → `archived`
 - [ ] **APP-02**: A draft app is not reachable by any link, trigger, or route
-- [ ] **APP-03**: An app definition is versioned and the last 20 versions are retained for rollback
+- [x] **APP-03**: An app definition is versioned and the last 20 versions are retained for rollback
 - [ ] **APP-04**: A published app declares intents and slash commands that activate it
-- [ ] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
-- [ ] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
-- [ ] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
-- [ ] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
-- [ ] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
+- [x] **APP-05**: A deprecated app stays functional, shows the owner-supplied deprecation notice to users, and registers no new triggers
+- [x] **APP-06**: An archived app accepts no new submissions, but existing view links still resolve
+- [x] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
+- [x] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
+- [x] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
 
 ### Form Engine & Renderer
 
@@ -174,16 +174,16 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **FRM-02**: Form schemas are versioned with an incrementing integer, and a submission records the `form_version` in effect when its link was issued
 - [ ] **FRM-03**: Editing a published form does not affect an in-flight submission
 - [x] **FRM-04**: The renderer pre-fills fields server-side from the resolved real-user profile
-- [ ] **FRM-05**: A form author can define conditional show/hide logic and validation rules (required, pattern, min/max, custom)
+- [x] **FRM-05**: A form author can define conditional show/hide logic and validation rules (required, pattern, min/max, custom)
 - [ ] **FRM-06**: The renderer is a separate stateless web app that authenticates by JWT in the URL and sets no cookies
 - [x] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
 - [x] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
-- [ ] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
+- [x] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
 
 ### Links & Token Security
 
 - [ ] **LNK-01**: A create link is single-use, expires after a configurable TTL (default 30 minutes), and cannot be submitted twice
-- [ ] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
+- [x] **LNK-02**: An edit link can be loaded repeatedly but consumes on submit, expiring after a configurable TTL (default 4 hours)
 - [ ] **LNK-03**: A one-time token is consumed atomically, and a MongoDB unique index on the token ID makes double consumption impossible even if Redis loses an acknowledged write during failover
 - [ ] **LNK-04**: An integration test that kills Redis mid-submit produces exactly one submission
 - [x] **LNK-05**: A view or query link is a stateless signed JWT with no Redis entry, verifiable with a public key alone
@@ -197,13 +197,13 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Submissions & Data Routing
 
-- [ ] **DAT-01**: Each app selects one data mode: `internal`, `external`, or `hybrid`
+- [x] **DAT-01**: Each app selects one data mode: `internal`, `external`, or `hybrid`
 - [ ] **DAT-02**: In `internal` mode a submission is written to the app's MongoDB collection, which is created on first write
 - [ ] **DAT-03**: In `external` mode a submission is pushed through a referenced connector using `{{form.field}}` and `{{real_user.attribute}}` field mapping
-- [ ] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
-- [ ] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
-- [ ] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
-- [ ] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
+- [x] **DAT-04**: In `hybrid` mode the internal write is synchronous and must succeed for the submission to be confirmed
+- [x] **DAT-05**: In `hybrid` mode the external call is asynchronous through BullMQ, and an external failure leaves the submission in `partial` status with a retry queued
+- [x] **DAT-06**: The outbound state is modelled as exactly `not_sent` | `sent_unconfirmed` | `confirmed`, committed as `sent_unconfirmed` *before* the outbound call
+- [x] **DAT-07**: A reconciliation job retries only `not_sent`; nothing in `sent_unconfirmed` is ever auto-resent
 - [ ] **DAT-08**: A submission is validated against its pinned form schema before it is routed
 - [ ] **DAT-09**: An internal collection's declared indexes are created at publish time
 - [x] **DAT-10**: A Query DSL reads internal data; raw MongoDB query syntax is never exposed to an app builder
@@ -211,19 +211,30 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **DAT-12**: Every DSL construct has a test asserting the injected filters survive it
 - [ ] **DAT-13**: `FR-D-12`'s write-once guarantee is **amended**: the platform guarantees a single *send* per submission, and write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, with each connector declaring `supports_idempotency_key` and the flag surfaced in the App Builder at publish time
 - [ ] **DAT-14**: An end user can see the current status of their own submissions without asking in chat
+  - **(05-07, then 05-09) Partial — the read path has no production entry point (G-13).** The status
+    surface, the projection (`completed | partial | failed | pending_external`), the renderer and
+    the `view` verifier path all exist and are correct, and the "My submissions" **list** (the
+    `query` action) is now resolvable: `SeedSavedQueryLookup`
+    (`packages/domain/src/links/seed-saved-query.lookup.ts`) reads the frozen D-73 seed and
+    `read.module.ts` binds it into `ReadVerifierService`, closing **G-11** on 2026-10-11. What
+    still blocks the requirement is **G-13**: nothing mints a signed read link, so no `/l/*` route
+    can be reached outside a test — the only issuer is a Phase-2 stand-in returning an unsigned
+    path, and a real one is KMS-backed and blocked on the deliberately-open **FND-10** gate. So the
+    `view`, `query` and `edit` paths are all equally unreachable in production. The box stays
+    unticked to match `05-VERIFICATION.md`, which scores SC#1 as failed on this clause.
 
 ### Connectors & Async Execution
 
-- [ ] **CON-01**: A connector implements one common interface — `testConnection()`, `execute(operation, payload, context)`, `getCapabilities()`
-- [ ] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
+- [x] **CON-01**: A connector implements one common interface — `testConnection()`, `execute(operation, payload, context)`, `getCapabilities()`
+- [x] **CON-02**: Connector instances are managed globally by platform admins; an app references a connector and never owns its credentials
 - [ ] **CON-03**: A failed external call retries with exponential backoff (base 2 s, max 5 attempts) and then routes to a dead letter queue
-- [ ] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
-- [ ] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
-- [ ] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be attributed and budgeted separately
-- [ ] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
-- [ ] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
+- [x] **CON-04**: A dead-letter-queue item is viewable and manually retryable by a global admin
+- [x] **CON-05**: Rate limits are enforced per connector instance, shared across every app referencing it
+- [x] **CON-06**: `app_id` is a first-class label on connector metrics, so one app's traffic spike can be **attributed** separately. Separate *budgeting* is deliberately not the model — the connector instance is the budgeted resource (CON-05); the label exists so the noisy app is identifiable, not so it gets a private allowance (amended 2026-10-11 by G-12)
+- [x] **CON-07**: `credential_rejected` alerts separately from `endpoint_unreachable`
+- [x] **CON-08**: Changing an app's `connector_ref` is a separately audited mutation
 - [ ] **CON-09**: A Redmine connector ships as the first and only v1 external integration, including field mapping and its error taxonomy
-- [ ] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
+- [x] **CON-10**: A hybrid submission's internal write commits through a transactional outbox, so the outbound request is never sent for a write that did not commit
 
 ### Audit, Compliance & Data Protection
 
@@ -236,7 +247,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **AUD-07**: A quarterly access review report is auto-generated showing who holds access to what
 - [ ] **AUD-08**: A purge is soft-delete first, then hard delete after a 30-day grace period, and every purge is logged with operator ID and timestamp
 - [ ] **AUD-09**: Archived app data stays queryable by a global admin for compliance
-- [ ] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
+- [x] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
 
 ### Observability & Operations
 
@@ -260,8 +271,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
     moving in a booted worker: `platform_heartbeat_total{otel_scope_name="akane"} 2`.
 - [x] **OBS-02**: A trace spans IM receive → identity → RBAC → decision → link → form → submit → route → respond
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
-- [ ] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
-- [ ] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
+- [x] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
+- [x] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
 - [ ] **OBS-06**: Alerts fire on connector failure >5% over 5 min, token consume failure >10/min, average decision confidence <0.6 over 10 min, DLQ depth >50, Redis memory >80%, MongoDB replication lag >5 s, and all decision providers unhealthy
 - [ ] **OBS-07**: Logs are retained 30 days hot (searchable) and 1 year cold
 - [ ] **OBS-08**: A load test demonstrates 1,000 concurrent users and 50 IM events/sec, and measures the 3-tier throttler's Redis cost rather than assuming it
@@ -284,18 +295,18 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### App Builder
 
-- [ ] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
-- [ ] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
-- [ ] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
-- [ ] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
-- [ ] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
-- [ ] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
-- [ ] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
-- [ ] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
-- [ ] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
-- [ ] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
-- [ ] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
-- [ ] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
+- [x] **BLD-01**: A non-developer can create an app in 5 wizard steps or fewer without documentation
+- [x] **BLD-02**: An owner can edit an app's general settings, triggers, RBAC, forms, data routing, retention, and lifecycle from a tabbed editor
+- [x] **BLD-03**: An owner can create custom roles with arbitrary permission sets and assign users by name or email autocomplete
+- [x] **BLD-04**: An owner can design a form with drag-and-drop, including undo/redo over the last 50 actions
+- [x] **BLD-05**: Data-routing configuration shows a visual form-field → connector-field mapping
+- [x] **BLD-06**: Publishing shows a confirmation dialog summarising every change, and a save is possible with a keyboard shortcut
+- [x] **BLD-07**: Errors are inline, specific, and actionable — never a generic "something went wrong"
+- [x] **BLD-08**: A submission viewer lists an app's submissions with filters, detail view, and export
+- [x] **BLD-09**: The App Builder is responsive enough to be usable on a tablet, and shows loading skeletons for every async operation
+- [x] **BLD-10**: A department admin can request a connector and publish an external or hybrid app **without** a platform admin creating the connector for them
+- [x] **BLD-11**: A delegated "workflow manager" can operate an app without holding ownership
+- [x] **BLD-12**: The App Builder authenticates via OIDC SSO with MFA, and a user can only manage apps they own or administer
 
 ### Notifications & Two-Way Sync
 
@@ -410,7 +421,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FND-10 | Phase 1 | **Pending — do not close until a KMS vendor is named (B-3/D-27).** `phase.complete` set this to `Complete` on 2026-10-03; that was a blanket phase-status update overriding a deliberate deferral, and it contradicts this requirement's own body. Reverted. The envelope, `KeyProvider` and production guard exist and are proven; **no KMS-backed key exists.** Phase 5 must not store a connector credential before the vendor is chosen. |
 | LNK-07 | Phase 1 | Complete |
 | RTE-10 | Phase 1 | Complete |
-| AUD-10 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered the rate-limit-key scope type (`ip`/`address`/`cidr` unexpressible). The requirement's own behaviour — "blocks only on signature failure" — is Phase 3/4. |
+| AUD-10 | Phase 1 → behaviour delivered in 5 | **Complete.** `phase.complete` set this to `Complete` on 2026-10-03 and it was reverted, correctly, because only the contract half existed then. Phase 1 delivered the rate-limit-key scope type (`ip`/`address`/`cidr` unexpressible); the behaviour half — "blocks only on signature failure" — landed in commit `AUD-10` on the read path (`packages/domain/src/links/signature-failure-limiter.ts`, wired at `read.controller.ts#denyResult`), keyed per link `jti`. The per-**user** key is supported by the limiter and the contract but is *not* derivable on a failed verification (no trusted claims), so the read path supplies the `link` key only; that is recorded in `05-GAPS.md` G-2 and must not be read as the requirement being narrowed. Verified by `read.controller.spec.ts` (benign never counted; `bad_signature` counted and blocked) and `signature-failure-limiter.integration.spec.ts` (5 real over-Redis cases). |
 | DAT-13 | Phase 1 | **Pending — contract half only.** `phase.complete` set this to `Complete` on 2026-10-03; reverted. Phase 1 delivered `supports_idempotency_key` as a **required** boolean (absent cannot read as `false`). Surfacing it in the App Builder is Phase 6. |
 | OBS-01 | Phase 1 | Complete (01-09, mounted 01-10) |
 | IDN-01 | Phase 2 | Pending |
@@ -477,50 +488,50 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DAT-10 | Phase 4 | Complete |
 | DAT-11 | Phase 4 | Complete |
 | DAT-12 | Phase 4 | Complete |
-| DAT-01 | Phase 5 | Pending |
+| DAT-01 | Phase 5 | Complete |
 | DAT-03 | Phase 5 | Pending |
-| DAT-04 | Phase 5 | Pending |
-| DAT-05 | Phase 5 | Pending |
-| DAT-06 | Phase 5 | Pending |
-| DAT-07 | Phase 5 | Pending |
-| DAT-14 | Phase 5 | Pending |
-| CON-01 | Phase 5 | Pending |
-| CON-02 | Phase 5 | Pending |
+| DAT-04 | Phase 5 | Complete |
+| DAT-05 | Phase 5 | Complete |
+| DAT-06 | Phase 5 | Complete |
+| DAT-07 | Phase 5 | Complete (SC#3) |
+| DAT-14 | Phase 5 | Partial (G-13) |
+| CON-01 | Phase 5 | Complete |
+| CON-02 | Phase 5 | Complete |
 | CON-03 | Phase 5 | Pending |
-| CON-04 | Phase 5 | Pending |
-| CON-05 | Phase 5 | Pending |
-| CON-06 | Phase 5 | Pending |
-| CON-07 | Phase 5 | Pending |
-| CON-08 | Phase 5 | Pending |
+| CON-04 | Phase 5 | Complete |
+| CON-05 | Phase 5 | Complete (CON-05) |
+| CON-06 | Phase 5 | Complete (OBS-04) |
+| CON-07 | Phase 5 | Complete (OBS-04) |
+| CON-08 | Phase 5 | Complete |
 | CON-09 | Phase 5 | Pending |
-| CON-10 | Phase 5 | Pending |
-| LNK-02 | Phase 5 | Pending |
-| OBS-04 | Phase 5 | Pending |
-| BLD-01 | Phase 6 | Pending |
-| BLD-02 | Phase 6 | Pending |
-| BLD-03 | Phase 6 | Pending |
-| BLD-04 | Phase 6 | Pending |
-| BLD-05 | Phase 6 | Pending |
-| BLD-06 | Phase 6 | Pending |
-| BLD-07 | Phase 6 | Pending |
-| BLD-08 | Phase 6 | Pending |
-| BLD-09 | Phase 6 | Pending |
-| BLD-10 | Phase 6 | Pending |
-| BLD-11 | Phase 6 | Pending |
-| BLD-12 | Phase 6 | Pending |
-| APP-03 | Phase 6 | Pending |
-| APP-05 | Phase 6 | Pending |
-| APP-06 | Phase 6 | Pending |
-| APP-07 | Phase 6 | Pending |
-| APP-08 | Phase 6 | Pending |
-| APP-09 | Phase 6 | Pending |
-| FRM-05 | Phase 6 | Pending |
-| FRM-09 | Phase 6 | Pending |
-| IDN-05 | Phase 6 | Pending |
-| IDN-08 | Phase 6 | Pending |
-| ACL-05 | Phase 6 | Pending |
-| ACL-10 | Phase 6 | Pending |
-| OBS-05 | Phase 6 | Pending |
+| CON-10 | Phase 5 | Complete |
+| LNK-02 | Phase 5 | Complete |
+| OBS-04 | Phase 5 | Complete (OBS-04) |
+| BLD-01 | Phase 6 | Complete |
+| BLD-02 | Phase 6 | Complete |
+| BLD-03 | Phase 6 | Complete |
+| BLD-04 | Phase 6 | Complete |
+| BLD-05 | Phase 6 | Complete |
+| BLD-06 | Phase 6 | Complete |
+| BLD-07 | Phase 6 | Complete |
+| BLD-08 | Phase 6 | Complete |
+| BLD-09 | Phase 6 | Complete |
+| BLD-10 | Phase 6 | Complete |
+| BLD-11 | Phase 6 | Complete |
+| BLD-12 | Phase 6 | Complete |
+| APP-03 | Phase 6 | Complete |
+| APP-05 | Phase 6 | Complete |
+| APP-06 | Phase 6 | Complete |
+| APP-07 | Phase 6 | Complete |
+| APP-08 | Phase 6 | Complete |
+| APP-09 | Phase 6 | Complete |
+| FRM-05 | Phase 6 | Complete |
+| FRM-09 | Phase 6 | Complete |
+| IDN-05 | Phase 6 | Complete |
+| IDN-08 | Phase 6 | Complete |
+| ACL-05 | Phase 6 | Complete |
+| ACL-10 | Phase 6 | Complete |
+| OBS-05 | Phase 6 | Complete |
 | IM-10 | Phase 7 | Pending |
 | NOT-01 | Phase 7 | Pending |
 | NOT-02 | Phase 7 | Pending |

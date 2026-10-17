@@ -15,17 +15,17 @@ export interface Profile {
 }
 
 export class PrefillService {
-  static buildPrefill(profile: Profile | null, config: PrefillConfig): Record<string, any> {
+  static buildPrefill(profile: Profile | null, config: PrefillConfig): Record<string, unknown> {
     if (!profile || !config.fields || config.fields.length === 0) {
       return {};
     }
 
-    const result: Record<string, any> = {};
+    const result: Record<string, unknown> = {};
 
     for (const field of config.fields) {
       const key = field.field;
       if (key in profile) {
-        result[key] = (profile as any)[key];
+        result[key] = profile[key as keyof Profile];
       }
     }
 

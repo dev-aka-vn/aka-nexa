@@ -1,0 +1,27 @@
+{
+  "connector_ref": "redmine-dev",
+  "connector_id": "redmine",
+  "name": "Redmine (dev)",
+  "base_url": "http://localhost:8080",
+  "credential_ref": "redmine-dev-key",
+  "timeout_ms": 30000,
+  "retries": 3,
+  "rate_limit": {
+    "requests_per_minute": 60
+  },
+  "mapping": {
+    "correlation_custom_field_id": "cf_1",
+    "defaults": {
+      "project_id": 1,
+      "tracker_id": 1
+    }
+  },
+  "taxonomy": {
+    "401": "credential_rejected",
+    "403": "credential_rejected",
+    "404": "endpoint_unreachable",
+    "422": "rejected",
+    "5xx": "failed_transient",
+    "timeout": "failed_transient"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "template_id": "hr-request",
+  "name": "HR Request",
+  "description": "General HR inquiry — policy questions, corrections, and HR workflow requests",
+  "domain": "hr",
+  "tags": ["hr"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "select", "key": "topic", "label": "Topic", "input": true, "data": { "values": [{ "label": "Policy question", "value": "policy" }, { "label": "Record correction", "value": "correction" }, { "label": "Other", "value": "other" }] } },
+      { "type": "textarea", "key": "details", "label": "Details", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "hr", "type": "slash", "command": "/hr", "description": "Ask HR" }
+  ]
+}

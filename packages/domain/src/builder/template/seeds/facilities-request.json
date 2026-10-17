@@ -1,0 +1,25 @@
+{
+  "template_id": "facilities-request",
+  "name": "Facilities Request",
+  "description": "Facilities — desk booking, repairs, and building services",
+  "domain": "facilities",
+  "tags": ["facilities"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "textfield", "key": "location", "label": "Location", "input": true },
+      { "type": "select", "key": "request_type", "label": "Request type", "input": true, "data": { "values": [{ "label": "Desk booking", "value": "desk" }, { "label": "Repair", "value": "repair" }, { "label": "Other", "value": "other" }] } },
+      { "type": "textarea", "key": "details", "label": "Details", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "facilities", "type": "slash", "command": "/facilities", "description": "Request facilities service" }
+  ]
+}

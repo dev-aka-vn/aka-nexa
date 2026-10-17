@@ -4,15 +4,49 @@ import {
   IdentityMappingRepository,
   IdentityService,
   LinkIssuerService,
+  OtpOnboardingService,
+  OtpStateMachine,
   PublishedAppLoader,
   RuleBasedProvider,
   RoutingOrchestrator,
   ClarificationSessionService,
   type PublishedApp,
+  type RoutingOutcomeRepository,
 } from '@akane/domain';
 import type { JevRequest, JevResponse } from '@akane/contract';
 
 import { InboundEventProcessor } from './inbound-event.processor.js';
+
+/**
+ * The OBS-05 producer's record store, in memory. The
+ * processor records every applied link routing outcome at
+ * the routing execution point — the shape the
+ * routing_share gauge and the publish gate's dry-run both
+ * read.
+ */
+class FakeRoutingOutcomeRepository {
+  readonly records: {
+    routing_id: string;
+    intent_label: string;
+    app_id: string;
+  }[] = [];
+
+  async record(outcome: {
+    routing_id: string;
+    intent_label: string;
+    app_id: string;
+  }): Promise<void> {
+    this.records.push({ ...outcome });
+  }
+
+  async outcomesForIntent(): Promise<never[]> {
+    return [];
+  }
+
+  async outcomesForApp(): Promise<never[]> {
+    return [];
+  }
+}
 
 /** Minimal in-memory Redis stand-in for clarification-session specs. */
 class FakeRedis {
@@ -73,8 +107,18 @@ async function buildProcessor(opts: {
   const decideSpy = vi.spyOn(provider, 'decide');
   const orchestrator = new RoutingOrchestrator([provider]);
   const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
-  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification);
-  return { processor, decideSpy, clarification };
+  // These specs' users are all mapped (U1 → usr_1), so the OTP
+  // onboarding path is never exercised here; the service is wired
+  // with in-memory seams so the processor composes exactly as
+  // the worker module composes it.
+  const onboarding = new OtpOnboardingService(
+    new OtpStateMachine(new FakeRedis() as unknown as Redis),
+    repo,
+    { deliverOtp: async () => {} },
+  );
+  const routingOutcomes = new FakeRoutingOutcomeRepository();
+  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as unknown as RoutingOutcomeRepository);
+  return { processor, decideSpy, clarification, routingOutcomes };
 }
 
 function event(overrides: Record<string, unknown>) {
@@ -328,7 +372,20 @@ describe('InboundEventProcessor — clarification session wiring', () => {
     const authorizeIds2 = new Set(['leave-request']);
     const loader2 = new PublishedAppLoader(CATALOG, async (appId) => authorizeIds2.has(appId));
     const orchestrator2 = new RoutingOrchestrator([provider]);
-    const processor2 = new InboundEventProcessor(identity2, loader2, orchestrator2, new LinkIssuerService(), clarification);
+    const routingOutcomes2 = new FakeRoutingOutcomeRepository();
+    const processor2 = new InboundEventProcessor(
+      identity2,
+      loader2,
+      orchestrator2,
+      new LinkIssuerService(),
+      clarification,
+      new OtpOnboardingService(
+        new OtpStateMachine(new FakeRedis() as unknown as Redis),
+        repo2,
+        { deliverOtp: async () => {} },
+      ),
+      routingOutcomes2 as unknown as RoutingOutcomeRepository,
+    );
 
     const reply = await processor2.process({
       data: event({ action: 'interaction', text: '1' }),
@@ -346,5 +403,112 @@ describe('InboundEventProcessor — clarification session wiring', () => {
     } as never);
     expect(out.kind).toBe('link');
     expect(decideSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
+  it('a routed link message records exactly one outcome record with the derived intent label', async () => {
+    const { processor, routingOutcomes } = await buildProcessor();
+    const out = await processor.process({
+      data: event({ text: 'I want to request leave' }),
+    } as never);
+    expect(out.kind).toBe('link');
+    // One record: the applied outcome, keyed by the event's
+    // routing id, labelled by the declared intent the question
+    // matched — never the raw question text.
+    expect(routingOutcomes.records).toEqual([
+      {
+        routing_id: 'evt_1',
+        intent_label: 'request leave',
+        app_id: 'leave-request',
+      },
+    ]);
+  });
+
+  it('a clarify outcome records nothing — the distribution is over routings to apps', async () => {
+    const provider = new RuleBasedProvider(
+      new Map([
+        ['leave-request', ['request leave']],
+        ['hr-private', ['request leave']],
+      ]),
+    );
+    const { processor, routingOutcomes } = await buildProcessor({
+      authorizeIds: ['leave-request', 'hr-private'],
+      provider,
+    });
+    const out = await processor.process({
+      data: event({ text: 'request leave' }),
+    } as never);
+    expect(out.kind).toBe('clarify');
+    expect(routingOutcomes.records).toEqual([]);
+  });
+
+  it('the clarification re-evaluation records the applied outcome at its own routing id', async () => {
+    const provider = new RuleBasedProvider(
+      new Map([['leave-request', ['tomorrow']]]),
+    );
+    const { processor, routingOutcomes } = await buildProcessor({ provider });
+    // First message creates a clarification session (no match for "I need something").
+    await processor.process({
+      data: event({ text: 'I need something' }),
+    } as never);
+
+    // Detail-adding reply re-evaluates through the orchestrator and links.
+    const reply = await processor.process({
+      data: event({ action: 'interaction', text: 'for tomorrow' }),
+    } as never);
+    expect(reply.kind).toBe('link');
+    // The record carries the re-evaluation's own event id; no declared
+    // label of the routed app appears in the combined question, so the
+    // honest label is the 'unlabelled' sentinel — never the question text.
+    expect(routingOutcomes.records).toEqual([
+      {
+        routing_id: 'evt_1',
+        intent_label: 'unlabelled',
+        app_id: 'leave-request',
+      },
+    ]);
+  });
+
+  it('a record-write failure never sacrifices the already-issued link', async () => {
+    const repo = new IdentityMappingRepository();
+    await repo.upsert({ platform: 'slack', chat_user_id: 'U1', real_user_id: 'usr_1' });
+    const identity = new IdentityService(repo);
+    const loader = new PublishedAppLoader(CATALOG, async () => true);
+    const provider = new RuleBasedProvider(new Map(CATALOG.map((a) => [a.id, a.aliases])));
+    const orchestrator = new RoutingOrchestrator([provider]);
+    const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
+    const onboarding = new OtpOnboardingService(
+      new OtpStateMachine(new FakeRedis() as unknown as Redis),
+      repo,
+      { deliverOtp: async () => {} },
+    );
+    const failing = {
+      record: async (): Promise<void> => {
+        throw new Error('mongo unavailable');
+      },
+      outcomesForIntent: async (): Promise<never[]> => [],
+      outcomesForApp: async (): Promise<never[]> => [],
+    };
+    const processor = new InboundEventProcessor(
+      identity,
+      loader,
+      orchestrator,
+      new LinkIssuerService(),
+      clarification,
+      onboarding,
+      failing as never,
+    );
+
+    const out = await processor.process({
+      data: event({ text: 'I want to request leave' }),
+    } as never);
+    // The link still resolves — the record is the metric's substrate,
+    // not the routing's.
+    expect(out).toEqual({
+      kind: 'link',
+      appId: 'leave-request',
+      url: '/l/leave-request?u=usr_1',
+    });
   });
 });

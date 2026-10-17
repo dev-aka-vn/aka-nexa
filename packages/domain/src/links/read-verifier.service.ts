@@ -67,6 +67,27 @@ export interface SavedQueryLookup {
 }
 
 /**
+ * A revision document for pre-fill in edit links (LNK-02).
+ */
+export interface SubmissionRevisionRecord {
+  readonly _id?: string;
+  readonly submission_id: string;
+  readonly revision: number;
+  readonly outbound: 'not_sent' | 'sent_unconfirmed' | 'confirmed';
+  readonly data: Record<string, unknown>;
+  readonly createdAt: Date;
+  readonly updatedAt?: Date;
+  readonly downstreamReference?: string | null;
+}
+
+/**
+ * Seam to find the latest revision for a submission.
+ */
+export interface SubmissionRevisionLookup {
+  findLatest(submissionId: string): Promise<SubmissionRevisionRecord | null>;
+}
+
+/**
  * A stateless JWT verification function.
  *
  * Injected rather than called directly so the `links` element never imports
@@ -77,6 +98,18 @@ export interface ReadLinkJwtVerifier {
   verify(token: string): Promise<Record<string, unknown>>;
 }
 
+export interface EditOutcome {
+  readonly submission_id: string;
+  readonly revision: number;
+  readonly downstreamRef?: string | null;
+}
+
+export interface LinkTokenStoreSeam {
+  recordOutcome(jti: string, outcome: EditOutcome, ttlSeconds: number): Promise<void>;
+  readOutcome(jti: string): Promise<EditOutcome | null>;
+  consume(jti: string): Promise<string | null>;
+}
+
 export interface ReadVerifySuccess {
   readonly ok: true;
   readonly claims: ReadLinkClaims;
@@ -84,6 +117,10 @@ export interface ReadVerifySuccess {
   readonly submission?: SubmissionRecord;
   /** Present for `query` action; absent for `view`. */
   readonly savedQuery?: SavedQueryRecord;
+  /** Present for `edit` action; contains latest revision data for pre-fill. */
+  readonly latestRevision?: SubmissionRevisionRecord | null;
+  /** Present for `edit` action when replaying a consumed link. */
+  readonly editOutcome?: EditOutcome | null;
 }
 
 export interface ReadVerifyFailure {
@@ -126,6 +163,8 @@ export class ReadVerifierService {
      */
     private readonly savedQueries?: SavedQueryLookup,
     private readonly denyService?: ReadDenyService,
+    private readonly revisions?: SubmissionRevisionLookup,
+    private readonly tokenStore?: LinkTokenStoreSeam,
   ) {}
 
   /**
@@ -162,6 +201,8 @@ export class ReadVerifierService {
         return this.verifyView(claims);
       case 'query':
         return this.verifyQuery(claims);
+      case 'edit':
+        return this.verifyEdit(claims);
       default:
         this.recordDenial(ReadDenyReason.invalid_action, { action: claims.action as 'view' | 'query' });
         return { ok: false, reason: ReadDenyReason.invalid_action };
@@ -266,6 +307,66 @@ export class ReadVerifierService {
   }
 
   /**
+   * The `edit` path (LNK-02, D-93/D-95):
+   *
+   * 1. Check if there's already an outcome for this jti (consumed link) - if so, replay
+   * 2. Otherwise resolve the target submission owner-only
+   * 3. Check permissions with live perm_version
+   * 4. Return latest revision for pre-fill
+   */
+  private async verifyEdit(claims: ReadLinkClaims): Promise<ReadVerifyResult> {
+    const targetId = claims.target_id;
+    if (targetId === undefined) {
+      this.recordDenial(ReadDenyReason.bad_signature, {
+        action: 'edit',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
+      return { ok: false, reason: ReadDenyReason.bad_signature };
+    }
+
+    // Check for consumed outcome first (replay case)
+    if (this.tokenStore) {
+      const outcome = await this.tokenStore.readOutcome(claims.jti);
+      if (outcome) {
+        return { ok: true, claims, editOutcome: outcome, latestRevision: null };
+      }
+    }
+
+    // D-79: the submission must belong to the real_user_id in the claim.
+    const submission = await this.submissions.findByIdOwned(targetId, claims.sub);
+    if (submission === null) {
+      this.recordDenial(ReadDenyReason.not_found, {
+        action: 'edit',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
+      return { ok: false, reason: ReadDenyReason.not_found };
+    }
+
+    // LNK-06: fresh permission check against the live perm_version epoch.
+    const hasPermission = await this.permissionCheck.check(
+      claims.app_id,
+      claims.sub,
+      buildViewPermission(claims),
+      claims.perm_version,
+    );
+    if (!hasPermission) {
+      this.recordDenial(ReadDenyReason.denied, {
+        action: 'edit',
+        jti: claims.jti,
+        app_id: claims.app_id,
+      });
+      return { ok: false, reason: ReadDenyReason.denied };
+    }
+
+    // Get latest revision for pre-fill
+    const latestRevision = this.revisions ? await this.revisions.findLatest(targetId) : null;
+
+    return { ok: true, claims, latestRevision, editOutcome: null };
+  }
+
+  /**
    * Attempt JWT verification, mapping all jose errors to null.
    *
    * `jose.jwtVerify` throws distinct error classes (`JWTExpired`,
@@ -277,7 +378,7 @@ export class ReadVerifierService {
    */
   private recordDenial(
     reason: ReadDenyReason,
-    ctx?: { action?: 'view' | 'query'; jti?: string; app_id?: string },
+    ctx?: { action?: 'view' | 'query' | 'edit'; jti?: string; app_id?: string },
   ): void {
     if (this.denyService === undefined) {
       return;

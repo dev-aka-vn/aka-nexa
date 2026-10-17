@@ -286,14 +286,38 @@ function buildClosure(entry: string): Closure {
   return { files, external };
 }
 
-/** Every non-spec `.ts` source under `apps/<app>/src`. */
+/**
+ * Every non-spec, non-declaration `.ts` source under `apps/<app>/src`.
+ *
+ * `.d.ts` is excluded because a declaration file has no runtime import path, so
+ * this walk — which follows runtime imports — can never reach one however
+ * load-bearing it is. `apps/api/src/types/express.d.ts` is the case in point: it
+ * declares the three `Response` methods `read.controller.ts` uses through
+ * `@Res()`, and that controller *is* reached from `main.ts`. Counting the
+ * declaration as an orphan would assert something no correct codebase can
+ * satisfy; what the test is for is dead *runtime* modules.
+ *
+ * `*.stub.ts` is excluded for the same class of reason: a stub is a
+ * test-only artifact (an in-spec OIDC issuer, a fake third-party
+ * endpoint) that production code must never import — reachability from
+ * `main.ts` is the wrong question for it, exactly as for a spec. It is
+ * still asserted by the boundary lint rules, which do not care how a
+ * file is named.
+ */
 function appSourceFiles(app: AppName): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir).sort()) {
       const full = path.join(dir, entry);
       if (statSync(full).isDirectory()) walk(full);
-      else if (full.endsWith('.ts') && !full.endsWith('.spec.ts')) out.push(full);
+      else if (
+        full.endsWith('.ts') &&
+        !full.endsWith('.spec.ts') &&
+        !full.endsWith('.d.ts') &&
+        !full.endsWith('.stub.ts')
+      ) {
+        out.push(full);
+      }
     }
   };
   walk(appSrc(app));
@@ -482,8 +506,19 @@ describe('entrypoint import closure — three processes that cannot drift (FND-0
   });
 
   it('the worker closure is the only one that binds Worker, and it is the consumer', () => {
+    // Phase 5 added two more BullMQ hosts alongside the platform heartbeat
+    // (D-08x async execution): the outbox relay and the reconciliation sweep.
+    // `connector-delivery.processor.ts` extends `@nestjs/bullmq`'s `WorkerHost`
+    // (binding `WorkerHost`, not `Worker`) and is therefore not a site here.
+    // Phase 6 added the fourth raw-`Worker` site: the hourly transfer
+    // auto-cancel consumer (ACL-05, T-06-31) — a standalone Job Scheduler
+    // consumer in the platform-heartbeat shape (its own blocking connection,
+    // prefix-pinned, lifecycle-owned), not a `WorkerHost`.
     expect(workerBindingSites('worker')).toEqual([
+      'apps/worker/src/processors/outbox-relay.processor.ts -> bullmq',
       'apps/worker/src/processors/platform-heartbeat.processor.ts -> bullmq',
+      'apps/worker/src/processors/reconciliation.processor.ts -> bullmq',
+      'apps/worker/src/processors/transfer-auto-cancel.processor.ts -> bullmq',
     ]);
   });
 

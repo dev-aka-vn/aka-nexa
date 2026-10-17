@@ -16,6 +16,11 @@ import {
 } from '@akane/platform';
 
 import { ReadModule } from './read/read.module.js';
+import { AuthModule } from './auth/auth.module.js';
+import { UsersModule } from './users/users.module.js';
+import { AppBuilderModule } from './app-builder/app-builder.module.js';
+import { SubmissionsModule } from './submissions/submissions.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
 /**
@@ -32,14 +37,16 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
  * half lint cannot see, because `imports: [QueueModule]` is a *legal* import that
  * is only wrong for this process.
  *
- * ## The wiring is identical in all three apps on purpose
+ * ## What the process's request-path modules are
  *
- * `ConfigModule`, `CryptoModule`, `MongoModule`, the two Redis providers,
- * `TerminusModule`, `MetricsModule`, `HealthController`, the boundary guard
- * runner. The only per-process differences are the two extra readiness
- * indicators `worker` and `scheduler` contribute. A difference that is not a
- * readiness check is the drift FND-03 exists to prevent, so it should show up as
- * a diff here rather than as a production surprise.
+ * `ReadModule` (the read path), `AuthModule` (the builder's OIDC session
+ * surface, BLD-12), `UsersModule` (the Users page's SSO mapping surface,
+ * IDN-08/D-110), `AppBuilderModule` (the self-service definition surfaces,
+ * BLD-02), `SubmissionsModule` (the submissions viewer and its visible-column
+ * export, BLD-08/D-111), and `AuditModule` (the read-only AUD-01 browse
+ * surface, T-06-32). A difference that is not a readiness check is the drift
+ * FND-03 exists to prevent, so it shows up as a diff here rather than as a
+ * production surprise.
  *
  * ## Why `CryptoModule` is here with no consumer of it
  *
@@ -67,6 +74,11 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     TerminusModule.forRoot(),
     MetricsModule,
     ReadModule,
+    AuthModule,
+    UsersModule,
+    AppBuilderModule,
+    SubmissionsModule,
+    AuditModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -26,12 +26,12 @@
     {
       "number": "5",
       "name": "Integration & Async Execution",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "6",
       "name": "Self-Service App Builder",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "7",
@@ -45,9 +45,9 @@
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 2)",
+    "reason": "Phase 2 of 8 — needs a plan"
   },
-  "updated_at": "2026-10-08T17:29:11.548Z"
+  "updated_at": "2026-10-17T08:52:51.564Z"
 }

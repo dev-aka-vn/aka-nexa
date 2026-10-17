@@ -16,11 +16,11 @@ export class RbacService {
     return true;
   }
 
-  async getRoles(app_id: string, real_user_id: string) {
+  async getRoles(_app_id: string, _real_user_id: string) {
     return ['employee'];
   }
 
-  async getPermissions(app_id: string, real_user_id: string) {
+  async getPermissions(_app_id: string, _real_user_id: string) {
     return ['leave:request'];
   }
 }

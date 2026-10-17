@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import {
   InboundEventSchema,
@@ -12,11 +12,29 @@ import {
   PublishedAppLoader,
   RoutingOrchestrator,
   ClarificationSessionService,
+  OtpOnboardingService,
+  RoutingOutcomeRepository,
+  UNLABELLED_INTENT_LABEL,
   redact,
+  type AuthorizedApp,
 } from '@akane/domain';
+import {
+  OTP_ONBOARDING_INTENT,
+  OtpCodeSchema,
+} from '@akane/contract';
 
 /** Absolute chat-to-link budget; `occurred_at` seeds it, never per-provider (T-03-04). */
 const ROUTING_BUDGET_MS = 2000;
+
+/**
+ * The OBS-05 record's sentinel label: a routed
+ * question that matched no declared label of
+ * the routed app. Free-text user input never
+ * lands in the record — the sentinel groups
+ * unlabelled routings honestly and is inert
+ * for every app's share.
+ */
+const UNLABELLED_INTENT = UNLABELLED_INTENT_LABEL;
 
 /**
  * Deterministic slash → app binding (Phase 2 path). Slash commands NEVER
@@ -41,7 +59,17 @@ function detectLocale(text: string): string {
 export type ProcessorOutcome =
   | { readonly kind: 'link'; readonly appId: string; readonly url: string }
   | { readonly kind: 'clarify'; readonly toolIds: readonly string[] }
-  | { readonly kind: 'skipped'; readonly reason: string };
+  | { readonly kind: 'skipped'; readonly reason: string }
+  // IDN-05 — OTP self-onboarding outcomes. The chat
+  // adapter renders these as the employee's reply;
+  // `attemptsRemaining` and `remainingMinutes` are
+  // the BLD-07 actionable counts named inline.
+  | { readonly kind: 'otp_requested' }
+  | { readonly kind: 'otp_verified'; readonly realUserId: string }
+  | { readonly kind: 'otp_invalid'; readonly attemptsRemaining: number }
+  | { readonly kind: 'otp_locked'; readonly remainingMinutes: number }
+  | { readonly kind: 'otp_expired' }
+  | { readonly kind: 'otp_consumed' };
 
 @Injectable()
 @Processor('inbound-events')
@@ -52,6 +80,8 @@ export class InboundEventProcessor extends WorkerHost {
     private readonly orchestrator: RoutingOrchestrator,
     private readonly linkIssuer: LinkIssuerService,
     private readonly clarificationSession: ClarificationSessionService,
+    private readonly onboarding: OtpOnboardingService,
+    private readonly routingOutcomes: RoutingOutcomeRepository,
   ) {
     super();
   }
@@ -88,7 +118,7 @@ export class InboundEventProcessor extends WorkerHost {
    */
   private async handleInteraction(event: InboundEvent): Promise<ProcessorOutcome> {
     const chat = await this.identity.resolveChat(event.platform, event.chat_user_id);
-    if (!chat) return { kind: 'skipped', reason: 'unknown_user' };
+    if (!chat) return this.handleUnmappedOnboarding(event);
 
     const outcome = await this.processClarificationReply(chat.real_user_id, event);
     if (outcome) return outcome;
@@ -103,7 +133,7 @@ export class InboundEventProcessor extends WorkerHost {
    */
   private async handleMessage(event: InboundEvent): Promise<ProcessorOutcome> {
     const chat = await this.identity.resolveChat(event.platform, event.chat_user_id);
-    if (!chat) return { kind: 'skipped', reason: 'unknown_user' };
+    if (!chat) return this.handleUnmappedOnboarding(event);
 
     const clarificationOutcome = await this.processClarificationReply(chat.real_user_id, event);
     if (clarificationOutcome) return clarificationOutcome;
@@ -138,6 +168,12 @@ export class InboundEventProcessor extends WorkerHost {
 
     if (outcome.kind === 'link') {
       const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId: chat.real_user_id });
+      await this.recordRoutingOutcome(
+        event,
+        authorized,
+        outcome.toolId,
+        event.text,
+      );
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
@@ -156,6 +192,66 @@ export class InboundEventProcessor extends WorkerHost {
     }
 
     return { kind: 'clarify', toolIds: outcome.toolIds };
+  }
+
+  /**
+   * IDN-05 — the unmapped-user path.
+   *
+   * An employee with no CSV/SSO mapping self-onboards
+   * by OTP: the onboarding keyword (the IDN-04
+   * prompt's expected reply) requests a code, a
+   * 6-digit reply verifies it. A verified onboarding
+   * creates the identity mapping, so the next
+   * inbound event resolves the user with no further
+   * onboarding (ROADMAP SC#3). Anything else from
+   * an unmapped identity stays `unknown_user`.
+   *
+   * Only messages and interaction replies carry the
+   * onboarding flow — a slash command from an
+   * unmapped identity is still unknown_user.
+   */
+  private async handleUnmappedOnboarding(event: InboundEvent): Promise<ProcessorOutcome> {
+    if (event.action !== 'message' && event.action !== 'interaction') {
+      return { kind: 'skipped', reason: 'unknown_user' };
+    }
+    const text = event.text.trim();
+    // A 6-digit reply is a code verification; the keyword
+    // is a fresh onboarding request. The code is checked
+    // first — a code reply never reads as a keyword.
+    const code = OtpCodeSchema.safeParse(text);
+    if (code.success) return this.handleOtpVerify(event, code.data);
+    if (OTP_ONBOARDING_INTENT.test(text)) return this.handleOtpRequest(event);
+    return { kind: 'skipped', reason: 'unknown_user' };
+  }
+
+  /** The onboarding intent: create the OTP state and deliver the code. */
+  private async handleOtpRequest(event: InboundEvent): Promise<ProcessorOutcome> {
+    const result = await this.onboarding.requestOtp(event.chat_user_id);
+    if (result.status === 'locked') {
+      return { kind: 'otp_locked', remainingMinutes: result.remainingMinutes };
+    }
+    return { kind: 'otp_requested' };
+  }
+
+  /** A code reply: verify it, creating the identity mapping on success. */
+  private async handleOtpVerify(event: InboundEvent, code: string): Promise<ProcessorOutcome> {
+    const result = await this.onboarding.verifyOtp(
+      event.platform,
+      event.chat_user_id,
+      code,
+    );
+    switch (result.status) {
+      case 'verified':
+        return { kind: 'otp_verified', realUserId: result.realUserId };
+      case 'invalid':
+        return { kind: 'otp_invalid', attemptsRemaining: result.attemptsRemaining };
+      case 'locked':
+        return { kind: 'otp_locked', remainingMinutes: result.remainingMinutes };
+      case 'expired':
+        return { kind: 'otp_expired' };
+      case 'consumed':
+        return { kind: 'otp_consumed' };
+    }
   }
 
   /**
@@ -258,6 +354,12 @@ export class InboundEventProcessor extends WorkerHost {
     if (outcome.kind === 'link') {
       await this.clarificationSession.invalidateSession(realUserId, event.channel_id, event.channel_id);
       const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId });
+      await this.recordRoutingOutcome(
+        event,
+        currentAuthorized,
+        outcome.toolId,
+        combinedText,
+      );
       return { kind: 'link', appId: outcome.toolId, url };
     }
 
@@ -304,4 +406,64 @@ export class InboundEventProcessor extends WorkerHost {
 
     return null;
   }
+
+  /**
+   * Record one applied link routing outcome (OBS-05) —
+   * the record the `routing_share{app_id}` gauge and
+   * the publish gate's dry-run baseline both read.
+   *
+   * Written **after** the link is durably issued: a
+   * record-write failure is logged and swallowed,
+   * never sacrificing the already-issued link — the
+   * record is the metric's substrate, not the
+   * routing's. Only link outcomes are recorded: a
+   * clarify outcome names no app and produces no
+   * record — the distribution is over routings to
+   * apps.
+   */
+  private async recordRoutingOutcome(
+    event: InboundEvent,
+    authorized: readonly AuthorizedApp[],
+    appId: string,
+    question: string,
+  ): Promise<void> {
+    const app = authorized.find((entry) => entry.tool.id === appId);
+    const intentLabel =
+      app === undefined
+        ? UNLABELLED_INTENT
+        : firstMatchingLabel(app, question);
+    try {
+      await this.routingOutcomes.record({
+        routing_id: event.event_id,
+        intent_label: intentLabel,
+        app_id: appId,
+      });
+    } catch (error) {
+      // The link is already issued — log the record
+      // failure and still return the link.
+      new Logger(InboundEventProcessor.name).error(
+        `routing outcome record failed for ${event.event_id}: ${String(error)}`,
+      );
+    }
+  }
+}
+
+/**
+ * The routed app's declared intent label the question
+ * matched — the first of its declared intents/aliases
+ * the question contains case-insensitively, or the
+ * 'unlabelled' sentinel when none matches (never the
+ * raw question text).
+ */
+function firstMatchingLabel(
+  app: Pick<AuthorizedApp, 'intents' | 'aliases'>,
+  question: string,
+): string {
+  const lowered = question.toLowerCase();
+  for (const label of [...app.intents, ...app.aliases]) {
+    if (label.length > 0 && lowered.includes(label.toLowerCase())) {
+      return label;
+    }
+  }
+  return UNLABELLED_INTENT;
 }

@@ -17,8 +17,16 @@ export {
   PLATFORM_HEARTBEAT_METRIC,
   QUEUE_JOB_FAILURES_METRIC,
   QUEUE_OLDEST_ITEM_AGE_METRIC,
+  SUBMISSION_STATUS_METRIC,
+  CONNECTOR_OUTCOME_METRIC,
+  BUSINESS_METRICS_RECORDER,
   registerBusinessMetrics,
+  createBusinessMetricsRecorder,
   type BusinessMetrics,
+  type BusinessMetricsRecorder,
+  type SubmissionStatusLabel,
+  type ConnectorTaxonomyLabel,
+  type ConnectorCallOutcomeLabel,
 } from './business-metrics.js';
 export { MetricsController } from './metrics.controller.js';
 export {

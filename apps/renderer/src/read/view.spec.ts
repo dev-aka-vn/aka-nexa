@@ -11,6 +11,8 @@
  * Playwright in a later phase; the tracer proves the verification path,
  * which is what these tests lock in.
  */
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { ReadDenyReason } from '@akane/contract';
@@ -22,6 +24,10 @@ import {
   isDeadLink,
   type ReadLinkParams,
 } from './view.js';
+import { buildDetailSummary } from './status.js';
+
+const VIEW_HTML = readFileSync(new URL('./view.html', import.meta.url), 'utf8');
+const VIEW_BROWSER = readFileSync(new URL('./view.browser.ts', import.meta.url), 'utf8');
 
 describe('getDenyReasonCopy (D-70 mapping)', () => {
   // Every reason must have a non-empty copy string.
@@ -142,5 +148,56 @@ describe('isDeadLink', () => {
   it('returns false when reason is empty string', () => {
     const params: ReadLinkParams = { reason: '' };
     expect(isDeadLink(params)).toBe(false);
+  });
+});
+
+/**
+ * Surface B extension (05-09): the detail page surfaces a status summary and,
+ * for a `partial` submission, a read-only warn callout above the form. No
+ * retry control is rendered (D-81); the detail page loads no CDN asset
+ * (FRM-07) and reuses the mockup token set (AGENTS.md rule 1).
+ */
+describe('detail status summary (Surface B, D-81/D-82)', () => {
+  it('renders a partial warn callout and leaves the form read-only', () => {
+    const summary = buildDetailSummary({ status: 'partial', connector: 'Redmine' });
+    expect(summary.callout?.kind).toBe('warn');
+    expect(summary.callout?.text).toBe('Internal saved · Redmine: retrying');
+    expect(summary.badge.className).toBe('badge-partial');
+  });
+
+  it('renders a failed danger callout with a user-safe reason', () => {
+    const summary = buildDetailSummary({
+      status: 'failed',
+      connector: 'Redmine',
+      reason: 'Redmine is temporarily unavailable. Your submission is saved and will be retried.',
+    });
+    expect(summary.callout?.kind).toBe('danger');
+    expect(summary.callout?.text).toContain('Redmine');
+    // No raw transport detail leaks into the user-facing sentence.
+    expect(summary.callout?.text).not.toMatch(/[45]\d\d/);
+  });
+
+  it('exposes no retry control for any status', () => {
+    for (const status of ['completed', 'partial', 'pending_external', 'failed'] as const) {
+      const summary = buildDetailSummary({ status });
+      expect(summary.callout?.text ?? '').not.toMatch(/\bRetry\b/);
+    }
+  });
+
+  it('view.html loads no CDN asset (Known Drift #2 removed)', () => {
+    expect(VIEW_HTML).not.toContain('cdn.form.io');
+    expect(VIEW_HTML).not.toContain('--color-bg');
+  });
+
+  it('view.html reuses the mockup token set', () => {
+    expect(VIEW_HTML).toMatch(/--accent:\s*#0f9d8f/);
+    expect(VIEW_HTML).toMatch(/--canvas:\s*#f6f8fa/);
+    expect(VIEW_HTML).toMatch(/--amber-soft:\s*#fdf5e6/);
+    expect(VIEW_HTML).toContain('.callout-warn');
+  });
+
+  it('view.browser.ts renders read-only and carries no retry control', () => {
+    expect(VIEW_BROWSER).toContain('readOnly: true');
+    expect(VIEW_BROWSER).not.toMatch(/\bRetry\b/);
   });
 });

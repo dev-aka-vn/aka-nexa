@@ -4,80 +4,108 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Submission - Read-Only View</title>
-    <link rel="stylesheet" href="https://cdn.form.io/js/formio.full.min.css" />
     <style>
+      /* Design tokens: mockup :root set (prototypes/mockup.html lines 47–84).
+         AGENTS.md rule 1 — reuse, never a second palette (Known Drift #1 removed).
+         FormIO CSS is bundled same-origin from the npm entrypoint (FRM-07);
+         no remote CDN asset is referenced (Known Drift #2 removed). */
       :root {
-        --color-bg: #f8fafc;
-        --color-surface: #ffffff;
-        --color-text: #0f172a;
-        --color-border: #e2e8f0;
+        --ink: #0e1420;
+        --canvas: #f6f8fa;
+        --surface: #ffffff;
+        --surface-2: #f0f3f7;
+        --line: #e2e8f0;
+        --line-strong: #cbd5e1;
+        --text: #101828;
+        --text-2: #475467;
+        --muted: #667085;
+        --accent: #0f9d8f;
+        --accent-strong: #0b7d72;
+        --accent-soft: #e4f5f2;
+        --amber: #b7791f;
+        --amber-soft: #fdf5e6;
+        --red: #c0392b;
+        --red-soft: #fdecea;
+        --green: #2f855a;
+        --green-soft: #e8f5ee;
+        --blue: #2b6cb0;
+        --blue-soft: #eaf2fb;
+        --radius-xs: 6px;
+        --radius: 8px;
+        --radius-lg: 12px;
+        --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+        --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
       body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-          Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        background: var(--color-bg);
-        color: var(--color-text);
-        line-height: 1.5;
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--text);
+        background: var(--canvas);
+        -webkit-font-smoothing: antialiased;
       }
-      .container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-      }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+      .view { max-width: 900px; margin: 0 auto; padding: 26px 28px 64px; }
+      .page-head { margin-bottom: 22px; }
+      .page-head h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 25px; line-height: 1.2; }
+      .page-head .sub { color: var(--muted); font-size: 14px; margin-top: 5px; }
       .card {
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden;
       }
-      .card-header {
-        padding: 1.5rem 1.5rem 0;
+      .card-head { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+      .card-head h2 { margin: 0; font-family: var(--display); font-size: 15.5px; }
+      .card-body { padding: 18px; }
+      .status-summary {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+        font-size: 14px; color: var(--text-2);
       }
-      .card-body {
-        padding: 1.5rem;
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+        padding: 3px 9px; border-radius: 99px; white-space: nowrap; line-height: 1.5;
       }
-      h1 {
-        margin: 0;
-        font-size: 1.75rem;
+      .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+      .badge-completed { background: var(--green-soft); color: #256b48; }
+      .badge-partial { background: var(--amber-soft); color: #8a5a10; }
+      .badge-pending { background: var(--blue-soft); color: #1f5289; }
+      .badge-failed { background: var(--red-soft); color: #98291d; }
+      .callout {
+        display: flex; gap: 11px; padding: 13px 15px; border-radius: var(--radius);
+        font-size: 13.5px; margin-bottom: 14px;
       }
-      .metadata {
-        margin-top: 0.5rem;
-        font-size: 0.875rem;
-        color: #475569;
-      }
-      #formio-readonly {
-        margin-top: 1rem;
-      }
-      .loading {
-        padding: 2rem;
-        text-align: center;
-        color: #475569;
-      }
-      .error {
-        padding: 1rem;
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 6px;
-        color: #991b1b;
-      }
+      .callout-warn { background: var(--amber-soft); color: #7a4f0d; }
+      .callout-danger { background: var(--red-soft); color: #8f271b; }
+      .callout p { margin: 0; }
+      .callout .detail { margin-top: 4px; opacity: 0.85; }
+      #formio-readonly { margin-top: 14px; }
+      .loading { padding: 2rem; text-align: center; color: var(--muted); }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <main class="container">
-      <div class="card">
-        <header class="card-header">
-          <h1>Submission (Read-Only)</h1>
-          <div class="metadata" id="metadata"></div>
-        </header>
-        <section class="card-body">
-          <div id="status" class="loading">Loading read-only submission...</div>
-          <div id="formio-readonly"></div>
-        </section>
+    <main class="view">
+      <div class="page-head">
+        <h1>Submission</h1>
+        <div class="sub" id="metadata"></div>
       </div>
+
+      <section class="card">
+        <header class="card-head">
+          <h2 id="form-title">Submitted form</h2>
+          <div class="status-summary" id="status-summary" hidden></div>
+        </header>
+        <div class="card-body">
+          <div id="status-callout"></div>
+          <div id="status" class="loading">Loading read-only submission...</div>
+          <div id="formio-readonly" class="formio-scope"></div>
+        </div>
+      </section>
     </main>
 
-    <script src="https://cdn.form.io/js/formio.full.min.js"></script>
     <script type="module" src="./view.browser.ts"></script>
   </body>
 </html>

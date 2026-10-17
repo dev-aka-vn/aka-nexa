@@ -143,7 +143,7 @@ export const ALLOWED_EDGES = Object.freeze({
   forms: Object.freeze(['platform', 'kernel']),
   links: Object.freeze(['platform', 'kernel', 'registry', 'authz', 'contract', 'dsl']),
   decision: Object.freeze(['platform', 'kernel', 'contract']),
-  connectors: Object.freeze(['platform', 'kernel']),
+  connectors: Object.freeze(['platform', 'kernel', 'contract']),
   submissions: Object.freeze([
     'platform',
     'kernel',
@@ -161,6 +161,15 @@ export const ALLOWED_EDGES = Object.freeze({
     'registry',
     'connectors',
     'audit',
+    // Pattern 7 — the data router consults
+    // the builder-owned lifecycle at the
+    // submission-creation seam (APP-06):
+    // an archived app refuses new
+    // submissions, so the write path reads
+    // the definition the builder element
+    // owns. Deliberate, reviewed change —
+    // same class as Pattern 6.
+    'builder',
   ]),
   // adapters → contract: inbound + outbound event shapes only. NOTHING else.
   adapters: Object.freeze(['platform', 'kernel', 'contract']),
@@ -184,6 +193,22 @@ export const ALLOWED_EDGES = Object.freeze({
     'authz',
     'connectors',
     'audit',
+    // Pattern 6 — the builder domain imports identity
+    // (D-104 OIDC auto-provision), links (the G-11
+    // saved-query write), and contract (builder-facing
+    // shapes). The publish gate (APP-07) executes the
+    // real decision element's routing machinery —
+    // RoutingOrchestrator and PublishedAppLoader — so
+    // the dry-run is the live router's computation
+    // (Pitfall 8), never a second implementation.
+    // Permissive edges stay declared BEFORE
+    // the R1/R2/R3 restrictions: policies are
+    // last-match-wins, so the restrictions must be the
+    // last match.
+    'identity',
+    'links',
+    'contract',
+    'decision',
   ]),
   // Composition roots are the only leaves: an app may reach every type.
   'app-api': Object.freeze([

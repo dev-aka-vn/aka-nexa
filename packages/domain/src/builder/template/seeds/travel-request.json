@@ -1,0 +1,26 @@
+{
+  "template_id": "travel-request",
+  "name": "Travel Request",
+  "description": "Book travel — itinerary and approval before any booking is made",
+  "domain": "travel",
+  "tags": ["travel", "all-staff"],
+  "data_mode": "internal",
+  "connector_ref": null,
+  "form_schema": {
+    "components": [
+      { "type": "textfield", "key": "destination", "label": "Destination", "input": true },
+      { "type": "date", "key": "start_date", "label": "Departure", "input": true },
+      { "type": "date", "key": "end_date", "label": "Return", "input": true },
+      { "type": "textarea", "key": "purpose", "label": "Purpose", "input": true }
+    ]
+  },
+  "roles": {
+    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
+    "admin": ["create", "edit", "publish", "assign-roles"],
+    "manager": ["submit", "approve", "view"],
+    "user": ["submit", "view"]
+  },
+  "triggers": [
+    { "id": "travel", "type": "slash", "command": "/travel", "description": "Request travel" }
+  ]
+}

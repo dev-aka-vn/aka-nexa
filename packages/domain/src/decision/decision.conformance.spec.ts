@@ -45,18 +45,20 @@ const registry = new ProviderRegistry(config);
 
 interface ProviderStats {
   readonly providerName: string;
-  readonly correctLinks: number;
-  readonly totalLinks: number;
-  readonly shouldLink: number;
-  readonly correctClarifies: number;
-  readonly shouldClarify: number;
-  readonly schemaViolations: number;
+  // Counters are mutated as cases run (the suite accumulates before reporting),
+  // so they are intentionally not `readonly`.
+  correctLinks: number;
+  totalLinks: number;
+  shouldLink: number;
+  correctClarifies: number;
+  shouldClarify: number;
+  schemaViolations: number;
   readonly unauthorizedExposures: number;
   readonly strata: {
-    readonly en: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
-    readonly vi: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
-    readonly mixed: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
-    readonly ambiguous: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
+    en: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
+    vi: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
+    mixed: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
+    ambiguous: { correctLinks: number; totalLinks: number; shouldLink: number; correctClarifies: number; shouldClarify: number };
   };
 }
 

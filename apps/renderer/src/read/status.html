@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My submissions</title>
+    <style>
+      /* Design tokens: mockup :root set (prototypes/mockup.html lines 47–84).
+         AGENTS.md rule 1 — reuse, never a second palette. */
+      :root {
+        --ink: #0e1420;
+        --canvas: #f6f8fa;
+        --surface: #ffffff;
+        --surface-2: #f0f3f7;
+        --line: #e2e8f0;
+        --line-strong: #cbd5e1;
+        --text: #101828;
+        --text-2: #475467;
+        --muted: #667085;
+        --accent: #0f9d8f;
+        --accent-strong: #0b7d72;
+        --accent-soft: #e4f5f2;
+        --amber: #b7791f;
+        --amber-soft: #fdf5e6;
+        --red: #c0392b;
+        --red-soft: #fdecea;
+        --green: #2f855a;
+        --green-soft: #e8f5ee;
+        --blue: #2b6cb0;
+        --blue-soft: #eaf2fb;
+        --radius-xs: 6px;
+        --radius: 8px;
+        --radius-lg: 12px;
+        --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+        --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --od-gap: 8px;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--text);
+        background: var(--canvas);
+        -webkit-font-smoothing: antialiased;
+      }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+      .view { max-width: 1440px; margin: 0 auto; padding: 26px 28px 64px; }
+      .page-head { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; margin-bottom: 22px; }
+      .page-head .titles { flex: 1; min-width: 240px; }
+      .page-head h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 25px; line-height: 1.2; }
+      .page-head .sub { color: var(--muted); font-size: 14px; margin-top: 5px; max-width: 70ch; }
+      .rail { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; margin-bottom: 16px; }
+      .chip {
+        border: 1px solid var(--line-strong); background: var(--surface); border-radius: 99px;
+        padding: 6px 14px; font-size: 13px; color: var(--text-2); cursor: pointer;
+        white-space: nowrap; flex: none; min-height: 44px;
+      }
+      .chip:hover { border-color: var(--muted); color: var(--text); }
+      .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+      .table-wrap {
+        overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-lg);
+        background: var(--surface); box-shadow: var(--shadow-sm);
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+      thead th {
+        text-align: left; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--muted); font-weight: 600; padding: 11px 16px; background: var(--surface-2);
+        border-bottom: 1px solid var(--line); white-space: nowrap;
+      }
+      tbody td { padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+      tbody tr:last-child td { border-bottom: 0; }
+      tbody tr:hover { background: #fafcfe; }
+      .cell-strong { font-weight: 600; color: var(--text); }
+      .cell-mono { font-family: var(--mono); font-size: 12.5px; color: var(--text-2); }
+      .cell-actions { text-align: right; white-space: nowrap; }
+      .truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+        padding: 3px 9px; border-radius: 99px; white-space: nowrap; line-height: 1.5;
+      }
+      .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+      .badge-completed { background: var(--green-soft); color: #256b48; }
+      .badge-partial { background: var(--amber-soft); color: #8a5a10; }
+      .badge-pending { background: var(--blue-soft); color: #1f5289; }
+      .badge-failed { background: var(--red-soft); color: #98291d; }
+      .pill-mono {
+        font-family: var(--mono); font-size: 12px; background: var(--surface-2);
+        border: 1px solid var(--line); padding: 2px 7px; border-radius: var(--radius-xs); color: var(--text-2);
+      }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 9px 15px; border-radius: var(--radius); border: 1px solid var(--line-strong);
+        background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500;
+        cursor: pointer; white-space: nowrap; min-height: 40px; text-decoration: none;
+      }
+      .btn:hover { background: var(--surface-2); border-color: var(--muted); }
+      .btn-primary { background: var(--accent); border-color: var(--accent); color: #03211e; font-weight: 600; }
+      .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+      .btn-sm { padding: 6px 11px; min-height: 34px; font-size: 13px; }
+      .empty { text-align: center; padding: 52px 24px; color: var(--muted); }
+      .empty h3 { font-size: 16px; color: var(--text); margin: 0 0 6px; font-family: var(--display); }
+      .empty p { font-size: 14px; max-width: 44ch; margin: 0 auto 16px; }
+      .callout { display: flex; gap: 11px; padding: 13px 15px; border-radius: var(--radius); font-size: 13.5px; }
+      .callout-danger { background: var(--red-soft); color: #8f271b; }
+      .pager {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        margin-top: 14px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap;
+      }
+      [hidden] { display: none !important; }
+      .stack-list { display: grid; gap: 10px; }
+      .list-row {
+        display: flex; align-items: center; gap: 13px; padding: 12px 14px;
+        border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+      }
+      .list-row .lr-main { flex: 1; min-width: 0; }
+      .list-row .lr-t { font-weight: 600; font-size: 14px; }
+      .list-row .lr-s { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+      .skeleton {
+        height: 44px; border-radius: var(--radius); background: var(--surface-2);
+        animation: shimmer 1.2s ease-in-out infinite;
+      }
+      @keyframes shimmer { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+      @media (max-width: 768px) {
+        .view { padding: 20px 16px; }
+        .table-view { display: none; }
+      }
+      @media (min-width: 769px) {
+        .list-view { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="view">
+      <div class="page-head">
+        <div class="titles">
+          <h1>My submissions</h1>
+          <div class="sub" id="status-sub">Everything you have submitted for this app.</div>
+        </div>
+      </div>
+
+      <div class="rail" id="status-filters" role="group" aria-label="Filter by status"></div>
+
+      <div class="callout callout-danger" id="status-error" role="alert" hidden></div>
+
+      <div id="status-loading">
+        <div class="skeleton"></div>
+        <div class="skeleton" style="margin-top: 8px"></div>
+        <div class="skeleton" style="margin-top: 8px"></div>
+      </div>
+
+      <section class="table-view" id="status-table" hidden>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Form</th>
+                <th scope="col">Submitted</th>
+                <th scope="col">Status</th>
+                <th scope="col">Destination</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="status-rows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="status-footer" hidden>
+          <span id="status-count"></span>
+          <button type="button" class="btn btn-primary" id="status-more" hidden>Load more</button>
+        </div>
+      </section>
+
+      <section class="list-view stack-list" id="status-listview" hidden></section>
+
+      <div class="empty" id="status-empty" hidden>
+        <h3 id="empty-heading">No submissions yet</h3>
+        <p id="empty-body"></p>
+      </div>
+    </main>
+
+    <script type="module">
+      import {
+        EMPTY_STATE,
+        LIST_LOAD_ERROR,
+        STATUS_FILTERS,
+        canEdit,
+        computePageWindow,
+        destinationPhrase,
+        filterRowsByStatus,
+        formatSubmittedAt,
+        hasRetryControl,
+        isEmpty,
+        loadStatus,
+        resolveApiOrigin,
+        statusToBadge,
+      } from './status.ts';
+      import { getDenyReasonCopy } from './view.ts';
+
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token') || '';
+      const jti =
+        (window.location.pathname.split('/l/query/')[1] || '').split('?')[0] ||
+        params.get('jti') ||
+        '';
+      const apiOrigin = resolveApiOrigin(window.location.origin);
+      const limit = Number(params.get('limit') || 25);
+      const offset = Number(params.get('offset') || 0);
+
+      const byId = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text != null) node.textContent = String(text);
+        return node;
+      };
+
+      let allRows = [];
+      let activeFilter = 'all';
+
+      function badgeCell(row) {
+        const badge = statusToBadge(row.status);
+        const span = el('span', 'badge ' + badge.className);
+        span.appendChild(el('span', 'dot'));
+        span.appendChild(el('span', null, badge.label));
+        return span;
+      }
+
+      function truncated(text) {
+        const span = el('span', 'truncate', text);
+        span.title = text;
+        return span;
+      }
+
+      function renderFilterRail() {
+        const rail = byId('status-filters');
+        rail.textContent = '';
+        for (const f of STATUS_FILTERS) {
+          const chip = el('button', 'chip', f.label);
+          chip.type = 'button';
+          chip.dataset.status = f.status;
+          chip.setAttribute('aria-pressed', String(f.status === activeFilter));
+          chip.addEventListener('click', () => {
+            activeFilter = f.status;
+            renderFilterRail();
+            render();
+          });
+          rail.appendChild(chip);
+        }
+      }
+
+      function editLink(row) {
+        const a = el('a', 'btn btn-sm btn-primary', 'Edit submission');
+        a.href = '#';
+        a.dataset.jti = row.submission_id || '';
+        a.addEventListener('click', (event) => event.preventDefault());
+        return a;
+      }
+
+      function render() {
+        const rows = filterRowsByStatus(allRows, activeFilter);
+        const table = byId('status-table');
+        const listview = byId('status-listview');
+        const empty = byId('status-empty');
+
+        if (isEmpty(rows)) {
+          table.hidden = true;
+          listview.hidden = true;
+          empty.hidden = false;
+          byId('empty-heading').textContent = EMPTY_STATE.heading;
+          byId('empty-body').textContent = EMPTY_STATE.body;
+          return;
+        }
+        empty.hidden = true;
+        table.hidden = false;
+        listview.hidden = false;
+
+        const tbody = byId('status-rows');
+        tbody.textContent = '';
+        const list = byId('status-listview');
+        list.textContent = '';
+
+        for (const row of rows) {
+          const label = row.form_label || row.form_id || 'Submission';
+          const version = row.form_version != null ? ' v' + row.form_version : '';
+
+          const tr = document.createElement('tr');
+          const formTd = el('td', 'cell-strong');
+          formTd.appendChild(el('span', null, label));
+          if (version) formTd.appendChild(el('span', 'cell-mono', version));
+          tr.appendChild(formTd);
+          tr.appendChild(el('td', null, formatSubmittedAt(row.submittedAt || row.submitted_at)));
+          const statusTd = el('td');
+          statusTd.appendChild(badgeCell(row));
+          tr.appendChild(statusTd);
+          tr.appendChild(el('td', null, destinationPhrase(row)));
+          const actions = el('td', 'cell-actions');
+          if (canEdit(row)) actions.appendChild(editLink(row));
+          tr.appendChild(actions);
+          tbody.appendChild(tr);
+
+          const lr = el('div', 'list-row');
+          const main = el('div', 'lr-main');
+          main.appendChild(el('div', 'lr-t', label + version));
+          main.appendChild(el('div', 'lr-s', destinationPhrase(row)));
+          lr.appendChild(main);
+          lr.appendChild(badgeCell(row));
+          list.appendChild(lr);
+        }
+
+        const win = computePageWindow(offset, limit, byId('status-count').dataset.total ? Number(byId('status-count').dataset.total) : rows.length);
+        const footer = byId('status-footer');
+        footer.hidden = !win.label;
+        byId('status-count').textContent = win.label;
+        byId('status-more').hidden = !win.hasMore;
+      }
+
+      async function main() {
+        const result = await loadStatus({ apiOrigin, token, jti });
+        byId('status-loading').hidden = true;
+
+        if (result.kind === 'denied') {
+          window.location.href = './dead.html?reason=' + encodeURIComponent(result.reason || 'bad_signature');
+          return;
+        }
+        if (result.kind === 'error') {
+          byId('status-error').hidden = false;
+          byId('status-error').textContent = LIST_LOAD_ERROR;
+          return;
+        }
+
+        allRows = result.payload.rows || [];
+        const saved = result.payload.savedQuery || {};
+        const total = saved.total != null ? saved.total : allRows.length;
+        byId('status-count').dataset.total = String(total);
+
+        renderFilterRail();
+        render();
+      }
+
+      main();
+    </script>
+  </body>
+</html>

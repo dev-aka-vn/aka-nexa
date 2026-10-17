@@ -96,3 +96,61 @@ describe('registerReadDenyMetrics (LNK-08, D-71)', () => {
     expect(recorder.counters.get('read_link_denials_total')).toBe(1);
   });
 });
+
+describe('registerSignatureBlockMetrics (AUD-10)', () => {
+  let recorder: RecordingMeterProvider;
+
+  async function freshModule(): Promise<typeof import('./read-deny.metrics.js')> {
+    vi.resetModules();
+    return import('./read-deny.metrics.js');
+  }
+
+  beforeEach(() => {
+    recorder = new RecordingMeterProvider();
+    metrics.disable();
+    metrics.setGlobalMeterProvider(recorder);
+  });
+
+  afterEach(() => {
+    metrics.disable();
+  });
+
+  it('creates one counter named read_link_signature_blocks_total on the akane meter', async () => {
+    const mod = await freshModule();
+    mod.registerSignatureBlockMetrics();
+
+    expect(recorder.meters).toEqual([{ name: 'akane' }]);
+    expect([...recorder.counters.keys()]).toEqual(['read_link_signature_blocks_total']);
+  });
+
+  it('increments once per block with the scope label only — no reason, no user input', async () => {
+    const mod = await freshModule();
+    const blocks = mod.registerSignatureBlockMetrics();
+
+    blocks.recordBlock('link');
+    blocks.recordBlock('user');
+
+    expect(recorder.adds).toEqual([
+      { name: 'read_link_signature_blocks_total', value: 1, attributes: { scope: 'link' } },
+      { name: 'read_link_signature_blocks_total', value: 1, attributes: { scope: 'user' } },
+    ]);
+  });
+
+  it('registers the block counter independently of the denial counter', async () => {
+    const mod = await freshModule();
+    mod.registerSignatureBlockMetrics();
+
+    // The denial counter is a separate lazily-memoised instrument; asking for
+    // blocks first must not create it.
+    expect(recorder.counters.has('read_link_denials_total')).toBe(false);
+  });
+
+  it('memoises so a second registration reuses the same instrument', async () => {
+    const mod = await freshModule();
+    const first = mod.registerSignatureBlockMetrics();
+    const second = mod.registerSignatureBlockMetrics();
+
+    expect(second).toBe(first);
+    expect(recorder.counters.get('read_link_signature_blocks_total')).toBe(1);
+  });
+});

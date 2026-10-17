@@ -1,7 +1,15 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NextFunction, Request, Response } from 'express';
 
 import { otelBootstrapConfigFromEnv, startOtel } from '@akane/platform/otel';
+
+import {
+  backfillSavedQueries,
+  TemplateSeed,
+} from '@akane/domain';
+import { MongoService } from '@akane/platform';
 
 /**
  * The `api` bootstrap — one shape, copied verbatim by `worker` and `scheduler`
@@ -42,6 +50,59 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // T-06-01: the CSP posture the
+  // FormIO-rendering surface carries —
+  // `script-src 'self'` and nothing
+  // else. Every dependency bundles from
+  // npm (no CDN, no remote script
+  // anywhere in the tree), so 'self' is
+  // the complete allowlist. The header
+  // rides every response this
+  // same-origin API serves, including
+  // the SPA surface the deployment
+  // serves from it (D-103) — an
+  // owner-authored FormIO schema can
+  // then never escalate into script
+  // execution.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Content-Security-Policy', "script-src 'self'");
+    next();
+  });
+
+  // The two idempotent boot steps, after the graph is
+  // wired and before the first request is served:
+  //
+  // D-105 — the template gallery loads (a content-hash
+  // guard makes a re-load a no-op, so a rolling deploy
+  // cannot duplicate platform templates), and
+  //
+  // G-11 — the frozen saved-query seeds backfill the
+  // repository-backed store (insert-if-absent, so a
+  // builder's newer query_version is never clobbered
+  // and a re-run is a no-op).
+  //
+  // Both steps read Mongo, so both are best-effort:
+  // a Mongo that is unreachable *at boot* is a
+  // readiness fact (D-12), not a boot failure. The
+  // steps are idempotent and re-run at every boot, so
+  // the first boot after the dependency returns
+  // completes them; refusing to listen would
+  // crash-loop a pod through the very blip that
+  // `/health/ready` exists to ride out — the process
+  // stays up, readiness reports `mongo: down`, and
+  // traffic is withdrawn until it returns.
+  const bootstrap = new Logger('Bootstrap');
+  try {
+    await app.get(TemplateSeed).load();
+  } catch (error) {
+    bootstrap.warn(`template gallery seed (D-105) deferred: ${String(error)}`);
+  }
+  try {
+    await backfillSavedQueries(app.get(MongoService));
+  } catch (error) {
+    bootstrap.warn(`saved-query backfill (G-11) deferred: ${String(error)}`);
+  }
 
   await app.listen(app.get(ConfigService).getOrThrow<number>('PORT'));
 }

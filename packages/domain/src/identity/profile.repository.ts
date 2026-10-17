@@ -3,6 +3,14 @@ export interface Profile {
   employee_code: string;
   department: string;
   email: string;
+  /**
+   * The display name the IdP's profile claim carried
+   * at provisioning — the name half of the directory
+   * search (ACL-02). Optional so the in-memory seed
+   * literals that predate the claim plumbing keep
+   * compiling; the D-104 provisioner always writes it.
+   */
+  name?: string;
 }
 
 export class ProfileRepository {

@@ -52,6 +52,7 @@ export * from './mongo/index.js';
 export * from './otel/index.js';
 export * from './queue/index.js';
 export * from './redis/redis.constants.js';
+export * from './redis/redis-rate-counter.js';
 
 // Explicit rather than `export *`: `queue/index.js` re-exports
 // `PRODUCER_MAX_RETRIES_PER_REQUEST` from `queue.provider.ts`, and two

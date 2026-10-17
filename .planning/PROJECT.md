@@ -23,34 +23,29 @@ self-sustaining.
 
 ### Validated
 
-(None yet — ship to validate)
+All requirements below are shipped **and** verified by their phase's canonical
+verification (VERIFICATION.md exists and reads `passed`).
+
+- ✓ **Identity resolution** — Phase 2 (Slack identity + OTP onboarding), Phase 5 (pipeline integration)
+- ✓ **Per-app RBAC on real users** — Phase 2 (enforcement points), Phase 3 (JEV tool filtering)
+- ✓ **JEV-compatible decision layer** — Phase 3 (provider chain, health probes, fallback)
+- ✓ **FormIO.js as the sole form engine** — Phase 4 (renderer), Phase 6 (designer + scoped styling, G-06-6/8)
+- ✓ **One-time create/edit links** — Phase 4
+- ✓ **Signed read links** — Phase 4 (90-day stateless links, `perm_version` checks)
+- ✓ **Data routing: internal / external / hybrid** — Phase 5
+- ✓ **Connector layer** — Phase 5 (credentials, retries, DLQ, three-state outbound)
+- ✓ **Slack adapter** — Phase 2
+- ✓ **App Builder UI** — Phase 6 (five-step wizard, tabbed editor, FormIO designer with
+  scoped Bootstrap styling, publish confirmation gate, submissions viewer, audit browse;
+  25/25 must-haves verified 2026-10-17)
+- ✓ **Audit trail** — Phase 5 (append-only), Phase 6 (AUD-01 browse surface)
+- ✓ **Observability** — Phase 1 (OTel bootstrap, Prometheus, health endpoints), Phase 5 (span continuity)
 
 ### Active
 
 All Active requirements are **hypotheses** until shipped and validated.
 
-- [ ] **Identity resolution** — every inbound chat message resolves `chat_user_id` → `real_user_id`
-  before anything else happens, via pre-provisioned CSV import or lazy OTP onboarding
-- [ ] **Per-app RBAC on real users** — each app owns its roles, permissions, and assignments;
-  enforcement at two points (pre-JEV tool filter, pre-execution re-check)
-- [ ] **JEV-compatible decision layer** — a swappable provider interface (`/decide`, `/health`)
-  with a configurable fallback chain, so no vendor lock-in and decisions survive provider outage
-- [ ] **FormIO.js as the sole form engine** — drag-and-drop builder in the App Builder, renderer
-  as a separate stateless web app; no IM-native form rendering
-- [ ] **One-time create/edit links** — JWT + Redis, atomically consumed on submit
-- [ ] **Signed read links** — stateless 90-day view/query links with a fresh permission check and
-  `perm_version` comparison on every access
-- [ ] **Data routing: internal / external / hybrid** — MongoDB collections, connector calls, or both
-  (internal synchronous, external async via BullMQ)
-- [ ] **Connector layer** — shared, globally managed credentials with rate limiting, retries, DLQ,
-  and `submission_id` idempotency
-- [ ] **Slack adapter** — inbound/outbound normalization, slash commands, webhook verification
 - [ ] **Teams / Zalo / Telegram adapters** — same normalized `InboundEvent`/`OutboundMessage` contract
-- [ ] **App Builder UI** — app CRUD, triggers, RBAC, form design, routing config, lifecycle,
-  submission viewer, preview before publish
-- [ ] **Audit trail** — immutable, append-only, 3-year minimum retention, every state change
-- [ ] **Observability** — trace ID = `submission_id` end to end, Prometheus metrics, alerts,
-  `/health/live` + `/health/ready`
 - [ ] **Inbound webhooks for two-way sync** — HMAC-signed notifications back to the original submitter
 
 ### Out of Scope
@@ -250,4 +245,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-01 after initialization*
+*Last updated: 2026-10-17 after Phase 6*

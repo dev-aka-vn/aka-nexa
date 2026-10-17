@@ -51,7 +51,66 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
+    // `_`-prefixed bindings are this repo's marker for a deliberately-unused
+    // one: a destructured-away rest sibling (`const { real_user_id, ...rest }`),
+    // an argument a handler must accept for its position, a caught error the
+    // code intentionally ignores. typescript-eslint's default options do not
+    // honour that convention, so every `_x` was reported as a dead variable —
+    // the config was missing the pattern, not the code the pattern describes.
     files: ['**/*.ts', '**/*.mts', '**/*.cts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+  {
+    // Tests, fixtures and tooling scaffolding. A mocked collaborator is
+    // legitimately `any` — typing it precisely describes the mock, not the
+    // contract under test — and a test may hold an intentionally-unused binding
+    // without that being a defect. Only these two rules are relaxed here; R1's
+    // `no-restricted-imports` (below) still applies to `apps/api` and
+    // `apps/scheduler`, so a spec cannot construct a BullMQ `Worker` in the
+    // request path.
+    files: [
+      '**/*.spec.ts',
+      '**/*.spec.mts',
+      '**/__tests__/**/*.ts',
+      'tooling/**/*.ts',
+      'tooling/**/*.mts',
+    ],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+  {
+    files: ['**/*.ts', '**/*.mts', '**/*.cts'],
+    // FND-04 governs the **deployable** module graph. A test deliberately
+    // reaches across element types to construct a fixture — a DSL test builds a
+    // `submissions` repository to query, an integration test seeds Mongo with
+    // the raw driver — and none of that ships. The proof that the policies fire
+    // is `boundaries.fixture.spec.ts`, which runs the real rule against
+    // non-test fixtures; excluding `*.spec.ts` here leaves that proof untouched.
+    // `*.stub.ts` joins the exclusion for the same reason the entrypoint-drift
+    // walk already classifies it as a test artifact, not process code: a stub
+    // is a fixture's collaborator (the OIDC issuer stub signs test tokens with
+    // an ephemeral in-memory key — no secret, no env, no KMS), and R2's
+    // secret-containment target is the deployable signing surface.
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.spec.mts',
+      '**/__tests__/**',
+      '**/*.stub.ts',
+    ],
     plugins: { boundaries },
     settings: {
       ...boundariesSettings,

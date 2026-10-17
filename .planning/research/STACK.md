@@ -608,8 +608,8 @@ enforces RBAC in only one of the two places is a security finding.
 | Technology | Version | Purpose | Why | Confidence |
 |------------|---------|---------|-----|------------|
 | **React** | **19.3.0** | Both web apps | Current stable | HIGH |
-| **Vite** | **8.3.2** | Build/dev server | Current stable (corrected from 8.3.1) | HIGH |
-| `@vitejs/plugin-react` | 6.1.1 | React plugin | Has optional peers (`oxc-transform-react`, `@rolldown/plugin-babel`) — harmless | HIGH |
+| **Vite** | **8.3.4** | Build/dev server | Current stable (registry-verified 2026-10-11; supersedes the 8.3.2 the prior pass recorded) | HIGH |
+| `@vitejs/plugin-react` | 6.1.2 | React plugin | Has optional peers (`oxc-transform-react`, `@rolldown/plugin-babel`) — harmless | HIGH |
 | **`@formio/js`** | **5.6.1** | Form engine + **drag-and-drop builder** | See §9.2 | HIGH (packaging) / MEDIUM (migration — spike S1) |
 | `react-hook-form` | 7.89.0 | App Builder **chrome** forms only | **Never** for rendered forms — FormIO owns its own form state, and re-rendering it through RHF fights the engine. App Builder chrome is app name, trigger config, role picker — plain inputs, no shared state with the rendered form. | HIGH |
 | `@tanstack/react-query` | 5.104.0 | Server state | Standard | HIGH |
@@ -669,7 +669,7 @@ NFR requires **zero-downtime rolling deploys**. Two NestJS 12 features support i
 | Technology | Version | Purpose | Why | Confidence |
 |------------|---------|---------|-----|------------|
 | **`vitest`** | **5.0.3** | Unit + integration tests (server) | NestJS 12's ESM projects default to **Vitest**; the framework team migrated all repos off Jest. Aligns with `nest new` output. (Corrected from 5.0.2.) | HIGH |
-| **`@playwright/test`** | **1.63.0** | E2E — UI **and** API | PRD §17.1 already commits to Playwright. Also **the only practical way to UAT FormIO's drag-and-drop builder** — you cannot assert "an admin can drag a field onto a form" with unit tests. | HIGH |
+| **`@playwright/test`** | **1.64.0** | E2E — UI **and** API | PRD §17.1 already commits to Playwright. Also **the only practical way to UAT FormIO's drag-and-drop builder** — you cannot assert "an admin can drag a field onto a form" with unit tests. | HIGH |
 | **`testcontainers`** | **12.2.0** | Real MongoDB + Redis in integration tests | 🔴 Mocks would not catch the `GETDEL` atomicity (NFR-SEC-1) or BullMQ retry/DLQ behaviour that FR-C-* depends on. Those are the two highest-risk behaviours in the system and both are Redis-semantics-dependent. Engines `>=22.22` — satisfied. | HIGH |
 | **`@testcontainers/mongodb`** | **12.2.0** | The MongoDB module — `MongoDBContainer` | Installed **separately and explicitly**: `testcontainers` is the umbrella package and does not pull the driver modules. Starts Mongo with `--replSet rs0`, which is why the harness URL needs `directConnection=true`. MIT. | HIGH |
 | **`@testcontainers/redis`** | **12.2.0** | The Redis module — `RedisContainer` | Installed separately and explicitly, same reason. Supplies `withCommand`, which is what carries `--maxmemory-policy` — the mechanism the two-deployment cache/queue split depends on. MIT. | HIGH |
@@ -686,6 +686,7 @@ NFR requires **zero-downtime rolling deploys**. Two NestJS 12 features support i
 | `typescript-eslint` | **8.71.0** | TS-aware lint | Its peer `typescript: ">=4.8.4 <6.1.0"` **without** `peerDependenciesMeta` is the hard ERESOLVE in §3.2. | HIGH |
 | npm **workspaces** | — | Monorepo | **2 web apps + 1 API + 1 worker.** Workspaces are enough; a build-graph tool is unjustified overhead at this size. See §12. | HIGH |
 | `csv-parse` | 7.0.3 | Bulk import/export | Audit exports, submission CSV | HIGH |
+| `csv-stringify` | 6.9.0 | CSV **export** (D-111/BLD-08) | The writer sibling of `csv-parse` in the same `adaltas/node-csv` family (MIT) — `csv-parse` parses, `csv-stringify` writes; the export half of "import/export" needs this package | HIGH |
 | `jsonata` | 2.2.2 | Transformation for connector payloads | Field mapping without code | HIGH |
 | `helmet` | 8.3.0 | HTTP security headers | Standard | HIGH |
 
@@ -751,10 +752,10 @@ npm i @microsoft/agents-hosting@1.9.1 \
 
 # ---- 8. Frontend (Form Renderer + App Builder) ---------------------------
 npm i -w apps/web-form-renderer @formio/js@5.6.1 react@19.3.0 react-dom@19.3.0
-npm i -D -w apps/web-form-renderer vite@8.3.2 @vitejs/plugin-react@6.1.1
+npm i -D -w apps/web-form-renderer vite@8.3.4 @vitejs/plugin-react@6.1.2
 npm i -w apps/web-app-builder react@19.3.0 react-dom@19.3.0 \
      react-hook-form@7.89.0 @tanstack/react-query@5.104.0
-npm i -D -w apps/web-app-builder vite@8.3.2 @vitejs/plugin-react@6.1.1
+npm i -D -w apps/web-app-builder vite@8.3.4 @vitejs/plugin-react@6.1.2
 
 # ---- 9. Dev + test --------------------------------------------------------
 npm i -D typescript@6.0.3          # EXACT PIN. No caret. No tilde. See section 3.
@@ -762,9 +763,9 @@ npm i -D eslint@10.11.0 \
      eslint-plugin-boundaries@7.2.0 \
      @typescript-eslint/eslint-plugin@8.71.0 \
      @typescript-eslint/parser@8.71.0
-npm i -D vitest@5.0.3 @playwright/test@1.63.0 \
+npm i -D vitest@5.0.3 @playwright/test@1.64.0 \
      testcontainers@12.2.0 fast-check@4.10.2 msw@3.0.1 @faker-js/faker@10.6.0
-npm i csv-parse@7.0.3 jsonata@2.2.2
+npm i csv-parse@7.0.3 csv-stringify@6.9.0 jsonata@2.2.2
 ```
 
 ### 11.1 The two-step verification that proves the pin
@@ -974,8 +975,8 @@ Every row resolved live against `registry.npmjs.org` on **2026-10-01**. Nothing 
 | `@formio/vanilla` | **does not exist** | npm registry → **HTTP 404** | — | HIGH |
 | `@formio/react` | 6.2.1 | npm registry (React 19 support) | 2026-06-03 | HIGH |
 | `react` / `react-dom` | 19.3.0 | npm registry | 2026-09-29 | HIGH |
-| `vite` | **8.3.2** | npm registry | 2026-09-24 | HIGH |
-| `@vitejs/plugin-react` | 6.1.1 | npm registry (optional peers `oxc-transform-react`, `@rolldown/plugin-babel`) | 2026-09 | HIGH |
+| `vite` | **8.3.4** | npm registry | 2026-10-08 | HIGH |
+| `@vitejs/plugin-react` | 6.1.2 | npm registry (optional peers `oxc-transform-react`, `@rolldown/plugin-babel`) | 2026-10-05 | HIGH |
 | `undici` | 8.11.2 | npm registry (engines `>=22.19.0`) | 2026-09-25 | HIGH |
 | `helmet` | 8.3.0 | npm registry | — | HIGH |
 | `@node-rs/argon2` | 2.2.1 | npm registry (engines `>=10`, prebuilt N-API) | 2026-09-10 | HIGH |
@@ -1000,7 +1001,7 @@ Every row resolved live against `registry.npmjs.org` on **2026-10-01**. Nothing 
 | `typescript` | 7.0.2 latest / **6.0.3 pinned** | npm registry `dist-tags` | 2026-09-30 | HIGH |
 | `@types/node` | **24.x** | npm registry — build-time only. Added by plan 01-01 as a recorded deviation: `tsc -b` cannot typecheck Node globals (`process`, `Buffer`, …) without it. The canonical DefinitelyTyped package, not a substitution; the `^24` range tracks the Node floor in `.nvmrc`. | — | HIGH |
 | `vitest` | **5.0.3** | npm registry | 2026-09-25 | HIGH |
-| `@playwright/test` | 1.63.0 | npm registry | 2026-09-30 | HIGH |
+| `@playwright/test` | 1.64.0 | npm registry | 2026-10-11 | HIGH |
 | `testcontainers` | 12.2.0 | npm registry (engines `>=22.22`) | — | HIGH |
 | `@testcontainers/mongodb` | 12.2.0 | npm registry — module variant, Apache-2.0→**MIT**; `MongoDBContainer` starts with `--replSet rs0`, hence the `directConnection=true` requirement in `tooling/containers.ts` | 2026-09-28 | HIGH |
 | `@testcontainers/redis` | 12.2.0 | npm registry — module variant, **MIT**; supplies `RedisContainer`, which is what accepts the `--maxmemory-policy` command the cache/queue split depends on | 2026-09-28 | HIGH |
@@ -1010,6 +1011,7 @@ Every row resolved live against `registry.npmjs.org` on **2026-10-01**. Nothing 
 | `msw` | 3.0.1 | npm registry | — | HIGH |
 | `@faker-js/faker` | 10.6.0 | npm registry | — | HIGH |
 | `csv-parse` | 7.0.3 | npm registry | — | HIGH |
+| `csv-stringify` | 6.9.0 | npm registry — same `adaltas/node-csv` family as `csv-parse`, MIT; the D-111/BLD-08 export writer | — | HIGH |
 | `jsonata` | 2.2.2 | npm registry | — | HIGH |
 | `turbo` | 2.11.6 | npm registry — **rejected** | — | HIGH |
 | 🔴 **`ua-parser-js`** | 2.0.10 | npm registry — **`AGPL-3.0-or-later`**. **Do not use.** | — | HIGH |

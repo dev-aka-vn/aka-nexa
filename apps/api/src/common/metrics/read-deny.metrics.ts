@@ -1,6 +1,6 @@
 import { metrics, type Counter } from '@opentelemetry/api';
 
-import type { ReadDenyReason } from '@akane/contract';
+import type { ReadDenyReason, RateLimitScope } from '@akane/contract';
 import { METER_NAME } from '@akane/platform';
 import type { ReadDenyAction, ReadDenyRecorder } from '@akane/domain';
 
@@ -46,7 +46,33 @@ import type { ReadDenyAction, ReadDenyRecorder } from '@akane/domain';
  */
 export const READ_LINK_DENIALS_METRIC = 'read_link_denials_total';
 
+/**
+ * The signature-failure **block** counter (AUD-10).
+ *
+ * ## Why a second series is required, not optional
+ *
+ * AUD-10's alert condition is `block > 0 ∧ signature_invalid ≈ 0`. The
+ * `signature_invalid` half is already covered — it is
+ * `read_link_denials_total{reason="bad_signature"}`, incremented by the verifier
+ * for every failure. The `block` half is this counter: the number of read-link
+ * requests answered with a rate-limit response because a key exhausted its
+ * failure budget. The two together let a dashboard distinguish "the limiter is
+ * doing its job" (both non-zero) from "the limiter is miscounting and blocking
+ * benign traffic" (`block > 0` with no signature failures behind it), which is
+ * the false positive the rule exists to catch.
+ *
+ * A single label, `scope`, spans the two `RateLimitScope` values — two series,
+ * fixed by code, no user input.
+ */
+export const READ_LINK_SIGNATURE_BLOCKS_METRIC = 'read_link_signature_blocks_total';
+
+/** The seam the read controller uses to count a block. */
+export interface SignatureBlockRecorder {
+  recordBlock(scope: RateLimitScope): void;
+}
+
 let cached: ReadDenyRecorder | undefined;
+let cachedBlocks: SignatureBlockRecorder | undefined;
 
 /**
  * Create (once) and return the read-link denial recorder.
@@ -67,4 +93,27 @@ export function registerReadDenyMetrics(): ReadDenyRecorder {
     });
   }
   return cached;
+}
+
+/**
+ * Create (once) and return the signature-failure **block** recorder (AUD-10).
+ *
+ * Memoised for the same reason as {@link registerReadDenyMetrics}: a second
+ * `createCounter` on the same name yields a second live instrument, and the
+ * exporter then emits the series twice.
+ */
+export function registerSignatureBlockMetrics(): SignatureBlockRecorder {
+  if (cachedBlocks === undefined) {
+    const meter = metrics.getMeter(METER_NAME);
+    const blocks: Counter = meter.createCounter(READ_LINK_SIGNATURE_BLOCKS_METRIC, {
+      description:
+        'Read-link requests blocked by the signature-failure limiter, by key scope (AUD-10).',
+    });
+    cachedBlocks = Object.freeze({
+      recordBlock: (scope: RateLimitScope): void => {
+        blocks.add(1, { scope });
+      },
+    });
+  }
+  return cachedBlocks;
 }

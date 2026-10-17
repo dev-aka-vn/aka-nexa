@@ -76,6 +76,14 @@ web_modules/
 # plaintext key (T-1-26).
 .dev-local-key
 
+# The rest of the local dev key material. `start-api.bat` points
+# JWT_READ_PUBLIC_KEY at `.dev-read-public.esc` and leaves
+# `.dev-read-private.pem` / `.dev-read-public.pem` beside it — the first of
+# those is a real private key sitting untracked in the repo root. Same
+# reasoning as `.dev-local-key` above, and the same T-1-26 exposure: none of
+# this may be one `git add -A` away from being committed.
+.dev-*
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -147,3 +155,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Playwright generated output (e2e artifacts)
+test-results/
+playwright-report/
