@@ -239,7 +239,45 @@ this phase, not a data-loss event.
 
 </deferred>
 
+<corrections>
+## Corrections from research (2026-10-17)
+
+Locked decisions stand; several **rationales** asserted in them were factually wrong and are
+corrected here so the planner does not inherit a false premise. Evidence: `07-RESEARCH.md`
+(in-repo, read this session with line-range + verbatim citations).
+
+- **D-12 count is wrong: it is 13 → 12, not 12 → 11.** `SectionNameSchema` has **13** entries
+  `[VERIFIED: packages/contract/src/builder/app-definition.contract.ts:61-75]`. Four mirror lists
+  must change together: `apps/app-builder/src/sections.ts`, both `SECTION_FIELDS` copies, and
+  `APP_SECTION_PERMISSIONS`. Their doc comments already say "twelve" against 13 entries
+  (pre-existing drift). Stored custom-role grants naming `'triggers'` are orphaned and need
+  rewriting by the migration.
+- **D-02's "no routing change" is false.** The worker catalog is **hardcoded**
+  (`apps/worker/src/worker.module.ts:44-70` — one inline `leave-request` demo + `RuleBasedProvider`);
+  `RoutingOutcome`/`PublishedApp` carry no `action`; the tool projection has no form notion. Making
+  a builder-published app routable is real work, not a no-op.
+- **D-05's "preserves today's rule" is false.** `PublishGateService.evaluate()` has **no** form rule
+  at all — it only requires `form_schema !== null` via a different path. D-05 **adds** the
+  ≥1-`submit`-form rule; it does not preserve one. `assertRegistersTriggers` is dead code.
+- **The migration is two collections, not one.** `app_definition_versions` snapshots also carry the
+  retired shape; `rollback()` (`app-definition.service.ts:264-277`) spreads a retained snapshot back
+  into the live doc, so an unmigrated snapshot silently resurrects `form_schema` + app-level
+  `triggers` and drops `forms[]` — a data-corruption path. Migrate both collections in one run.
+- **`apps` is a shape union.** Minimal platform docs (e.g.
+  `provisioning/apps/leave-request.json`) carry no `form_schema` and must be **skipped** by the
+  migration filter (only docs where `form_schema` is present).
+
+### Open Question for the planner (design checkpoint required)
+
+- **The mockup does not depict the in-form trigger panel.** `prototypes/mockup.html` `tabForms`
+  (lines ~1158-1186) is a form list + "New form" button + Versioning card, with a separate
+  top-level `tabTriggers` retained. Per `AGENTS.md` rule 3 ("absence is not permission"), D-12's
+  panel placement/fields/copy must be confirmed with a `checkpoint:human-verify` rather than
+  improvised.
+
+</corrections>
+
 ---
 
 *Phase: 7-Multi-Form Apps & Per-Form Triggers*
-*Context gathered: 2026-10-17*
+*Context gathered: 2026-10-17 (corrections appended after research)*
