@@ -1,5 +1,36 @@
 # Phase 06 — Deferred items
 
+## Regression-gate findings classified pre-existing (2026-10-17)
+
+The execute-phase regression gate (full vitest suite, 1202 tests) surfaced
+three failing suites. Classification against the phase-6 base (a72e98a):
+
+1. **tooling/entrypoint-drift.spec.ts — 1 failure (documented, pre-existing).**
+   Five api source files unreachable from main.ts (slack-commands/slack-webhook
+   controllers, slack.module, link-error.filter, permission.guard). Already
+   recorded by 06-02's deferred items (where the list was six —
+   submissions.controller was wired by 06-06 since). Slack wiring belongs to
+   the phase that owns the Slack adapter surface; the filter/guard land with
+   their consumers.
+2. **tooling/toolchain-pin.spec.ts — suite failure (pre-existing).** The
+   ci.yml `install-guard` job restored at fc0a7d3 (2026-10-11, before the
+   phase-6 base) lacks the `grep -Eq` peer-dependency-bypass assertion the
+   spec requires. Fix belongs to the CI workflow, not phase 6.
+3. **tooling/onboarding.spec.ts — 10 failures → FIXED same day (not
+   pre-existing defects in the app; Windows platform gaps in the harness):**
+   - `--import` received a bare `C:\...` path → ERR_UNSUPPORTED_ESM_URL_SCHEME
+     before any app code ran; now `pathToFileURL(...).href`.
+   - Two remedies shelled out to `/bin/sh` (absent on Windows); one now uses
+     the equivalent Node primitive (32 random bytes via `randomBytes`), the
+     other (POSIX shell-sourcing hazard) skips on win32 by design.
+   - Trap A's port squatter bound `127.0.0.1` while the api binds `::`: on
+     Windows these are separate namespaces, so the collision never fired and
+     the trap timed out. The squatter now uses the api's own bind semantics.
+   Suite is green: 37 passed / 1 skipped.
+
+**Verdict: zero phase-6-introduced regressions.** Items 1-2 recorded here for
+the phase that owns them.
+
 ## Out-of-scope discovery (06-03, 2026-10-12)
 
 **16 pre-existing TypeScript errors in `apps/api` (from plan 06-02)**
