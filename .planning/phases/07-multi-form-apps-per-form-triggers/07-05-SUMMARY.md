@@ -254,4 +254,4 @@ is marked ✅ RECORDED. All six rulings (U-1..U-6) are now recorded and availabl
 
 ---
 *Phase: 07-multi-form-apps-per-form-triggers*
-*Status: in progress — 5/6 rulings recorded*
+*Status: complete — 6/6 rulings recorded*
