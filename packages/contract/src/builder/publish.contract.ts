@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AppIdSchema } from './app-definition.contract.js';
+import { AppFormElementSchema } from './forms.contract.js';
 
 /**
  * Publish-gate contracts (APP-07, APP-08, BLD-06, OBS-05).
@@ -81,8 +82,7 @@ export const PublishResponseSchema = z
     lifecycle: z.enum(['draft', 'published', 'deprecated', 'archived']),
     version: z.number().int(),
     tags: z.array(z.string()),
-    form_schema: z.record(z.string(), z.unknown()).nullable(),
-    triggers: z.array(z.record(z.string(), z.unknown())),
+    forms: z.array(AppFormElementSchema),
     roles: z.record(z.string(), z.unknown()),
     routing_config: z.record(z.string(), z.unknown()).nullable(),
     field_mapping: z.record(z.string(), z.unknown()).nullable(),

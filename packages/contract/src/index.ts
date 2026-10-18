@@ -78,133 +78,69 @@ export type { ReadLinkAction, ReadLinkClaims } from './links/read-link-claims.js
 
 export {
   DRAFT_TOKEN_KEY_PREFIX,
-  isEmittableInV1,
-  TOKEN_CLASSES,
 } from './links/token-classes.js';
-export type { TokenClass } from './links/token-classes.js';
 
 export {
-  ALL_DENY_REASONS,
-  READ_DENY_REASONS,
-  ReadDenyReason,
-  isCountedReason,
-} from './links/read-deny-reasons.js';
+  TOKEN_CLASSES,
+  isEmittableInV1,
+  type TokenClass,
+} from './links/token-classes.js';
 
-export { RateLimitKeySchema, RateLimitScopeSchema } from './links/rate-limit-key.js';
-export type { RateLimitKey, RateLimitScope } from './links/rate-limit-key.js';
 
-export {
-  ConnectorCapabilitySchema,
-  ConnectorDescriptorSchema,
-  ConnectorExecuteContextSchema,
-  ConnectorExecutePayloadSchema,
-  ConnectorTestResultSchema,
-} from './connector/connector.js';
-export type {
-  Connector,
-  ConnectorCapability,
-  ConnectorDescriptor,
-  ConnectorErrorCode,
-  ConnectorExecuteContext,
-  ConnectorExecuteOutcome,
-  ConnectorExecutePayload,
-  ConnectorTestResult,
-} from './connector/connector.js';
-
-export { ImPlatformSchema, InboundActionSchema, InboundEventSchema } from './events/inbound-event.js';
-export type { ImPlatform, InboundAction, InboundEvent } from './events/inbound-event.js';
-
-export { OutboundActionSchema, OutboundMessageSchema } from './events/outbound-message.js';
-export type { OutboundAction, OutboundMessage } from './events/outbound-message.js';
-
-// Builder auth contracts (BLD-12, D-110/IDN-08) — added beside the
-// frozen contracts, never modifying them.
-export {
-  SessionMeResponseSchema,
-  SsoMappingCreateSchema,
-  SsoMappingErrorSchema,
-  SsoMappingSchema,
-} from './auth/session.contract.js';
-export type {
-  SessionMeResponse,
-  SsoMapping,
-  SsoMappingCreate,
-  SsoMappingError,
-} from './auth/session.contract.js';
-
-export {
-  DEFAULT_QUERY_LIMIT,
-  DSL_OPERATORS,
-  MAX_QUERY_LIMIT,
-  QUERY_DSL_CONTRACT_VERSION,
-} from './dsl/query-dsl.js';
-export type {
-  DslAndGroup,
-  DslContainsFilter,
-  DslEqFilter,
-  DslGteFilter,
-  DslInFilter,
-  DslLteFilter,
-  DslNeFilter,
-  DslOperator,
-  DslOrGroup,
-  DslScalar,
-  FilterExpr,
-  JsonValue,
-  Projection,
-  QueryDsl,
-  SortDirection,
-  SortSpec,
-} from './dsl/query-dsl.js';
-
-// Builder app-definition contracts (BLD-02, APP-03, APP-05) —
-// beside the frozen contracts, never modifying them.
 export {
   AppIdSchema,
   CreateAppDraftSchema,
-  CreateAppDraftInput,
-  DeprecateAppSchema,
-  DeprecateAppInput,
-  ForkTemplateSchema,
-  ForkTemplateInput,
   SectionNameSchema,
-  SectionName,
   UpdateSectionSchema,
-  UpdateSectionInput,
+  DeprecateAppSchema,
+  ForkTemplateSchema,
 } from './builder/app-definition.contract.js';
-export {
-  ChangeSummaryRowSchema,
-  type ChangeSummaryRow,
-  PublishGateResultSchema,
-  type PublishGateResult,
-  PublishResponseSchema,
-  type PublishResponse,
-  ShareDropSchema,
-  type ShareDrop,
-} from './builder/publish.contract.js';
+export type {
+  CreateAppDraftInput,
+  SectionName,
+  UpdateSectionInput,
+  DeprecateAppInput,
+  ForkTemplateInput,
+} from './builder/app-definition.contract.js';
 
-// Connector-request contracts (BLD-10, D-97..D-100) —
-// the self-service request payload and the
-// credential-free response projection, beside
-// the frozen contracts.
+export {
+  AppFormKindSchema,
+  FORM_KIND_TO_ACTION,
+  formKindForAction,
+  FormTriggerSchema,
+  AppFormConfigSchema,
+  AppFormElementSchema,
+} from './builder/forms.contract.js';
+export type {
+  AppFormKind,
+  FormTrigger,
+  AppFormConfig,
+  AppFormElement,
+} from './builder/forms.contract.js';
+
+export {
+  PublishGateResultSchema,
+  PublishResponseSchema,
+  ChangeSummaryRowSchema,
+  ShareDropSchema,
+} from './builder/publish.contract.js';
+export type {
+  PublishGateResult,
+  PublishResponse,
+  ChangeSummaryRow,
+  ShareDrop,
+} from './builder/publish.contract.js';
 export {
   ConnectorRequestDefinitionSchema,
-  type ConnectorRequestDefinition,
   ConnectorRequestResponseSchema,
-  type ConnectorRequestResponse,
   ConnectorRequestStateSchema,
-  type ConnectorRequestState,
 } from './builder/connector-request.contract.js';
-
-// Field-mapping contracts (BLD-05) — the
-// data-routing tab's form-field →
-// connector-field mapping, beside the frozen
-// contracts.
+export type {
+  ConnectorRequestDefinition,
+  ConnectorRequestResponse,
+  ConnectorRequestState,
+} from './builder/connector-request.contract.js';
 export {
-  FieldMappingPutSchema,
-  type FieldMappingPut,
-  FieldMappingResponseSchema,
-  type FieldMappingRecord,
   FieldMappingSchema,
   type FieldMapping,
 } from './builder/field-mapping.contract.js';
