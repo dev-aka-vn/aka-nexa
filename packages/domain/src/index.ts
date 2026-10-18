@@ -205,6 +205,11 @@ export {
 export { RepositorySavedQueryLookup } from './builder/saved-query.repository.js';
 export { backfillSavedQueries } from './builder/saved-query.backfill.js';
 export {
+  migrateAppForms,
+  transformLegacyApp,
+  foldLegacyTriggers,
+} from './builder/migration/forms-migration.js';
+export {
   PUBLISH_SHARE_DROP_THRESHOLD_POINTS,
   DESCRIPTION_COLLISION_JACCARD_THRESHOLD,
   PublishGateService,
