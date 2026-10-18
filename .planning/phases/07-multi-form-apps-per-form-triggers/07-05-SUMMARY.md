@@ -12,11 +12,11 @@ provides:
   - "Six recorded design rulings (U-1…U-6) that gate 07-06 (form manager) and 07-07 (trigger panel + config surfaces)"
 affects: [07-multi-form-apps-per-form-triggers-06, 07-multi-form-apps-per-form-triggers-07]
 
-# Actuals (#2632) — updated as rulings land; plan still in progress (3/6 rulings recorded)
+# Actuals (#2632) — updated as rulings land; plan still in progress (4/6 rulings recorded)
 actuals:
-  tokens: 8800
-  tasks: 3
-  commits: 2
+  tokens: 9400
+  tasks: 4
+  commits: 7
 
 # Tech tracking
 tech-stack:
@@ -33,6 +33,7 @@ key-decisions:
   - "U-1: inline-collapsible trigger panel under the form row; example phrases local-only (never persisted, sub-line omitted); disabled panel + note for show/edit kinds"
   - "U-2: checklist-picker surfaces — show = ordered checklist over submit keys ({fields[]}); list = query reference picker + column multiselect ({query_id, columns[]}); up/down ordering (dragula submit-only); empty state 'No saved queries'"
   - "U-3: radio-card-picker kind chooser for New form — only unclaimed kinds shown (claimed kinds omitted uniformly, submit never addable twice); per-kind .rc-d descriptions carry the guidance; standalone helper line omitted"
+  - "U-4: modal-block-last-submit — remove affordance on the form-manager row; removing the app's only submit form is BLOCKED in the modal by a callout-warn (confirm disabled); kind-aware modal body copy (with-trigger vs show/edit variant); submissions always keep their data"
 
 patterns-established:
   - "Undepicted-surface ruling pattern: mockup silence is confirmed by the user, never improvised (AGENTS.md rule 3)"
@@ -47,7 +48,7 @@ status: in-progress
 
 # Phase 7 Plan 5: Undepicted-Surface Design Rulings Summary
 
-**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), and U-3 (New-form `radio-card` kind picker with per-kind descriptions) recorded; U-4…U-6 pending their checkpoints**
+**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), U-3 (New-form `radio-card` kind picker with per-kind descriptions), and U-4 (`modal-block-last-submit` remove-form confirm with kind-aware copy) recorded; U-5…U-6 pending their checkpoints**
 
 This SUMMARY is the design contract 07-06 and 07-07 cite in `read_first`. Each ruling is
 recorded verbatim as received, under its own `U-n` heading. Later rulings are appended under
@@ -153,9 +154,40 @@ their headings; earlier rulings are never re-written or re-litigated.
 - The four kind labels use the domain kind names `submit`/`list`/`show`/`edit` (D-01 bijection
   to wire actions; kind side is canonical in the picker copy).
 
-### U-4 — remove-form destructive confirm ⏳ PENDING
+### U-4 — remove-form destructive confirm ✅ RECORDED
 
-Awaiting Task 4 checkpoint (`checkpoint:decision`, gate `blocking`).
+**Chosen option: `modal-block-last-submit`** (plan Task 4). User ruling verbatim:
+
+1. **Policy:** `modal-block-last-submit` — form removal is offered from the form-manager row;
+   removing the LAST `submit` form is BLOCKED in the confirm modal, replaced by a
+   `callout-warn`. (Removing any non-last form proceeds through the modal confirm.)
+2. **Copy (confirmed as proposed):**
+   - **Modal body (kinds WITH a trigger, i.e. submit/list):**
+     `Remove "‹form label›"? This removes the form and its trigger. Submissions already created through it keep their data. This can't be undone from here.`
+   - **Kind-aware variant for show/edit (no trigger, D-08/U-1):**
+     `Remove "‹form label›"? This removes the form. Submissions already created through it keep their data. This can't be undone from here.`
+   - **Remove affordance:** `icon-btn` with `aria-label="Remove form"`, `i-trash` icon, on the
+     form-manager row; modal footer = ghost Cancel + `btn-danger` `Remove form` (chrome:
+     `.modal`/`.modal-head/body/foot` + `.scrim`, Escape/scrim dismiss).
+   - **Block state callout-warn (last submit):**
+     `An app needs a submit form to publish. This is the only one, so the app can't be published until a new submit form is added.` — in the blocked state the Remove confirm action is disabled.
+3. **Data-intent T-07-13 consistent:** submissions created through a removed form are never
+   deleted; copy states this.
+
+**Locked context for consistency (binding on 07-06/07-07):**
+
+- Removal is offered from the form-manager row (U-6 governs the rest of the row); the
+  affordance is `icon-btn` `aria-label="Remove form"` with the `i-trash` icon.
+- Removing the last `submit` form is BLOCKED in the modal via a `callout-warn` carrying the
+  verbatim block copy; the `Remove form` confirm action is disabled in that state. Any
+  non-last form (including a non-last `submit`, which cannot exist — one form per kind,
+  D-02 — so "last submit" means the app's only submit form) removes through the modal confirm.
+- Both modal-body strings above are verbatim; the `show`/`edit` variant is used because those
+  kinds are link-driven only and carry no trigger (D-08, U-1).
+- Both bodies state that submissions keep their data — the copy promise backs the mechanical
+  07-06 prohibition; submissions are never deleted (T-07-13).
+- Chrome: `.modal`/`.modal-head`/`.modal-body`/`.modal-foot` + `.scrim`, Escape/scrim
+  dismiss; footer = ghost Cancel + `btn-danger` `Remove form`.
 
 ### U-5 — publish-gate SC#2 error copy and placement (+ long-copy wrap) ⏳ PENDING
 
@@ -173,13 +205,14 @@ None — plan executed as written (rulings recorded one checkpoint at a time).
 
 1. **Task 1: U-1 — in-form trigger panel** — recorded in this SUMMARY (commit `docs(07-05): record U-1 ruling`, `c08443e7`; checkpoint close `af3a88bb`)
 2. **Task 2: U-2 — `list`/`show` config surfaces** — recorded in this SUMMARY (commit `docs(07-05): record U-2 ruling`, `edd92a7a`; checkpoint close `242b2a82`)
-3. **Task 3: U-3 — "New form" kind picker** — recorded in this SUMMARY (commit `docs(07-05): record U-3 ruling`)
+3. **Task 3: U-3 — "New form" kind picker** — recorded in this SUMMARY (commit `docs(07-05): record U-3 ruling`, `2ec05127`; checkpoint close `48dfe1f2`)
+4. **Task 4: U-4 — remove-form destructive confirm** — recorded in this SUMMARY (commit `docs(07-05): record U-4 ruling`)
 
 ## Next Phase Readiness
 
 07-06/07-07 must not finalise any SPA surface for U-1…U-6 until the corresponding ruling above
-is marked ✅ RECORDED. U-1, U-2 and U-3 are now available to implement; U-4…U-6 remain gated.
+is marked ✅ RECORDED. U-1, U-2, U-3 and U-4 are now available to implement; U-5 and U-6 remain gated.
 
 ---
 *Phase: 07-multi-form-apps-per-form-triggers*
-*Status: in progress — 3/6 rulings recorded*
+*Status: in progress — 4/6 rulings recorded*
