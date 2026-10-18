@@ -167,8 +167,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **APP-07**: Publishing runs a routing dry-run against the labelled intent set and blocks if any existing app's routing share drops by more than 5 points
 - [x] **APP-08**: Publishing rejects an app whose description collides with an existing published app's
 - [x] **APP-09**: An app can be tagged and filtered by tag, and the platform ships roughly 10 seed template apps
-- [ ] **APP-11**: An app owns one or more forms; each form declares a kind — `submit` (new), `list`, `view` (show), `edit` — and is versioned independently with its own `form_version`
-- [ ] **APP-12**: A trigger (intent or slash command) activates exactly one form, not the app; a trigger that resolves to more than one form is rejected at publish
+- [x] **APP-11**: An app owns one or more forms; each form declares a kind — `submit` (new), `list`, `view` (show), `edit` — and is versioned independently with its own `form_version`
+- [x] **APP-12**: A trigger (intent or slash command) activates exactly one form, not the app; a trigger that resolves to more than one form is rejected at publish
 
 ### Form Engine & Renderer
 
@@ -181,7 +181,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **FRM-07**: The renderer enforces a CSP of `default-src 'self'; script-src 'self'` and sanitizes all input
 - [x] **FRM-08**: The renderer meets WCAG 2.1 AA and is usable on desktop, tablet, and mobile browsers
 - [x] **FRM-09**: A form author can preview a draft form in the App Builder, with sandbox submissions, before publishing
-- [ ] **FRM-14**: Every form in an app shares the app's MongoDB collection, role assignments, and data-routing destination; a form's schema is scoped to its declared kind
+- [x] **FRM-14**: Every form in an app shares the app's MongoDB collection, role assignments, and data-routing destination; a form's schema is scoped to its declared kind
 
 ### Links & Token Security
 
@@ -535,9 +535,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACL-05 | Phase 6 | Complete |
 | ACL-10 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
-| APP-11 | Phase 7 | Pending |
-| APP-12 | Phase 7 | Pending |
-| FRM-14 | Phase 7 | Pending |
+| APP-11 | Phase 7 | Complete |
+| APP-12 | Phase 7 | Complete |
+| FRM-14 | Phase 7 | Complete |
 | IM-10 | Phase 8 | Pending |
 | NOT-01 | Phase 8 | Pending |
 | NOT-02 | Phase 8 | Pending |
