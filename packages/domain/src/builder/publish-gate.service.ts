@@ -5,7 +5,8 @@ import {
 
 import type { AppDefinitionDocument } from './data-access/app-definition.repository.js';
 import { AppNotFoundError } from './data-access/app-definition.repository.js';
-import type { PublishedApp } from '../decision/published-app-loader.js';
+import type { PublishedApp, PublishedAppForm } from '../decision/published-app-loader.js';
+import { FORM_KIND_TO_ACTION } from '@akane/contract';
 import type { RoutingOrchestrator } from '../decision/routing-orchestrator.js';
 import type { RoutingInput } from '../decision/routing-orchestrator.js';
 import type { ChangeSummaryRow, PublishGateResult, ShareDrop } from '@akane/contract';
@@ -107,6 +108,107 @@ export class PublishGateService {
         shareDrops: [],
         descriptionCollisionWith: null,
         changeSummary: [],
+      };
+    }
+
+    // Form-set rules (D-05, APP-12/SC#2, D-08, FRM-14). These run
+    // before any dry-run: a malformed form set never enters the
+    // routing distribution, and the gate never repairs it (no silent
+    // auto-creation of a submit form — the transparency prohibition).
+    const forms = candidate.forms ?? [];
+    const hasSubmit = forms.some((form) => form.kind === 'submit');
+    if (!hasSubmit) {
+      return {
+        allowed: false,
+        shareDrops: [],
+        descriptionCollisionWith: null,
+        changeSummary: buildChangeSummary(candidate),
+      };
+    }
+    const routableViolation = forms.some(
+      (form) =>
+        (form.kind === 'show' || form.kind === 'edit') &&
+        form.triggers !== null &&
+        form.triggers !== undefined,
+    );
+    if (routableViolation) {
+      return {
+        allowed: false,
+        shareDrops: [],
+        descriptionCollisionWith: null,
+        changeSummary: buildChangeSummary(candidate),
+      };
+    }
+    const configViolation = forms.some((form) => {
+      if (form.kind === 'list') {
+        const cfg = form.config as { query_id?: unknown; columns?: unknown };
+        if (
+          typeof cfg?.query_id !== 'string' ||
+          (cfg.query_id as string).length === 0
+        ) {
+          return true;
+        }
+        if (!Array.isArray(cfg.columns) || cfg.columns.length === 0) {
+          return true;
+        }
+      }
+      if (form.kind === 'show') {
+        const cfg = form.config as { fields?: unknown };
+        if (!Array.isArray(cfg?.fields) || cfg.fields.length === 0) {
+          return true;
+        }
+      }
+      return false;
+    });
+    if (configViolation) {
+      return {
+        allowed: false,
+        shareDrops: [],
+        descriptionCollisionWith: null,
+        changeSummary: buildChangeSummary(candidate),
+      };
+    }
+    // Trigger → form uniqueness (APP-12/SC#2): a label resolving to
+    // more than one form blocks publish. Case-sensitive, exactly as
+    // declaredLabels is today.
+    const labelCounts = new Map<string, number>();
+    for (const form of forms) {
+      const trigger = form.triggers as Record<string, unknown> | null;
+      if (trigger === null || trigger === undefined) continue;
+      const declared = [
+        ...(Array.isArray(trigger['intents']) ? trigger['intents'] : []),
+        ...(Array.isArray(trigger['aliases']) ? trigger['aliases'] : []),
+      ].filter(
+        (label): label is string =>
+          typeof label === 'string' && label.length > 0,
+      );
+      // Dedupe per form: a single form declaring the same
+      // label in both intents and aliases is one resolution,
+      // not a collision (APP-12/SC#2 is about forms, not
+      // label occurrences within one form).
+      const uniqueDeclared = [...new Set(declared)];
+      const labels =
+        uniqueDeclared.length > 0
+          ? uniqueDeclared
+          : (['id', 'command'] as const)
+              .map((key) => trigger[key])
+              .filter(
+                (value): value is string =>
+                  typeof value === 'string' && value.length > 0,
+              );
+      for (const label of labels) {
+        labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+      }
+    }
+    const triggerCollision = [...labelCounts.values()].some(
+      (count) => count > 1,
+    );
+    if (triggerCollision) {
+      return {
+        allowed: false,
+        shareDrops: [],
+        descriptionCollisionWith: null,
+        changeSummary: buildChangeSummary(candidate),
       };
     }
 
@@ -315,6 +417,41 @@ export function publishedAppFromDefinition(
   definition: AppDefinitionDocument,
 ): PublishedApp {
   const labels = declaredLabels(definition);
+  const forms: PublishedAppForm[] = [];
+  for (const form of definition.forms ?? []) {
+    const trigger = form.triggers as Record<string, unknown> | null;
+    if (trigger === null || trigger === undefined) continue;
+    const declared = [
+      ...(Array.isArray(trigger['intents']) ? trigger['intents'] : []),
+      ...(Array.isArray(trigger['aliases']) ? trigger['aliases'] : []),
+    ].filter(
+      (label): label is string =>
+        typeof label === 'string' && label.length > 0,
+    );
+    const formLabels =
+      declared.length > 0
+        ? declared
+        : (['id', 'command'] as const)
+            .map((key) => trigger[key])
+            .filter(
+              (value): value is string =>
+                typeof value === 'string' && value.length > 0,
+            );
+    forms.push({
+      form_id: form.form_id,
+      kind: form.kind as PublishedAppForm['kind'],
+      action: FORM_KIND_TO_ACTION[form.kind as keyof typeof FORM_KIND_TO_ACTION],
+      intents: formLabels,
+      aliases: formLabels,
+      threshold:
+        typeof trigger['threshold'] === 'number' &&
+        Number.isFinite(trigger['threshold'])
+          ? (trigger['threshold'] as number)
+          : thresholdOf(definition),
+      description: definition.description,
+      form_version: form.form_version,
+    });
+  }
   return {
     id: definition.app_id,
     description: definition.description,
@@ -327,6 +464,7 @@ export function publishedAppFromDefinition(
     // lifecycle narrows to the catalog's published
     // states at every call site.
     status: definition.lifecycle as PublishedApp['status'],
+    forms,
   };
 }
 
