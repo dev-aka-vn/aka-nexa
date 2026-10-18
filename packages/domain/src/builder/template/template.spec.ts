@@ -371,8 +371,8 @@ describe('template gallery (D-105..D-108)', () => {
 
       const loaded = await templates.listTemplates();
       for (const record of loaded) {
-        expect(record.forms).toHaveLength(1);
-        const [submit] = record.forms;
+        const submit = record.forms.find((form) => form.kind === 'submit')!;
+        expect(submit).toBeDefined();
         expect(submit.kind).toBe('submit');
         expect(submit.form_id).toBe('submit');
         expect(submit.form_version).toBe(1);

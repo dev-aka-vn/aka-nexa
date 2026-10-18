@@ -1,9 +1,13 @@
 {
   "template_id": "leave-request",
   "name": "Leave Request",
-  "description": "Request time off — absence and leave approvals, routed to the HR queue",
+  "description": "Request time off \u2014 absence and leave approvals, routed to the HR queue",
   "domain": "absence/leave",
-  "tags": ["time-off", "hr", "all-staff"],
+  "tags": [
+    "time-off",
+    "hr",
+    "all-staff"
+  ],
   "data_mode": "internal",
   "connector_ref": null,
   "forms": [
@@ -12,20 +16,75 @@
       "kind": "submit",
       "schema": {
         "components": [
-          { "type": "date", "key": "start_date", "label": "First day", "input": true },
-          { "type": "date", "key": "end_date", "label": "Last day", "input": true },
-          { "type": "textarea", "key": "reason", "label": "Reason", "input": true }
+          {
+            "type": "date",
+            "key": "start_date",
+            "label": "First day",
+            "input": true
+          },
+          {
+            "type": "date",
+            "key": "end_date",
+            "label": "Last day",
+            "input": true
+          },
+          {
+            "type": "textarea",
+            "key": "reason",
+            "label": "Reason",
+            "input": true
+          }
         ]
       },
       "form_version": 1,
-      "triggers": { "intents": [], "aliases": ["/leave"], "threshold": 0.8 },
+      "triggers": {
+        "intents": [],
+        "aliases": [
+          "/leave"
+        ],
+        "threshold": 0.8
+      },
       "config": {}
+    },
+    {
+      "form_id": "list",
+      "kind": "list",
+      "schema": null,
+      "form_version": 1,
+      "triggers": null,
+      "config": {
+        "query_id": "qry_pending_leave",
+        "columns": [
+          "created_at",
+          "status"
+        ]
+      }
     }
   ],
   "roles": {
-    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
-    "admin": ["create", "edit", "publish", "assign-roles"],
-    "manager": ["submit", "approve", "view"],
-    "user": ["submit", "view"]
+    "owner": [
+      "create",
+      "edit",
+      "delete",
+      "publish",
+      "deprecate",
+      "archive",
+      "assign-roles"
+    ],
+    "admin": [
+      "create",
+      "edit",
+      "publish",
+      "assign-roles"
+    ],
+    "manager": [
+      "submit",
+      "approve",
+      "view"
+    ],
+    "user": [
+      "submit",
+      "view"
+    ]
   }
 }

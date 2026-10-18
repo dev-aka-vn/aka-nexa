@@ -1,9 +1,12 @@
 {
   "template_id": "expense-report",
   "name": "Expense Report",
-  "description": "Submit an expense — receipt-backed reimbursement through finance",
+  "description": "Submit an expense \u2014 receipt-backed reimbursement through finance",
   "domain": "expenses",
-  "tags": ["expenses", "finance"],
+  "tags": [
+    "expenses",
+    "finance"
+  ],
   "data_mode": "internal",
   "connector_ref": null,
   "forms": [
@@ -12,20 +15,95 @@
       "kind": "submit",
       "schema": {
         "components": [
-          { "type": "number", "key": "amount", "label": "Amount", "input": true },
-          { "type": "select", "key": "category", "label": "Category", "input": true, "data": { "values": [{ "label": "Travel", "value": "travel" }, { "label": "Meals", "value": "meals" }, { "label": "Software", "value": "software" }, { "label": "Other", "value": "other" }] } },
-          { "type": "textarea", "key": "receipt_note", "label": "Receipt note", "input": true }
+          {
+            "type": "number",
+            "key": "amount",
+            "label": "Amount",
+            "input": true
+          },
+          {
+            "type": "select",
+            "key": "category",
+            "label": "Category",
+            "input": true,
+            "data": {
+              "values": [
+                {
+                  "label": "Travel",
+                  "value": "travel"
+                },
+                {
+                  "label": "Meals",
+                  "value": "meals"
+                },
+                {
+                  "label": "Software",
+                  "value": "software"
+                },
+                {
+                  "label": "Other",
+                  "value": "other"
+                }
+              ]
+            }
+          },
+          {
+            "type": "textarea",
+            "key": "receipt_note",
+            "label": "Receipt note",
+            "input": true
+          }
         ]
       },
       "form_version": 1,
-      "triggers": { "intents": [], "aliases": ["/expense"], "threshold": 0.8 },
+      "triggers": {
+        "intents": [],
+        "aliases": [
+          "/expense"
+        ],
+        "threshold": 0.8
+      },
       "config": {}
+    },
+    {
+      "form_id": "show",
+      "kind": "show",
+      "schema": null,
+      "form_version": 1,
+      "triggers": null,
+      "config": {
+        "fields": [
+          "amount",
+          "category",
+          "receipt_note"
+        ]
+      }
     }
   ],
   "roles": {
-    "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
-    "admin": ["create", "edit", "publish", "assign-roles"],
-    "manager": ["submit", "approve", "view"],
-    "user": ["submit", "view"]
+    "owner": [
+      "create",
+      "edit",
+      "delete",
+      "publish",
+      "deprecate",
+      "archive",
+      "assign-roles"
+    ],
+    "admin": [
+      "create",
+      "edit",
+      "publish",
+      "assign-roles"
+    ],
+    "manager": [
+      "submit",
+      "approve",
+      "view"
+    ],
+    "user": [
+      "submit",
+      "view"
+    ]
   }
 }
