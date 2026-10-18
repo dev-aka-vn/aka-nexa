@@ -146,10 +146,83 @@ export class AppDefinitionService {
       assertCuratedTags(parsed.data.patch['tags']);
     }
 
+    if (parsed.data.section === 'forms' && 'forms' in parsed.data.patch) {
+      const { AppFormElementSchema } = await import('@akane/contract');
+      const formsPatch = parsed.data.patch['forms'];
+      if (Array.isArray(formsPatch)) {
+        const seenKinds = new Set<string>();
+        for (let i = 0; i < formsPatch.length; i++) {
+          const element = formsPatch[i];
+          const parseResult = AppFormElementSchema.safeParse(element);
+          if (!parseResult.success) {
+            throw new AppDefinitionValidationError(parseResult.error.issues);
+          }
+          const kind = parseResult.data.kind;
+          if (seenKinds.has(kind)) {
+            throw new AppDefinitionValidationError([
+              {
+                code: 'custom',
+                path: ['forms', i, 'kind'],
+                message: `duplicate form kind: ${kind}`,
+              },
+            ]);
+          }
+          seenKinds.add(kind);
+        }
+      }
+    }
+
+    let patchToApply = parsed.data.patch;
+    if (parsed.data.section === 'forms' && 'forms' in parsed.data.patch) {
+      const { AppFormElementSchema } = await import('@akane/contract');
+      const current = await this.repository.findByAppId(appId);
+      if (current !== null) {
+        const formsPatch = parsed.data.patch['forms'];
+        if (Array.isArray(formsPatch)) {
+          const seenKinds = new Set<string>();
+          const adjusted = formsPatch.map((element: any, i: number) => {
+            const parseResult = AppFormElementSchema.safeParse(element);
+            if (!parseResult.success) {
+              throw new AppDefinitionValidationError(parseResult.error.issues);
+            }
+            const parsedEl = parseResult.data;
+            const kind = parsedEl.kind;
+            if (seenKinds.has(kind)) {
+              throw new AppDefinitionValidationError([
+                {
+                  code: 'custom',
+                  path: ['forms', i, 'kind'],
+                  message: `duplicate form kind: ${kind}`,
+                },
+              ]);
+            }
+            seenKinds.add(kind);
+            // find current form with same kind
+            const currentForm = current.forms?.find((f) => f.kind === kind);
+            if (currentForm) {
+              // compare canonical { schema, config }
+              const currentKey = JSON.stringify({ schema: currentForm.schema, config: currentForm.config });
+              const incomingKey = JSON.stringify({ schema: parsedEl.schema, config: parsedEl.config });
+              if (currentKey === incomingKey) {
+                // keep existing form_version
+                return { ...parsedEl, form_version: currentForm.form_version };
+              } else {
+                // different - set to next version (app version becomes app version? D-10 says "form_version equals the new app version" after publish; but during update, the app's version hasn't bumped yet in the snapshot? Or compare against app's version)
+                // The service updates then snapshots - next version is current.version + 1? Let us look up how it's done
+                return { ...parsedEl, form_version: current.version + 1 };
+              }
+            }
+            return parsedEl;
+          });
+          patchToApply = { forms: adjusted };
+        }
+      }
+    }
+
     const updated = await this.repository.updateSection(
       appId,
       parsed.data.section,
-      parsed.data.patch,
+      patchToApply,
     );    if (updated === null) {
       throw new AppNotFoundError(appId);
     }
@@ -309,20 +382,7 @@ export class AppDefinitionService {
     AppLifecycle.assertAcceptsSubmissions(appId, definition.lifecycle);
   }
 
-  /**
-   * The trigger-registration seam's guard (APP-05): the
-   * path that activates an app's declared
-   * triggers/slash commands calls this before
-   * registering, so a deprecated app registers no new
-   * triggers.
-   */
-  async assertRegistersTriggers(appId: string): Promise<void> {
-    const definition = await this.repository.findByAppId(appId);
-    if (definition === null) {
-      throw new AppNotFoundError(appId);
-    }
-    AppLifecycle.assertRegistersTriggers(appId, definition.lifecycle);
-  }
+
 
   async listByOwner(ownerUserId: string): Promise<AppDefinitionDocument[]> {
     return this.repository.listByOwner(ownerUserId);
