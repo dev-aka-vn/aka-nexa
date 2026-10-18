@@ -11,12 +11,14 @@
  * the editor's Triggers tab owns the full
  * surface later).
  *
- * The step's PATCH writes the `triggers`
- * section (plan 04's section vocabulary) in
- * the shape the app definition stores.
+ * The step's save writes the `forms` section — the
+ * draft's submit form carries the trigger (D-06);
+ * the app-level `triggers` field is retired.
  */
 
 import type { ReactElement } from 'react';
+
+import type { FormTrigger } from '../api/definition.js';
 
 /** One wizard trigger row before it is normalized to the stored shape. */
 export interface TriggerRow {
@@ -172,34 +174,38 @@ export function TriggersStep({
 }
 
 /**
- * Normalize the wizard's trigger rows to the
- * stored `triggers` section shape
- * (`{type: 'intent', intent, examples}` /
- * `{type: 'slash', command}` — the mockup's
- * vocabulary, stored verbatim).
+ * Normalize the wizard's trigger rows to the form trigger
+ * (D-06): intent rows contribute their label to `intents[]`,
+ * slash rows their command to `aliases[]`, and the form's
+ * confidence `threshold` rides along. Per D-06 the persisted
+ * trigger carries no example phrases — the example input stays
+ * wizard-local working state.
+ *
+ * A step with no usable row stores no trigger: the submit form
+ * keeps `triggers: null` (D-07 — a form either is triggered or
+ * is not).
  */
 export function normalizeTriggers(
   value: TriggersValue,
-): Record<string, unknown>[] {
-  return value.triggers
-    .filter((row) =>
-      row.kind === 'intent'
-        ? row.intent.trim().length > 0
-        : row.command.trim().length > 0,
-    )
-    .map((row) =>
-      row.kind === 'intent'
-        ? {
-            type: 'intent',
-            intent: row.intent.trim(),
-            examples:
-              row.example.trim().length > 0
-                ? [row.example.trim()]
-                : [],
-          }
-        : {
-            type: 'slash',
-            command: row.command.trim(),
-          },
-    );
+  threshold: number,
+): FormTrigger | null {
+  const intents: string[] = [];
+  const aliases: string[] = [];
+  for (const row of value.triggers) {
+    if (row.kind === 'intent') {
+      const label = row.intent.trim();
+      if (label.length > 0) {
+        intents.push(label);
+      }
+    } else {
+      const command = row.command.trim();
+      if (command.length > 0) {
+        aliases.push(command);
+      }
+    }
+  }
+  if (intents.length === 0 && aliases.length === 0) {
+    return null;
+  }
+  return { intents, aliases, threshold };
 }

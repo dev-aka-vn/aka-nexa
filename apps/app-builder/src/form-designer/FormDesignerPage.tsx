@@ -13,7 +13,7 @@
  * surface:
  *
  *  - **Builder** — FormioBuilderField
- *    mounts the app's `form_schema`; the
+ *    mounts the submit form's schema; the
  *    change event feeds the 50-action
  *    snapshot history (Pattern 2) that the
  *    undo/redo toolbar drives.
@@ -51,6 +51,7 @@ import {
 import {
   type AppDefinition,
   AppDefinitionSchema,
+  submitFormOf,
 } from '../api/definition.js';
 import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
@@ -412,9 +413,10 @@ export function FormDesignerPage({
       );
       setDefinition(loaded);
       // A draft with a schema edits it; a
-      // draft without one starts blank.
+      // draft without one starts blank. The
+      // designer authors the submit form (D-05).
       const restored = structuredClone(
-        (loaded.form_schema ??
+        (submitFormOf(loaded).schema ??
           EMPTY_FORM_SCHEMA) as Record<string, unknown>,
       );
       setSchema(restored);
@@ -460,9 +462,10 @@ export function FormDesignerPage({
 
   /**
    * Persist the builder's current schema (BLD-04's
-   * save leg): PATCH /apps/:id with the frozen
-   * `forms` section shape — `{section, patch:
-   * {form_schema}}` — the same version-bumped,
+   * save leg): PATCH /apps/:id with the `forms`
+   * section shape — `{section, patch: {forms}}`,
+   * the submit element's schema replaced by the
+   * builder's current one — the same version-bumped,
    * audited transition the editor's section saves
    * use. Returns whether the save landed, so the
    * exit controls can refuse to navigate away from
@@ -489,9 +492,17 @@ export function FormDesignerPage({
     try {
       const current =
         builderFieldRef.current?.builder?.schema ?? schema;
+      // The whole form set travels with the patch (the
+      // `forms` section owns the array); only the submit
+      // element's schema changes, so every other form —
+      // and the submit form's own trigger — round-trips
+      // untouched, and D-10 leaves their versions stable.
+      const forms = (definition?.forms ?? []).map((form) =>
+        form.kind === 'submit' ? { ...form, schema: current } : form,
+      );
       const response = await client.patch(
         `/apps/${appId}`,
-        { section: 'forms', patch: { form_schema: current } },
+        { section: 'forms', patch: { forms } },
         AppDefinitionSchema,
       );
       setDefinition(response);
@@ -523,7 +534,7 @@ export function FormDesignerPage({
       saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [appId, client, schema]);
+  }, [appId, client, definition, schema]);
 
   const handleHistoryChange = useCallback(
     (state: { canUndo: boolean; canRedo: boolean }): void => {
