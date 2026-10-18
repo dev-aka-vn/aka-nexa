@@ -189,6 +189,93 @@ async function stubEditorApi(
   });
 }
 
+/** A two-form definition for the manager tests. */
+function twoFormDefinition(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return definition({
+    forms: [
+      {
+        kind: 'submit',
+        form_id: 'submit',
+        form_version: 1,
+        schema: { components: [] },
+        triggers: null,
+        config: {},
+      },
+      {
+        kind: 'list',
+        form_id: 'list',
+        form_version: 2,
+        schema: null,
+        triggers: null,
+        config: { query_id: 'q-1', columns: ['a'] },
+      },
+    ],
+    ...overrides,
+  });
+}
+
+/** Stub the builder API with a two-form definition. */
+async function stubEditorApiTwoForms(
+  page: Page,
+  hooks: EditorApiHooks = {},
+): Promise<void> {
+  await page.route('**/api/auth/me', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        real_user_id: 'usr_owner_1',
+        mfa_at: '2026-10-12T10:00:00.000Z',
+      }),
+    }),
+  );
+
+  await page.route('**/api/apps/**', async (route: Route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+
+    if (method === 'GET' && url.endsWith(`/${APP_ID}`)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(twoFormDefinition()),
+      });
+    }
+
+    if (method === 'PATCH') {
+      const body = route.request().postDataJSON() as Record<
+        string,
+        unknown
+      >;
+      hooks.onPatch?.(body);
+      const updated = twoFormDefinition({ version: 2 });
+      if (body['section'] === 'forms') {
+        const patch = body['patch'] as Record<string, unknown>;
+        if (
+          typeof patch === 'object' &&
+          patch !== null &&
+          'forms' in patch
+        ) {
+          updated['forms'] = patch['forms'];
+        }
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(updated),
+      });
+    }
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({}),
+    });
+  });
+}
+
 test('the editor renders the twelve section tabs in contract order and saves a general section patch (BLD-02)', async ({
   page,
 }) => {
@@ -232,35 +319,21 @@ test('the editor renders the twelve section tabs in contract order and saves a g
   );
 });
 
-test('every other section edits as its JSON payload — the forms tab round-trips the form schema', async ({
+test('the forms tab renders the form manager (one row per form)', async ({
   page,
 }) => {
-  const patches: Array<Record<string, unknown>> = [];
-  await stubEditorApi(page, {
-    onPatch: (body) => patches.push(body),
-  });
+  await stubEditorApi(page, {});
 
   await page.goto(`#/apps/${APP_ID}`);
   await expect(page.getByTestId('editor-page')).toBeVisible();
 
-  // The forms tab shows the served form schema as JSON.
   await page.getByTestId('editor-tab-forms').click();
   await expect(page.getByTestId('editor-tab-forms')).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  const json = page.getByTestId('section-json');
-  await expect(json).toHaveValue(/"fullName"/);
-
-  // Save the (unchanged) schema — the patch round-trips.
-  await page.getByTestId('save-section').click();
-  await expect(page.getByTestId('editor-saved')).toBeVisible();
-
-  expect(patches).toHaveLength(1);
-  expect(patches[0]['section']).toBe('forms');
-  const patch = patches[0]['patch'] as Record<string, unknown>;
-  expect((patch['forms'] as { components: unknown[] })
-    .components.length).toBeGreaterThan(0);
+  await expect(page.getByTestId('form-manager')).toBeVisible();
+  await expect(page.getByTestId('form-row')).toHaveCount(1);
 });
 
 test('publish opens a confirmation naming the app and posts only on confirm (BLD-06)', async ({
@@ -285,4 +358,89 @@ test('publish opens a confirmation naming the app and posts only on confirm (BLD
   await page.getByTestId('publish-confirm-yes').click();
   await expect(publishes).toHaveLength(1);
   expect(publishes[0]['app_id']).toBe(APP_ID);
+});
+
+test('the form manager renders one row per form from a two-form definition', async ({
+  page,
+}) => {
+  await stubEditorApiTwoForms(page);
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+  await page.getByTestId('editor-tab-forms').click();
+  await expect(page.getByTestId('form-row')).toHaveCount(2);
+});
+
+test('New form offers only unclaimed kinds', async ({ page }) => {
+  await stubEditorApiTwoForms(page);
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+  await page.getByTestId('editor-tab-forms').click();
+  await page.getByTestId('new-form-button').click();
+  await expect(page.getByTestId('form-picker')).toBeVisible();
+  // submit and list are claimed → only show and edit offered.
+  await expect(page.getByTestId('kind-option-submit')).toHaveCount(0);
+  await expect(page.getByTestId('kind-option-list')).toHaveCount(0);
+  await expect(page.getByTestId('kind-option-show')).toBeVisible();
+  await expect(page.getByTestId('kind-option-edit')).toBeVisible();
+});
+
+test('remove modal appears and confirming drops the row', async ({ page }) => {
+  const patches: Array<Record<string, unknown>> = [];
+  await stubEditorApiTwoForms(page, {
+    onPatch: (body) => patches.push(body),
+  });
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+  await page.getByTestId('editor-tab-forms').click();
+  // remove the list form (not last submit)
+  const removeButtons = page.getByTestId('form-remove');
+  await removeButtons.nth(1).click();
+  await expect(page.getByTestId('form-remove-modal')).toBeVisible();
+  await page.getByTestId('form-remove-confirm').click();
+  await expect(page.getByTestId('form-row')).toHaveCount(1);
+  expect(patches.length).toBeGreaterThan(0);
+  expect(patches[patches.length - 1]['section']).toBe('forms');
+});
+
+test('a long-label row produces no horizontal document overflow', async ({
+  page,
+}) => {
+  const longName = 'A'.repeat(120);
+  await page.route('**/api/auth/me', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        real_user_id: 'usr_owner_1',
+        mfa_at: '2026-10-12T10:00:00.000Z',
+      }),
+    }),
+  );
+  await page.route('**/api/apps/**', async (route: Route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    if (method === 'GET' && url.endsWith(`/${APP_ID}`)) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          twoFormDefinition({ name: longName }),
+        ),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({}),
+    });
+  });
+  await page.goto(`#/apps/${APP_ID}`);
+  await expect(page.getByTestId('editor-page')).toBeVisible();
+  await page.getByTestId('editor-tab-forms').click();
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth <=
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(true);
 });
