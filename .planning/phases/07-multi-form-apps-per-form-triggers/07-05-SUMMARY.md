@@ -12,11 +12,11 @@ provides:
   - "Six recorded design rulings (U-1…U-6) that gate 07-06 (form manager) and 07-07 (trigger panel + config surfaces)"
 affects: [07-multi-form-apps-per-form-triggers-06, 07-multi-form-apps-per-form-triggers-07]
 
-# Actuals (#2632) — updated as rulings land; plan still in progress (4/6 rulings recorded)
+# Actuals (#2632) — updated as rulings land; plan still in progress (5/6 rulings recorded)
 actuals:
-  tokens: 9400
-  tasks: 4
-  commits: 7
+  tokens: 10200
+  tasks: 5
+  commits: 9
 
 # Tech tracking
 tech-stack:
@@ -34,6 +34,7 @@ key-decisions:
   - "U-2: checklist-picker surfaces — show = ordered checklist over submit keys ({fields[]}); list = query reference picker + column multiselect ({query_id, columns[]}); up/down ordering (dragula submit-only); empty state 'No saved queries'"
   - "U-3: radio-card-picker kind chooser for New form — only unclaimed kinds shown (claimed kinds omitted uniformly, submit never addable twice); per-kind .rc-d descriptions carry the guidance; standalone helper line omitted"
   - "U-4: modal-block-last-submit — remove affordance on the form-manager row; removing the app's only submit form is BLOCKED in the modal by a callout-warn (confirm disabled); kind-aware modal body copy (with-trigger vs show/edit variant); submissions always keep their data"
+  - "U-5: inline-in-confirmation — SC#2 refusal renders inline on the publish surface in the existing red editor-error role=alert channel (no toast, no new surface); SC#2 copy confirmed verbatim; long-copy wrap rules adopted (callout bodies natural wrap, row contexts .od-clamp-2, mono ids clip, never horizontal scroll)"
 
 patterns-established:
   - "Undepicted-surface ruling pattern: mockup silence is confirmed by the user, never improvised (AGENTS.md rule 3)"
@@ -48,7 +49,7 @@ status: in-progress
 
 # Phase 7 Plan 5: Undepicted-Surface Design Rulings Summary
 
-**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), U-3 (New-form `radio-card` kind picker with per-kind descriptions), and U-4 (`modal-block-last-submit` remove-form confirm with kind-aware copy) recorded; U-5…U-6 pending their checkpoints**
+**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), U-3 (New-form `radio-card` kind picker with per-kind descriptions), U-4 (`modal-block-last-submit` remove-form confirm with kind-aware copy), and U-5 (`inline-in-confirmation` publish-gate SC#2 error + long-copy wrap rules) recorded; U-6 pending its checkpoint**
 
 This SUMMARY is the design contract 07-06 and 07-07 cite in `read_first`. Each ruling is
 recorded verbatim as received, under its own `U-n` heading. Later rulings are appended under
@@ -189,9 +190,37 @@ their headings; earlier rulings are never re-written or re-litigated.
 - Chrome: `.modal`/`.modal-head`/`.modal-body`/`.modal-foot` + `.scrim`, Escape/scrim
   dismiss; footer = ghost Cancel + `btn-danger` `Remove form`.
 
-### U-5 — publish-gate SC#2 error copy and placement (+ long-copy wrap) ⏳ PENDING
+### U-5 — publish-gate SC#2 error copy and placement (+ long-copy wrap) ✅ RECORDED
 
-Awaiting Task 5 checkpoint (`checkpoint:decision`, gate `blocking`).
+**Chosen option: `inline-in-confirmation`** (plan Task 5). User ruling verbatim:
+
+1. **Placement:** `inline-in-confirmation` — the SC#2 refusal renders inline on the publish
+   surface in the existing red `editor-error` `role="alert"` channel, verbatim; no toast; no
+   new surface. (Publish confirmation stays the existing inline `role="dialog"` under the page
+   head; on refusal the region's error shows the block.)
+2. **SC#2 copy (confirmed verbatim):**
+   `Publish blocked: a trigger resolves to more than one form. Each trigger activates exactly one form. Edit the trigger and publish again.`
+3. **Long-copy wrap rules (adopted):** inline error/callout bodies natural wrap (`.callout`
+   already wraps; `overflow-wrap: anywhere` where ids appear) — never horizontal scroll; row
+   contexts (list rows, change-summary rows) use `.od-clamp-2` with the full text available in
+   the row, never widening the layout; mono ids clip rather than widen rows (existing
+   partial-row rule).
+
+**Locked context for consistency (binding on 07-06/07-07):**
+
+- The SC#2 refusal renders ONLY in the publish surface's existing red `editor-error`
+  `role="alert"` channel — no `toast`, no new surface, no second channel for the same message.
+- The publish confirmation itself stays the existing inline `role="dialog"` under the page head
+  (BLD-06 change-summary dialog); on refusal, that region's error shows the block verbatim.
+- The SC#2 copy string above is verbatim (BLD-07: names the rule and the remedy — never a
+  generic failure message).
+- The long-copy wrap rules (3) are the phase-wide resolution of the previously-unresolved
+  UI-Considerations `long-text / inline error + callout copy` row: natural wrap in
+  error/callout bodies (`overflow-wrap: anywhere` where ids appear), `.od-clamp-2` in row
+  contexts with full text available in the row, mono ids clip, never horizontal scroll.
+
+**This ruling closes the one unresolved UI-Considerations row in 07-UI-SPEC (long-text inline
+error + callout copy).**
 
 ### U-6 — kind-specific `forms[]` metadata in the manager row ⏳ PENDING
 
@@ -207,12 +236,13 @@ None — plan executed as written (rulings recorded one checkpoint at a time).
 2. **Task 2: U-2 — `list`/`show` config surfaces** — recorded in this SUMMARY (commit `docs(07-05): record U-2 ruling`, `edd92a7a`; checkpoint close `242b2a82`)
 3. **Task 3: U-3 — "New form" kind picker** — recorded in this SUMMARY (commit `docs(07-05): record U-3 ruling`, `2ec05127`; checkpoint close `48dfe1f2`)
 4. **Task 4: U-4 — remove-form destructive confirm** — recorded in this SUMMARY (commit `docs(07-05): record U-4 ruling`)
+5. **Task 5: U-5 — publish-gate SC#2 error + long-copy wrap** — recorded in this SUMMARY (commit `docs(07-05): record U-5 ruling`)
 
 ## Next Phase Readiness
 
 07-06/07-07 must not finalise any SPA surface for U-1…U-6 until the corresponding ruling above
-is marked ✅ RECORDED. U-1, U-2, U-3 and U-4 are now available to implement; U-5 and U-6 remain gated.
+is marked ✅ RECORDED. U-1, U-2, U-3, U-4 and U-5 are now available to implement; U-6 remains gated.
 
 ---
 *Phase: 07-multi-form-apps-per-form-triggers*
-*Status: in progress — 4/6 rulings recorded*
+*Status: in progress — 5/6 rulings recorded*
