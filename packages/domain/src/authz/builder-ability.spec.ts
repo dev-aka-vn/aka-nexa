@@ -156,4 +156,26 @@ describe('createBuilderAbility — per-app abilities from the role assignments',
     expect(asStranger.can('manage', 'forms')).toBe(false);
     expect(asStranger.can('use', 'app')).toBe(false);
   });
+
+  it('APP_SECTION_PERMISSIONS has exactly 12 entries and no triggers (07-02)', () => {
+    expect(APP_SECTION_PERMISSIONS).toHaveLength(12);
+    expect(APP_SECTION_PERMISSIONS as readonly string[]).not.toContain(
+      'triggers',
+    );
+  });
+
+  it('a stored grant array containing triggers grants no additional ability (T-07-05)', () => {
+    const ability = createBuilderAbility(
+      assignments([
+        VIEWER,
+        'support',
+        ['forms', 'triggers' as AppSectionPermission],
+      ]),
+      VIEWER,
+    );
+
+    expect(ability.can('operate', 'forms')).toBe(true);
+    // 'triggers' is not a known section grant → silent no-op.
+    expect(ability.can('operate', 'triggers')).toBe(false);
+  });
 });

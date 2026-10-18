@@ -44,7 +44,6 @@ const APP_ID = 'hr-leave-request';
 const SECTIONS = [
   'general',
   'metadata',
-  'triggers',
   'jev-behavior',
   'role-assignments',
   'roles-permissions',

@@ -21,7 +21,6 @@ const APP_ID = 'hr-leave-request';
 const SECTIONS = [
   'general',
   'metadata',
-  'triggers',
   'jev-behavior',
   'role-assignments',
   'roles-permissions',
@@ -38,7 +37,6 @@ const SECTIONS = [
 const SECTION_LABELS: Record<string, string> = {
   general: 'General',
   metadata: 'Metadata',
-  triggers: 'Triggers',
   'jev-behavior': 'JEV behavior',
   'role-assignments': 'Role assignments',
   'roles-permissions': 'Roles & permissions',

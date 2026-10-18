@@ -221,7 +221,7 @@ test.describe('tablet touch (BLD-09)', () => {
 
     // Tap a far section tab (brought into view by the scroll) and save
     // its section by tap.
-    await page.getByTestId('editor-tab-triggers').tap();
+    await page.getByTestId('editor-tab-deprecation-notice').tap();
     await page.getByTestId('save-section').tap();
     await expect(page.getByTestId('editor-saved')).toBeVisible();
   });
