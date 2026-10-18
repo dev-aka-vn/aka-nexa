@@ -222,9 +222,17 @@ their headings; earlier rulings are never re-written or re-litigated.
 **This ruling closes the one unresolved UI-Considerations row in 07-UI-SPEC (long-text inline
 error + callout copy).**
 
-### U-6 — kind-specific `forms[]` metadata in the manager row ⏳ PENDING
+### U-6 — kind-specific `forms[]` metadata in the manager row ✅ RECORDED
 
-Awaiting Task 6 checkpoint (`checkpoint:decision`, gate `blocking`).
+**Chosen option: `kind-metadata-line`** (Recommended; plan Task 6). User ruling verbatim:
+
+- `kind-metadata-line` (Recommended) — add a second `lr-s` line with kind metadata (`query_id` for `list`, field count for `show`); `submit`/`edit` rows omit the metadata line when not derivable (never blank-fill). Uses `.od-clamp-2` for row contexts; mono ids clip rather than widen rows (existing partial-row rule). No `perm` segment shown (contract does not carry it). Helper/formatting consistent with UI-Considerations wrap rules.
+
+**Locked context for consistency (binding on 07-06/07-07):**
+
+- Form-manager rows use `{form_id} · {action}` + `v{n}` on first line; second `lr-s` line only when metadata derivable (`list` → `query_id`, `show` → field count). `submit`/`edit` omit the metadata line (never blank-fill).
+- The mockup's `requires {perm}` segment is not shown (contract does not carry per-form perm; UI-SPEC constraint 2).
+- Row contexts use `.od-clamp-2`; mono ids clip rather than widen rows (existing partial-row rule). Helper/formatting consistent with UI-Considerations wrap rules.
 
 ## Deviations from Plan
 
