@@ -14,9 +14,9 @@ affects: [07-multi-form-apps-per-form-triggers-06, 07-multi-form-apps-per-form-t
 
 # Actuals (#2632) — updated as rulings land; plan still in progress (5/6 rulings recorded)
 actuals:
-  tokens: 10200
+  tokens: 10500
   tasks: 5
-  commits: 9
+  commits: 10
 
 # Tech tracking
 tech-stack:
