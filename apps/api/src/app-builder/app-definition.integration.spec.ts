@@ -42,6 +42,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   AppDefinitionService,
+  AppLifecycle,
   AuditRepository,
   PermissionCheckService,
   PublishedAppLoader,
@@ -378,6 +379,7 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
         intents: ['request leave'],
         aliases: [],
         threshold: 0.5,
+        forms: [],
         status: (fetched.body as { lifecycle: string }).lifecycle as
           | 'published'
           | 'draft'
@@ -479,9 +481,9 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     });
 
     // The trigger-registration seam refuses deprecated apps.
-    await expect(service.assertRegistersTriggers('leave-request')).rejects.toThrow(
-      /TRIGGER_REGISTER_REFUSED_DEPRECATED/,
-    );
+    expect(() =>
+      AppLifecycle.assertRegistersTriggers('leave-request', 'deprecated'),
+    ).toThrow(/TRIGGER_REGISTER_REFUSED_DEPRECATED/);
   });
 
   it('archive sets the terminal state and refuses submissions (APP-06 seam)', async () => {
@@ -555,9 +557,9 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     ).resolves.toBeUndefined();
 
     // ...but the trigger-registration path refuses it.
-    await expect(
-      service.assertRegistersTriggers('expense-report'),
-    ).rejects.toThrow(/TRIGGER_REGISTER_REFUSED_DEPRECATED/);
+    expect(() =>
+      AppLifecycle.assertRegistersTriggers('expense-report', 'deprecated'),
+    ).toThrow(/TRIGGER_REGISTER_REFUSED_DEPRECATED/);
   });
 
   it('APP-06 both ways: an archived app refuses new submissions on the real path while a pre-archived view link still resolves', async () => {
