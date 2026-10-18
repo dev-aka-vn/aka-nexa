@@ -49,6 +49,7 @@ import {
   sectionValue,
 } from '../sections.js';
 import { AppTabs } from './AppTabs.js';
+import { FormManager } from '../form-designer/FormManager.js';
 import {
   jsonDraftIsDirty,
   shortcutMayPublish,
@@ -718,6 +719,13 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
           </div>
         ) : null}
 
+        {activeSection === 'forms' ? (
+          <FormManager
+            appId={appId}
+            definition={definition}
+            onDefinitionChange={setDefinition}
+          />
+        ) : (
         <section className="card">
           <div className="card-head">
             <h2>{sectionLabel(activeSection)}</h2>
@@ -887,6 +895,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
             </div>
           </div>
         </section>
+        )}
       </div>
     </div>
   );
