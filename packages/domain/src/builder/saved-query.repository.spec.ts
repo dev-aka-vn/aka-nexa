@@ -256,6 +256,27 @@ describe('RepositorySavedQueryLookup (G-11, D-73, T-06-15)', () => {
       expect(resolved?.intents).toEqual(seedRecord.intents);
     });
 
+    it('fails closed on a foreign app_id for the seeded leave-request query (FRM-14)', async () => {
+      const mongo = new FakeMongoService();
+      await backfillSavedQueries(mongo as unknown as MongoService);
+
+      const lookup = new RepositorySavedQueryLookup(
+        mongo as unknown as MongoService,
+      );
+      // The list form's reference resolves for its own app.
+      expect(
+        await lookup.findSavedQuery('qry_pending_leave', 'leave-request'),
+      ).toMatchObject({
+        query_id: 'qry_pending_leave',
+        app_id: 'leave-request',
+      });
+      // The same query_id under a foreign app resolves to nothing —
+      // the cross-app guard the list form relies on.
+      expect(
+        await lookup.findSavedQuery('qry_pending_leave', 'foreign-app'),
+      ).toBeNull();
+    });
+
     it('is a no-op on re-run', async () => {
       const mongo = new FakeMongoService();
       await backfillSavedQueries(mongo as unknown as MongoService);
