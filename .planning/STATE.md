@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 07
 current_phase_name: Multi-Form Apps & Per-Form Triggers
-current_plan: 6
+current_plan: 7
 status: executing
-stopped_at: Completed 07-08-PLAN.md
-last_updated: "2026-10-18T18:06:00.000Z"
-state_head: 79a4fad7
+stopped_at: Completed 07-06-PLAN.md
+last_updated: "2026-10-18T16:17:08.903Z"
+state_head: 6a22cdad49fe395ae19d68b19a93bb4c54bc6079
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 69
+  total_plans: 57
   completed_plans: 67
-  percent: 97
+  percent: 67
 last_activity: 2026-10-18
 last_activity_desc: 07-08 complete — routing form-driven (publish-gate rules, form-derived catalog, worker de-hardcode, form-driven issuance); 6/8 plans done
 ---
@@ -20,15 +20,15 @@ last_activity_desc: 07-08 complete — routing form-driven (publish-gate rules, 
 ## Current Position
 
 Phase: 07 (Multi-Form Apps & Per-Form Triggers) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-18T12:26:39.088Z
-**Stopped at:** Completed 07-04-PLAN.md
+**Last session:** 2026-10-18T16:17:04.868Z
+**Stopped at:** Completed 07-06-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -63,6 +63,7 @@ Total Plans in Phase: 8
 | Phase 07 P02 | 10m | 2 tasks | 9 files |
 | Phase 07 P03 | 15 min | 2 tasks | 7 files |
 | Phase 07 P04 | 60 | 3 tasks | 5 files |
+| Phase 07 P06 | 30min | 2 tasks | 4 files |
 
 ## Decisions
 
@@ -144,6 +145,7 @@ Total Plans in Phase: 8
 - [Phase 07]: Seed gallery now ships genuine multi-form templates: leave-request submit+list over qry_pending_leave; expense-report and it-helpdesk-ticket carry show forms.
 - [Phase 07]: Migrate both apps and app_definition_versions in one run (D-11) so rollback() cannot resurrect retired shape
 - [Phase 07]: Filter-guarded compare-and-set migration: find by {form_schema:{$exists:true}}, updateOne re-checks $exists
+- [Phase 07]: FormManager persists every add/remove through {section:'forms'} only; row label derived from app name + kind; remove blocks last-submit via callout-warn
 
 ## Blockers/Concerns
 
