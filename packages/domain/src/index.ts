@@ -113,11 +113,12 @@ export type {
   OutboundState,
   SubmissionRevisionDocument,
 } from './submissions/data-access/submission-revisions.repository.js';
-export { PublishedAppLoader } from './decision/published-app-loader.js';
+export { PublishedAppLoader, appIdOfToolId } from './decision/published-app-loader.js';
 export type {
   AuthorizedApp,
   AuthorizeApp,
   PublishedApp,
+  PublishedAppForm,
 } from './decision/published-app-loader.js';
 export { RuleBasedProvider } from './decision/rule-based.provider.js';
 export { RoutingOrchestrator } from './decision/routing-orchestrator.js';
