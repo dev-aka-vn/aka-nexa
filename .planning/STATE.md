@@ -14,7 +14,7 @@ progress:
   completed_plans: 61
   percent: 67
 last_activity: 2026-10-18
-last_activity_desc: "07-05 executing — U-1 ruling (inline-collapsible trigger panel) recorded in 07-05-SUMMARY.md; stopped at U-2 blocking-human decision checkpoint."
+last_activity_desc: "07-05 executing — U-1 and U-2 rulings recorded in 07-05-SUMMARY.md (commits c08443e7, edd92a7a); stopped at U-3 blocking decision checkpoint."
 ---
 
 ## Current Position
@@ -28,7 +28,7 @@ Total Plans in Phase: 8
 ## Session
 
 **Last session:** 2026-10-18T00:00:00.000Z
-**Stopped at:** 07-05 Task 2 — U-2 decision checkpoint (blocking-human): checklist-picker vs table-editor, plus no-queries empty-state copy. U-1 ruling recorded in 07-05-SUMMARY.md (commit c08443e7).
+**Stopped at:** 07-05 Task 3 — U-3 decision checkpoint (blocking): radio-card-picker vs select-plus-helper for the New-form kind picker, plus kind-card/helper copy needing confirmation. U-1 (commit c08443e7) and U-2 (commit edd92a7a) rulings recorded in 07-05-SUMMARY.md; T02 marked complete.
 **Resume file:** .planning/phases/07-multi-form-apps-per-form-triggers/07-05-PLAN.md
 
 ## Performance Metrics
