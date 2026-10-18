@@ -317,7 +317,7 @@ Plans:
   4. The read path stops being a separate link class: a `list` or `view` form's signed link is issued by the same form-driven path as a `submit` form's link, and a `view` link still dies the instant the user's `perm_version` changes.
   5. Editing a published form changes nothing for an in-flight submission of **that** form and nothing at all for the app's other forms; a submission records the `form_id` it was created through alongside that form's `form_version`.
 
-**Plans:** 2/8 plans executed
+**Plans:** 3/8 plans executed
 **Plans list:**
 
 **Wave 1**
@@ -327,7 +327,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — retire the `triggers` section (13→12): contract enum + four mirror lists + drift-guard spec + editor/permission-matrix shrink
+- [x] 07-02-PLAN.md — retire the `triggers` section (13→12): contract enum + four mirror lists + drift-guard spec + editor/permission-matrix shrink
 - [ ] 07-03-PLAN.md — seed gallery goes multi-form: per-kind `config` validation, `list`/`show` forms in seeds, stale `provisioning/forms` artifact removed
 - [ ] 07-04-PLAN.md — two-collection idempotent migration (`apps` + `app_definition_versions` snapshots), role-grant rewrite, api + worker boot wiring
 
@@ -435,7 +435,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
-| 7. Multi-Form Apps & Per-Form Triggers | 2/8 | In Progress|  |
+| 7. Multi-Form Apps & Per-Form Triggers | 3/8 | In Progress|  |
 | 8. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 9. Production Readiness | 0/TBD | Not started | - |
 
