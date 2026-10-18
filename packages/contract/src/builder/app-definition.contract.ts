@@ -61,7 +61,6 @@ export type CreateAppDraftInput = z.infer<typeof CreateAppDraftSchema>;
 export const SectionNameSchema = z.enum([
   'general',
   'metadata',
-  'triggers',
   'jev-behavior',
   'role-assignments',
   'roles-permissions',

@@ -94,12 +94,11 @@ export interface AppDefinitionDocument {
  * fields (name and description are the wizard's step-1
  * basics).
  */
-const SECTION_FIELDS: Readonly<
+export const SECTION_FIELDS: Readonly<
   Record<SectionName, readonly string[]>
 > = Object.freeze({
   general: ['name', 'description'],
   metadata: ['tags', 'data_mode'],
-  triggers: ['triggers'],
   'jev-behavior': ['jev_behavior'],
   'role-assignments': ['role_assignments'],
   'roles-permissions': ['roles_permissions'],
