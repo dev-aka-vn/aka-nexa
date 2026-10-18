@@ -39,17 +39,17 @@ key-decisions:
 patterns-established:
   - "Undepicted-surface ruling pattern: mockup silence is confirmed by the user, never improvised (AGENTS.md rule 3)"
 
-requirements-completed: []  # plan still executing; marked at final close-out
+requirements-completed: [APP-11, APP-12, FRM-14]
 
 # Metrics
-duration: in-progress
-completed: pending
-status: in-progress
+duration: complete
+completed: 2025-10-18
+status: complete
 ---
 
 # Phase 7 Plan 5: Undepicted-Surface Design Rulings Summary
 
-**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), U-3 (New-form `radio-card` kind picker with per-kind descriptions), U-4 (`modal-block-last-submit` remove-form confirm with kind-aware copy), and U-5 (`inline-in-confirmation` publish-gate SC#2 error + long-copy wrap rules) recorded; U-6 pending its checkpoint**
+**Six user rulings (U-1…U-6) gating the Phase-7 SPA surfaces the mockup does not depict — U-1 (in-form trigger panel), U-2 (`list`/`show` config surfaces), U-3 (New-form `radio-card` kind picker with per-kind descriptions), U-4 (`modal-block-last-submit` remove-form confirm with kind-aware copy), U-5 (`inline-in-confirmation` publish-gate SC#2 error + long-copy wrap rules), and U-6 (kind-specific `forms[]` metadata in manager row) — all recorded**
 
 This SUMMARY is the design contract 07-06 and 07-07 cite in `read_first`. Each ruling is
 recorded verbatim as received, under its own `U-n` heading. Later rulings are appended under
@@ -245,11 +245,12 @@ None — plan executed as written (rulings recorded one checkpoint at a time).
 3. **Task 3: U-3 — "New form" kind picker** — recorded in this SUMMARY (commit `docs(07-05): record U-3 ruling`, `2ec05127`; checkpoint close `48dfe1f2`)
 4. **Task 4: U-4 — remove-form destructive confirm** — recorded in this SUMMARY (commit `docs(07-05): record U-4 ruling`)
 5. **Task 5: U-5 — publish-gate SC#2 error + long-copy wrap** — recorded in this SUMMARY (commit `docs(07-05): record U-5 ruling`)
+6. **Task 6: U-6 — kind-specific forms[] metadata** — recorded in this SUMMARY (commit `docs(07-05): record U-6 ruling`)
 
 ## Next Phase Readiness
 
 07-06/07-07 must not finalise any SPA surface for U-1…U-6 until the corresponding ruling above
-is marked ✅ RECORDED. U-1, U-2, U-3, U-4 and U-5 are now available to implement; U-6 remains gated.
+is marked ✅ RECORDED. All six rulings (U-1..U-6) are now recorded and available to implement.
 
 ---
 *Phase: 07-multi-form-apps-per-form-triggers*
