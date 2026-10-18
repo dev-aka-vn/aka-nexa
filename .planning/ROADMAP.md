@@ -60,7 +60,7 @@ Four researchers converged on this shape; the deviation is stated rather than si
 - [x] **Phase 4: Read Path & Query DSL** - 90-day stateless view/query links that die the instant permission changes, with auto-injected authorization filters (plans created)
 - [x] **Phase 5: Integration & Async Execution** - Connectors, transactional outbox, hybrid routing, three-state outbound model, and visible `partial` status (completed 2026-10-11)
 - [x] **Phase 6: Self-Service App Builder** - A department admin builds and publishes a working app with no engineering ticket and no platform admin (completed 2026-10-17)
-- [ ] **Phase 7: Multi-Form Apps & Per-Form Triggers** - One app, many forms (submit/list/view/edit) over a shared collection, shared roles and a single routing destination, each form activated by its own trigger
+- [x] **Phase 7: Multi-Form Apps & Per-Form Triggers** - One app, many forms (submit/list/view/edit) over a shared collection, shared roles and a single routing destination, each form activated by its own trigger (completed 2026-10-18)
 - [ ] **Phase 8: Multi-IM Expansion & Two-Way Sync** - Teams parity plus signed inbound webhooks that notify the original submitter
 - [ ] **Phase 9: Production Readiness â€” Compliance, Observability & Load** - 3-year auditable trail, erasure/purge workflows, full metric + alert suite, 1,000-user load test
 
@@ -317,7 +317,7 @@ Plans:
   4. The read path stops being a separate link class: a `list` or `view` form's signed link is issued by the same form-driven path as a `submit` form's link, and a `view` link still dies the instant the user's `perm_version` changes.
   5. Editing a published form changes nothing for an in-flight submission of **that** form and nothing at all for the app's other forms; a submission records the `form_id` it was created through alongside that form's `form_version`.
 
-**Plans:** 8/8 plans executed
+**Plans:** 8/8 plans complete
 **Plans list:**
 
 **Wave 1**
@@ -435,7 +435,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 4. Read Path & Query DSL | 9/10 | In Progress|  |
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
-| 7. Multi-Form Apps & Per-Form Triggers | 8/8 | In Progress|  |
+| 7. Multi-Form Apps & Per-Form Triggers | 8/8 | Complete    | 2026-10-18 |
 | 8. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
 | 9. Production Readiness | 0/TBD | Not started | - |
 
