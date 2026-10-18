@@ -1,5 +1,6 @@
 import { Module, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import {
+  AppDefinitionRepository,
   IdentityMappingRepository,
   IdentityService,
   LinkIssuerService,
@@ -12,6 +13,7 @@ import {
   RoutingOutcomeRepository,
   RuleBasedProvider,
   ClarificationSessionService,
+  publishedAppFromDefinition,
   type OtpDeliveryPort,
 } from '@akane/domain';
 import { MongoModule, MongoService, REDIS_CACHE } from '@akane/platform';
@@ -43,30 +45,45 @@ import { OtpDeliveryService } from './processors/otp-delivery.service.js';
     },
     {
       provide: PublishedAppLoader,
-      useFactory: () =>
-        new PublishedAppLoader(
-          [
-            {
-              id: 'leave-request',
-              description: 'Submit a new leave request',
-              parameters: ['start_date', 'end_date', 'leave_type'],
-              intents: ['request leave', 'xin nghỉ phép'],
-              aliases: ['request leave', 'leave request', 'xin nghỉ phép', 'xin nghi phep'],
-              threshold: 0.8,
-              status: 'published',
-            },
-          ],
-          async () => true,
-        ),
+      inject: [MongoService],
+      useFactory: async (mongo: MongoService) => {
+        const defs = new AppDefinitionRepository(mongo);
+        const published = await defs.listPublished();
+        const catalog = published.map(publishedAppFromDefinition);
+        const authorize = async (appId: string, realUserId: string): Promise<boolean> => {
+          const def = await defs.findByAppId(appId);
+          if (def === null || def.lifecycle !== 'published') return false;
+          if (def.createdBy === realUserId) return true;
+          const ra = def.role_assignments;
+          if (ra === null || ra === undefined) return true;
+          if (typeof ra !== 'object') return false;
+          for (const [key, value] of Object.entries(ra as Record<string, unknown>)) {
+            if (key === realUserId) return true;
+            if (Array.isArray(value) && value.includes(realUserId)) return true;
+          }
+          return false;
+        };
+        return new PublishedAppLoader(catalog, authorize);
+      },
     },
     {
       provide: RuleBasedProvider,
-      useFactory: () =>
-        new RuleBasedProvider(
-          new Map([
-            ['leave-request', ['request leave', 'leave request', 'xin nghỉ phép', 'xin nghi phep']],
-          ]),
-        ),
+      inject: [MongoService],
+      useFactory: async (mongo: MongoService) => {
+        const defs = new AppDefinitionRepository(mongo);
+        const published = await defs.listPublished();
+        const map = new Map<string, string[]>();
+        for (const def of published) {
+          const app = publishedAppFromDefinition(def);
+          for (const form of app.forms) {
+            map.set(
+              `${def.app_id}:${form.form_id}`,
+              [...form.intents, ...form.aliases],
+            );
+          }
+        }
+        return new RuleBasedProvider(map);
+      },
     },
     {
       provide: ProviderRegistry,

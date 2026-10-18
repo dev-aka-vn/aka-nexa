@@ -16,6 +16,7 @@ import {
   RoutingOutcomeRepository,
   UNLABELLED_INTENT_LABEL,
   redact,
+  appIdOfToolId,
   type AuthorizedApp,
 } from '@akane/domain';
 import {
@@ -35,15 +36,6 @@ const ROUTING_BUDGET_MS = 2000;
  * for every app's share.
  */
 const UNLABELLED_INTENT = UNLABELLED_INTENT_LABEL;
-
-/**
- * Deterministic slash → app binding (Phase 2 path). Slash commands NEVER
- * construct or call a JevProvider (RTE-02): this map is the whole decision.
- */
-const SLASH_COMMAND_APP: Readonly<Record<string, string>> = {
-  '/leave request': 'leave-request',
-  '/leave': 'leave-request',
-};
 
 /** Coarse en/vi/other guess for the frozen `state.locale` field (D-60/D-62). */
 function detectLocale(text: string): string {
@@ -97,18 +89,34 @@ export class InboundEventProcessor extends WorkerHost {
     return this.handleMessage(event);
   }
 
-  /** Phase 2 deterministic path — no JevProvider is constructed or invoked. */
+  /** Form-driven slash path — no JevProvider is constructed or invoked (RTE-02). */
   private async handleSlash(event: InboundEvent): Promise<ProcessorOutcome> {
     const chat = await this.identity.resolveChat(event.platform, event.chat_user_id);
     if (!chat) return { kind: 'skipped', reason: 'unknown_user' };
-    const command = event.text.trim().toLowerCase();
-    const appId = event.app_id ?? SLASH_COMMAND_APP[command] ?? SLASH_COMMAND_APP[command.split(' ')[0]];
-    if (!appId) return { kind: 'clarify', toolIds: [] };
     const authorized = await this.loader.listAuthorized(chat.real_user_id);
-    const match = authorized.find((app) => app.tool.id === appId);
-    if (!match || !(await match.canOpenNow())) return { kind: 'clarify', toolIds: [] };
-    const url = await this.linkIssuer.issue({ appId: match.tool.id, realUserId: chat.real_user_id });
-    return { kind: 'link', appId: match.tool.id, url };
+    // Slash commands arrive as '/leave request'; aliases store the
+    // command without the leading slash (D-06/D-07 persisted shape), so
+    // strip it before matching (07-08 Task 3, form-driven slash path).
+    const command = event.text.trim().toLowerCase().replace(/^\/+/, '');
+    const aliasMatch = (app: AuthorizedApp, cmd: string) =>
+      app.aliases.some((alias) => alias.toLowerCase() === cmd);
+    let matches = authorized.filter((app) => aliasMatch(app, command));
+    if (matches.length === 0 && command.includes(' ')) {
+      const first = command.split(' ')[0]!;
+      matches = authorized.filter((app) => aliasMatch(app, first));
+    }
+    if (matches.length === 0) return { kind: 'clarify', toolIds: [] };
+    if (matches.length > 1) return { kind: 'clarify', toolIds: matches.map((m) => m.tool.id) };
+    const match = matches[0]!;
+    if (!(await match.canOpenNow())) return { kind: 'clarify', toolIds: [] };
+    const url = await this.linkIssuer.issue({
+      appId: appIdOfToolId(match.tool.id),
+      realUserId: chat.real_user_id,
+      formId: match.form.form_id,
+      formVersion: match.form.form_version,
+      action: match.form.action,
+    });
+    return { kind: 'link', appId: appIdOfToolId(match.tool.id), url };
   }
 
   /**
@@ -167,14 +175,21 @@ export class InboundEventProcessor extends WorkerHost {
     });
 
     if (outcome.kind === 'link') {
-      const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId: chat.real_user_id });
+      const matched = authorized.find((app) => app.tool.id === outcome.toolId);
+      const url = await this.linkIssuer.issue({
+        appId: appIdOfToolId(outcome.toolId),
+        realUserId: chat.real_user_id,
+        formId: matched?.form.form_id ?? appIdOfToolId(outcome.toolId).split(':')[1] ?? 'submit',
+        formVersion: matched?.form.form_version ?? 1,
+        action: matched?.form.action ?? 'create',
+      });
       await this.recordRoutingOutcome(
         event,
         authorized,
         outcome.toolId,
         event.text,
       );
-      return { kind: 'link', appId: outcome.toolId, url };
+      return { kind: 'link', appId: appIdOfToolId(outcome.toolId), url };
     }
 
     // Only start a clarification session for fresh messages, not for thread
@@ -297,8 +312,15 @@ export class InboundEventProcessor extends WorkerHost {
       }
 
       await this.clarificationSession.invalidateSession(realUserId, event.channel_id, event.channel_id);
-      const url = await this.linkIssuer.issue({ appId: selectedId, realUserId });
-      return { kind: 'link', appId: selectedId, url };
+      const selectedApp = currentAuthorized.find((app) => app.tool.id === selectedId);
+      const url = await this.linkIssuer.issue({
+        appId: appIdOfToolId(selectedId),
+        realUserId,
+        formId: selectedApp?.form.form_id ?? 'submit',
+        formVersion: selectedApp?.form.form_version ?? 1,
+        action: selectedApp?.form.action ?? 'create',
+      });
+      return { kind: 'link', appId: appIdOfToolId(selectedId), url };
     }
 
     // Not a direct selection — treat as detail-adding reply (D-50).
@@ -353,14 +375,21 @@ export class InboundEventProcessor extends WorkerHost {
 
     if (outcome.kind === 'link') {
       await this.clarificationSession.invalidateSession(realUserId, event.channel_id, event.channel_id);
-      const url = await this.linkIssuer.issue({ appId: outcome.toolId, realUserId });
+      const reevalApp = currentAuthorized.find((app) => app.tool.id === outcome.toolId);
+      const url = await this.linkIssuer.issue({
+        appId: appIdOfToolId(outcome.toolId),
+        realUserId,
+        formId: reevalApp?.form.form_id ?? 'submit',
+        formVersion: reevalApp?.form.form_version ?? 1,
+        action: reevalApp?.form.action ?? 'create',
+      });
       await this.recordRoutingOutcome(
         event,
         currentAuthorized,
         outcome.toolId,
         combinedText,
       );
-      return { kind: 'link', appId: outcome.toolId, url };
+      return { kind: 'link', appId: appIdOfToolId(outcome.toolId), url };
     }
 
     // Persist the updated displayed choices for the next round (D-50).
@@ -436,7 +465,7 @@ export class InboundEventProcessor extends WorkerHost {
       await this.routingOutcomes.record({
         routing_id: event.event_id,
         intent_label: intentLabel,
-        app_id: appId,
+        app_id: appIdOfToolId(appId),
       });
     } catch (error) {
       // The link is already issued — log the record
