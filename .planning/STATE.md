@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 current_phase: 07
 current_phase_name: Multi-Form Apps & Per-Form Triggers
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-10-18T12:09:34.181Z"
-state_head: bec4d404c725df90ec659154b3b7a534948b5a40
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-10-18T12:12:58.606Z"
+state_head: d28a244ecc62b7755806b4b5cbca21505b292bf3
 progress:
   total_phases: 9
   completed_phases: 6
@@ -20,15 +20,15 @@ last_activity_desc: 07-05 complete — U-1..U-6 rulings recorded in 07-05-SUMMAR
 ## Current Position
 
 Phase: 07 (Multi-Form Apps & Per-Form Triggers) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-18T12:09:33.473Z
-**Stopped at:** Completed 07-02-PLAN.md
+**Last session:** 2026-10-18T12:12:57.837Z
+**Stopped at:** Completed 07-03-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -61,6 +61,7 @@ Total Plans in Phase: 8
 | Phase 06-self-service-app-builder P10 | 55min | 2 tasks | 8 files |
 | Phase 07 P01 | 60 | 3 tasks | 20 files |
 | Phase 07 P02 | 10m | 2 tasks | 9 files |
+| Phase 07 P03 | 15 min | 2 tasks | 7 files |
 
 ## Decisions
 
@@ -138,6 +139,8 @@ Total Plans in Phase: 8
 - [Phase 07]: FormStep gets no save path (no dead writes)
 - [Phase 07]: publishedAppFromDefinition is single PublishedApp; per-form tool projection deferred to 07-08
 - [Phase 07]: Retired app-level Triggers section (13→12); triggers now live on the form (D-06/D-12). Stale triggers grants filtered as no-ops until 07-04 migration.
+- [Phase 07]: Per-kind config validation lives in TemplateSeedSchema via .superRefine (same-kind uniqueness, submit schema presence, show subset, list query_id/columns).
+- [Phase 07]: Seed gallery now ships genuine multi-form templates: leave-request submit+list over qry_pending_leave; expense-report and it-helpdesk-ticket carry show forms.
 
 ## Blockers/Concerns
 
