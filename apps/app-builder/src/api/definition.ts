@@ -83,6 +83,8 @@ export interface AppDefinition {
   readonly tags: readonly string[];
   /** The app's whole form set (D-09) — one source of truth. */
   readonly forms: readonly AppForm[];
+  /** Legacy single-form schema (pre-07-04) — used as a fallback submit form when `forms` is empty. */
+  readonly form_schema?: Record<string, unknown> | null;
   readonly roles: Record<string, unknown>;
   readonly routing_config: Record<string, unknown> | null;
   readonly field_mapping: Record<string, unknown> | null;
@@ -247,7 +249,25 @@ export const AppDefinitionSchema = {
         : 'draft',
       version: doc.version,
       tags: Array.isArray(doc.tags) ? doc.tags : [],
-      forms: normalizeForms(doc.forms),
+      forms:
+        normalizeForms(doc.forms).length > 0
+          ? normalizeForms(doc.forms)
+          : typeof doc.form_schema === 'object' && doc.form_schema !== null
+            ? [
+                {
+                  form_id: 'submit',
+                  kind: 'submit',
+                  schema: doc.form_schema as Record<string, unknown>,
+                  form_version: 1,
+                  triggers: null,
+                  config: {},
+                },
+              ]
+            : normalizeForms(doc.forms),
+      form_schema:
+        typeof doc.form_schema === 'object' && doc.form_schema !== null
+          ? (doc.form_schema as Record<string, unknown>)
+          : null,
       roles:
         typeof doc.roles === 'object' && doc.roles !== null
           ? doc.roles
