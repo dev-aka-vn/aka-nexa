@@ -256,21 +256,27 @@ function dryRunInput(
 }
 
 /**
- * The app's declared intent labels: every trigger's
- * declared `intents`/`aliases` — the owner-declared
- * triggers (D-52) the intent set is built from. A
- * trigger that declares neither falls back to its own
- * identity (the trigger `id` and its `command`), so a
- * command-only trigger is still routable; when a
- * trigger declares labels, its identity is not an
- * additional label — the command is not an intent.
+ * The app's declared intent labels: the union of every
+ * form trigger's declared `intents`/`aliases` — the
+ * owner-declared triggers (D-52/D-06) the intent set is
+ * built from. A form with no trigger (`triggers: null`)
+ * contributes nothing. A trigger that declares neither
+ * falls back to its own identity (the trigger `id` and
+ * its `command`), so a command-only trigger migrated by
+ * 07-04 is still routable; when a trigger declares
+ * labels, its identity is not an additional label — the
+ * command is not an intent.
  */
 export function declaredLabels(definition: AppDefinitionDocument): string[] {
   const labels: string[] = [];
-  for (const trigger of definition.triggers ?? []) {
+  for (const form of definition.forms ?? []) {
+    const trigger = form.triggers as Record<string, unknown> | null;
+    if (trigger === null || trigger === undefined) {
+      continue;
+    }
     const declared = [
-      ...(Array.isArray(trigger.intents) ? trigger.intents : []),
-      ...(Array.isArray(trigger.aliases) ? trigger.aliases : []),
+      ...(Array.isArray(trigger['intents']) ? trigger['intents'] : []),
+      ...(Array.isArray(trigger['aliases']) ? trigger['aliases'] : []),
     ].filter(
       (label): label is string =>
         typeof label === 'string' && label.length > 0,
@@ -295,6 +301,15 @@ export function declaredLabels(definition: AppDefinitionDocument): string[] {
  * `intents` and `aliases` carry the full declared label
  * set: the label union is what the intent set, the
  * share computation and the provider all match on.
+ *
+ * Forms-aware since the D-09 cutover: the labels come
+ * from the app's form set (every form trigger) and the
+ * threshold is the first triggered form's configured
+ * gate, falling back to the app-level `jev_behavior`
+ * threshold and the default. The **per-form** tool
+ * projection — one catalog entry per (app, action) — is
+ * 07-08's work; here the projection stays one entry per
+ * app so the id-keyed share computation is unchanged.
  */
 export function publishedAppFromDefinition(
   definition: AppDefinitionDocument,
@@ -316,22 +331,34 @@ export function publishedAppFromDefinition(
 }
 
 /**
- * The app's configured confidence gate (D-53), read
- * from the JEV-behavior section when it carries one —
- * a definition that has not configured a threshold
- * routes at the default gate.
+ * The app's effective confidence gate (D-53/D-06), read
+ * from the first form trigger that configures one,
+ * falling back to the app-level JEV-behavior `threshold`
+ * — a definition that has configured neither routes at
+ * the default gate.
  */
 function thresholdOf(definition: AppDefinitionDocument): number {
-  const configured = definition.jev_behavior?.['threshold'];
-  if (
-    typeof configured === 'number' &&
-    Number.isFinite(configured) &&
-    configured >= 0 &&
-    configured <= 1
-  ) {
-    return configured;
+  for (const form of definition.forms ?? []) {
+    const configured = form.triggers?.['threshold'];
+    if (isThreshold(configured)) {
+      return configured;
+    }
+  }
+  const appLevel = definition.jev_behavior?.['threshold'];
+  if (isThreshold(appLevel)) {
+    return appLevel;
   }
   return UNCONFIGURED_THRESHOLD;
+}
+
+/** The D-53 gate bounds: a finite number in [0, 1]. */
+function isThreshold(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
 }
 
 /**
@@ -394,7 +421,7 @@ export function buildChangeSummary(
     },
   ];
 
-  if (candidate.form_schema !== null) {
+  if (candidate.forms.some((form) => form.schema !== null)) {
     rows.push({
       field: 'form versions',
       from: 'current',
@@ -411,12 +438,14 @@ export function buildChangeSummary(
     });
   }
 
-  const triggers = candidate.triggers ?? [];
-  if (triggers.length > 0) {
+  const triggered = candidate.forms.filter(
+    (form) => form.triggers !== null,
+  ).length;
+  if (triggered > 0) {
     rows.push({
       field: 'triggers',
       from: 'none',
-      to: `${triggers.length} active`,
+      to: `${triggered} active`,
     });
   }
 

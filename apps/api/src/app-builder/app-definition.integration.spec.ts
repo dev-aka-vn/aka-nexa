@@ -505,9 +505,22 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
       description: 'Report an expense',
     });
     await call('PATCH', `${baseUrl}/apps/expense-report`, {
-      section: 'triggers',
+      section: 'forms',
       patch: {
-        triggers: [{ id: 'expense', type: 'slash', command: '/expense' }],
+        forms: [
+          {
+            form_id: 'submit',
+            kind: 'submit',
+            schema: {},
+            form_version: 1,
+            triggers: {
+              intents: [],
+              aliases: ['/expense'],
+              threshold: 0.8,
+            },
+            config: {},
+          },
+        ],
       },
     });
     await call('POST', `${baseUrl}/apps/expense-report/publish`);
@@ -522,13 +535,18 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
       deprecation_notice: 'Use the finance portal from Q3',
     });
 
-    // The served definition still carries its trigger list —
-    // deprecation changes no behavior, only the notice.
+    // The served definition still carries its form set — the
+    // submit form's trigger unchanged — deprecation changes no
+    // behavior, only the notice.
     const fetched = await call('GET', `${baseUrl}/apps/expense-report`);
     expect(fetched.body).toMatchObject({ lifecycle: 'deprecated' });
-    expect((fetched.body as { triggers: unknown[] }).triggers).toEqual([
-      { id: 'expense', type: 'slash', command: '/expense' },
-    ]);
+    expect(
+      (
+        fetched.body as {
+          forms: Array<{ triggers: unknown }>;
+        }
+      ).forms[0].triggers,
+    ).toEqual({ intents: [], aliases: ['/expense'], threshold: 0.8 });
 
     // A deprecated app still accepts submissions (APP-05:
     // "stays functional")...
@@ -746,11 +764,11 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
       'all-staff',
     ]);
     expect(
-      (forked.body as { form_schema: unknown }).form_schema,
+      (forked.body as { forms: unknown }).forms,
     ).toEqual(
       (
         await templateSeed.listTemplates()
-      ).find((t) => t.template_id === 'travel-request')!.form_schema,
+      ).find((t) => t.template_id === 'travel-request')!.forms,
     );
 
     // The fork is editable under BLD-02/APP-03 rules.

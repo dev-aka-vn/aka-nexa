@@ -285,3 +285,8 @@ export {
   TransferRequestService,
   type TransferActor,
 } from './acl/transfer-request.service.js';
+export {
+  buildFormsFixture,
+  buildLegacyShapeDocument,
+  type LegacyShapeDocument,
+} from './builder/forms-fixture.js';

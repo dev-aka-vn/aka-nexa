@@ -68,8 +68,7 @@ export interface AppDefinitionDocument {
   /** Monotonic integer version — every audited mutation bumps it (APP-03). */
   readonly version: number;
   readonly tags: readonly string[];
-  readonly form_schema: Record<string, unknown> | null;
-  readonly triggers: readonly Record<string, unknown>[];
+  readonly forms: readonly import('@akane/contract').AppFormElement[];
   readonly roles: Record<string, unknown>;
   readonly routing_config: Record<string, unknown> | null;
   readonly field_mapping: Record<string, unknown> | null;
@@ -104,7 +103,7 @@ const SECTION_FIELDS: Readonly<
   'jev-behavior': ['jev_behavior'],
   'role-assignments': ['role_assignments'],
   'roles-permissions': ['roles_permissions'],
-  forms: ['form_schema'],
+  forms: ['forms'],
   versioning: ['versioning_policy'],
   'data-routing': ['routing_config'],
   'field-mapping': ['field_mapping'],
@@ -204,8 +203,7 @@ export class AppDefinitionRepository {
     createdBy: string;
     data_mode?: AppDataMode;
     tags?: readonly string[];
-    form_schema?: Record<string, unknown> | null;
-    triggers?: readonly Record<string, unknown>[];
+    forms?: readonly import('@akane/contract').AppFormElement[];
     roles?: Record<string, unknown>;
   }): Promise<AppDefinitionDocument> {
     await this.ensureIndex();
@@ -217,8 +215,16 @@ export class AppDefinitionRepository {
       lifecycle: 'draft',
       version: 1,
       tags: input.tags ?? [],
-      form_schema: input.form_schema ?? null,
-      triggers: input.triggers ?? [],
+      forms: input.forms ?? [
+        {
+          form_id: 'submit',
+          kind: 'submit',
+          schema: {},
+          form_version: 1,
+          triggers: null,
+          config: {},
+        },
+      ],
       roles: input.roles ?? {},
       routing_config: null,
       field_mapping: null,

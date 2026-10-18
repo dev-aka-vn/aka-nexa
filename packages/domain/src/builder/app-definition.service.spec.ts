@@ -81,8 +81,16 @@ class FakeRepository {
       lifecycle: 'draft',
       version: 1,
       tags: [],
-      form_schema: null,
-      triggers: [],
+      forms: [
+        {
+          form_id: 'submit',
+          kind: 'submit',
+          schema: {},
+          form_version: 1,
+          triggers: null,
+          config: {},
+        },
+      ],
       roles: {},
       routing_config: null,
       field_mapping: null,

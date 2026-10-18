@@ -6,20 +6,26 @@
   "tags": ["time-off", "hr", "all-staff"],
   "data_mode": "internal",
   "connector_ref": null,
-  "form_schema": {
-    "components": [
-      { "type": "date", "key": "start_date", "label": "First day", "input": true },
-      { "type": "date", "key": "end_date", "label": "Last day", "input": true },
-      { "type": "textarea", "key": "reason", "label": "Reason", "input": true }
-    ]
-  },
+  "forms": [
+    {
+      "form_id": "submit",
+      "kind": "submit",
+      "schema": {
+        "components": [
+          { "type": "date", "key": "start_date", "label": "First day", "input": true },
+          { "type": "date", "key": "end_date", "label": "Last day", "input": true },
+          { "type": "textarea", "key": "reason", "label": "Reason", "input": true }
+        ]
+      },
+      "form_version": 1,
+      "triggers": { "intents": [], "aliases": ["/leave"], "threshold": 0.8 },
+      "config": {}
+    }
+  ],
   "roles": {
     "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
     "admin": ["create", "edit", "publish", "assign-roles"],
     "manager": ["submit", "approve", "view"],
     "user": ["submit", "view"]
-  },
-  "triggers": [
-    { "id": "leave", "type": "slash", "command": "/leave", "description": "Request time off" }
-  ]
+  }
 }
