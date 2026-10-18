@@ -389,21 +389,6 @@ export class AppDefinitionService {
     AppLifecycle.assertAcceptsSubmissions(appId, definition.lifecycle);
   }
 
-  /**
-   * The trigger-registration seam's guard (APP-05): the
-   * path that activates an app's declared
-   * triggers/slash commands calls this before
-   * registering, so a deprecated app registers no new
-   * triggers.
-   */
-  async assertRegistersTriggers(appId: string): Promise<void> {
-    const definition = await this.repository.findByAppId(appId);
-    if (definition === null) {
-      throw new AppNotFoundError(appId);
-    }
-    AppLifecycle.assertRegistersTriggers(appId, definition.lifecycle);
-  }
-
   async listByOwner(ownerUserId: string): Promise<AppDefinitionDocument[]> {
     return this.repository.listByOwner(ownerUserId);
   }
