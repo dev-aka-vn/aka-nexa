@@ -171,7 +171,7 @@ function normalizeForm(raw: unknown): AppForm {
 }
 
 /** Normalize the served form set element-wise, dropping a non-array. */
-function normalizeForms(raw: unknown): AppForm[] {
+export function normalizeForms(raw: unknown): AppForm[] {
   return Array.isArray(raw) ? raw.map(normalizeForm) : [];
 }
 
