@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 current_phase: 07
 current_phase_name: Multi-Form Apps & Per-Form Triggers
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-10-18T12:12:58.606Z"
-state_head: d28a244ecc62b7755806b4b5cbca21505b292bf3
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-10-18T12:26:41.213Z"
+state_head: 594cb317d065e54365f37123786f9ce90edf7c61
 progress:
   total_phases: 9
   completed_phases: 6
@@ -20,15 +20,15 @@ last_activity_desc: 07-05 complete — U-1..U-6 rulings recorded in 07-05-SUMMAR
 ## Current Position
 
 Phase: 07 (Multi-Form Apps & Per-Form Triggers) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
-Current Plan: 4
+Current Plan: 5
 Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-18T12:12:57.837Z
-**Stopped at:** Completed 07-03-PLAN.md
+**Last session:** 2026-10-18T12:26:39.088Z
+**Stopped at:** Completed 07-04-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -62,6 +62,7 @@ Total Plans in Phase: 8
 | Phase 07 P01 | 60 | 3 tasks | 20 files |
 | Phase 07 P02 | 10m | 2 tasks | 9 files |
 | Phase 07 P03 | 15 min | 2 tasks | 7 files |
+| Phase 07 P04 | 60 | 3 tasks | 5 files |
 
 ## Decisions
 
@@ -141,6 +142,8 @@ Total Plans in Phase: 8
 - [Phase 07]: Retired app-level Triggers section (13→12); triggers now live on the form (D-06/D-12). Stale triggers grants filtered as no-ops until 07-04 migration.
 - [Phase 07]: Per-kind config validation lives in TemplateSeedSchema via .superRefine (same-kind uniqueness, submit schema presence, show subset, list query_id/columns).
 - [Phase 07]: Seed gallery now ships genuine multi-form templates: leave-request submit+list over qry_pending_leave; expense-report and it-helpdesk-ticket carry show forms.
+- [Phase 07]: Migrate both apps and app_definition_versions in one run (D-11) so rollback() cannot resurrect retired shape
+- [Phase 07]: Filter-guarded compare-and-set migration: find by {form_schema:{$exists:true}}, updateOne re-checks $exists
 
 ## Blockers/Concerns
 
