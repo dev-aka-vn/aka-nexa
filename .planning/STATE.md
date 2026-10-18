@@ -14,7 +14,7 @@ progress:
   completed_plans: 61
   percent: 67
 last_activity: 2026-10-18
-last_activity_desc: "07-05 executing — U-1 and U-2 rulings recorded in 07-05-SUMMARY.md (commits c08443e7, edd92a7a); stopped at U-3 blocking decision checkpoint."
+last_activity_desc: "07-05 executing — U-1, U-2 and U-3 rulings recorded in 07-05-SUMMARY.md (commits c08443e7, edd92a7a, 2ec05127); stopped at U-4 blocking decision checkpoint."
 ---
 
 ## Current Position
@@ -28,7 +28,7 @@ Total Plans in Phase: 8
 ## Session
 
 **Last session:** 2026-10-18T00:00:00.000Z
-**Stopped at:** 07-05 Task 3 — U-3 decision checkpoint (blocking): radio-card-picker vs select-plus-helper for the New-form kind picker, plus kind-card/helper copy needing confirmation. U-1 (commit c08443e7) and U-2 (commit edd92a7a) rulings recorded in 07-05-SUMMARY.md; T02 marked complete.
+**Stopped at:** 07-05 Task 4 — U-4 decision checkpoint (blocking): modal-block-last-submit vs modal-warn-last-submit for the remove-form destructive confirm, plus the final modal copy. U-1 (c08443e7), U-2 (edd92a7a) and U-3 (2ec05127) rulings recorded in 07-05-SUMMARY.md; T03 marked complete.
 **Resume file:** .planning/phases/07-multi-form-apps-per-form-triggers/07-05-PLAN.md
 
 ## Performance Metrics
