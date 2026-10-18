@@ -305,7 +305,9 @@ export function WizardPage({ appId, step: routeStep }: WizardPageProps): ReactEl
     setStepError(null);
     try {
       if (step === 1) {
-        // Triggers: PATCH the submit form's `triggers` field in the `forms` section.
+        // Triggers: PATCH the submit form's `triggers` field in the
+        // `forms` section — only when the step has content (no dead
+        // write when there is no trigger to persist).
         const threshold = triggerThresholdFor(draft);
         const trigger = normalizeTriggers(triggers, threshold);
         if (trigger !== null) {
@@ -317,22 +319,6 @@ export function WizardPage({ appId, step: routeStep }: WizardPageProps): ReactEl
                 forms: (draft.forms ?? []).map((form) =>
                   form.kind === 'submit'
                     ? { ...form, triggers: trigger }
-                    : form,
-                ),
-              },
-            },
-            AppDefinitionSchema,
-          );
-          setDraft(updated);
-        } else {
-          const updated = await client.patch(
-            `/apps/${draft.app_id}`,
-            {
-              section: 'forms',
-              patch: {
-                forms: (draft.forms ?? []).map((form) =>
-                  form.kind === 'submit'
-                    ? { ...form, triggers: null }
                     : form,
                 ),
               },
