@@ -22,7 +22,7 @@ created: "2026-10-17"
 | **Framework** | Vitest 5.0.3 (`npm test` = `vitest run`) + Playwright 1.64.0 (`npm run test:e2e`) |
 | **Config file** | `vitest.config.mts` (alias map; `include: packages/**/*.spec.ts`, `apps/**/*.spec.ts`, `tooling/**/*.spec.ts`; `exclude: **/e2e/**`; `setupFiles: ./test/setup-env.ts`; 120 s timeouts) and `playwright.config.ts` |
 | **Quick run command** | `npx vitest run <path-to-spec>` |
-| **Full suite command** | `npm test` (131 `*.spec.ts` files) |
+| **Full suite command** | `npm test` (128 `*.spec.ts` files pre-phase — measured via `npx vitest list`; 137 tracked non-e2e, 148 all tracked; grows to 129 when 07-01 adds `definition.forms.spec.ts`) |
 | **E2E command** | `npm run test:e2e` (projects: `chromium` + `tablet` on `apps/app-builder/e2e` @ :5173; `renderer` + `renderer-tablet` on `apps/renderer/e2e` @ :5174) |
 | **Estimated runtime** | ~120–240 s (full vitest suite); e2e longer |
 

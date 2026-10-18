@@ -577,32 +577,40 @@ const TemplateSeedSchema = z
 **If a row above is confirmed true**, the planner may fold it into the corresponding plan task
 without a checkpoint. **If a row is confirmed false**, the task it touches must be re-scoped.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All five questions below are resolved by the phase plans (2026-10-18); each carries its adopting
+> plan/task. The substance of each question is retained unchanged for the record.
 
 1. **What does the in-form trigger panel look like?**
    - What we know: D-12 says "triggers edited as a panel inside the form". The mockup (`prototypes/mockup.html` L1158-1186) keeps a **separate top-level `triggers` tab** (`tabTriggers`, L1093-1117) *and* a `forms` tab that is only a list + "New form" button + Versioning card — it depicts **no** in-form trigger panel and **no** per-form designer.
    - What's unclear: the panel's information architecture — is it always visible, a collapsible region, or a modal launched from the form row? What happens to the retired `tabTriggers` — does the mockup's `triggers` tab become the panel, or does it disappear?
    - Recommendation: treat as a **design decision requiring confirmation** (AGENTS.md rule 3). The planner should add one `checkpoint:human-verify` task before the SPA trigger-panel work, offering the mockup's `tabTriggers` markup as the starting vocabulary. Do **not** silently improvise a panel.
+   - **RESOLVED — adopted by 07-05 Task 1 (blocking-human checkpoint U-1):** placement/fields/copy are gated on a user ruling (inline-collapsible / designer-region / drawer offered, mockup `tabTriggers` vocabulary sanctioned) recorded in 07-05-SUMMARY.md before 07-07 builds the panel.
 
 2. **Do pre-migration `app_definition_versions` snapshots get migrated, or does `rollback()` become shape-aware?**
    - What we know: `rollback()` (`app-definition.service.ts` L264-277) spreads the retained snapshot back into the live doc. Pre-migration snapshots carry `form_schema` + app-level `triggers` and lack `forms[]`.
    - What's unclear: whether D-10's "rollback unchanged" was written assuming snapshots are shape-compatible. They are not.
    - Recommendation: **migrate the snapshots in the same script** (recommended, A5) — it is a two-collection transform over `apps` and `app_definition_versions`. A shape-aware `rollback()` is the fallback only if snapshot migration proves infeasible. Either way this MUST be an explicit task, not left implicit.
+   - **RESOLVED — adopted by 07-04 Task 1 (recommendation A5, two-collection transform):** snapshots are migrated in the same idempotent run so `rollback()` stays shape-blind; proven by form-migration.spec.ts case 5.
 
 3. **What is the exact `form_id` derivation, and does it stay stable across a kind change?**
    - What we know: D-02 — "at most one form per kind per app; `form_id` derivable from kind".
    - What's unclear: whether a form's `form_id` may be a plain `kind` string or must be a namespaced id (`{app_id}:{kind}`), and what happens if an app is ever allowed to change a form's kind (D-02 forbids two forms of the same kind, but not a kind migration).
    - Recommendation: pick the simplest deterministic rule that cannot collide **within** an app (the app_id is already the outer key), document it in the migration script, and add a unit assertion that a definition with two forms of the same kind is rejected.
+   - **RESOLVED — adopted by 07-01 Task 1 + 07-04 Task 1:** `form_id = kind` (the app_id is the outer key, so no within-app collision), documented in the `forms.contract.ts` docblock and the migration module docblock; same-kind duplicates are rejected by `updateSection` (07-01) and asserted across the suite.
 
 4. **Is `assertRegistersTriggers` (`app-definition.service.ts` L319-325) deleted or repurposed?**
    - What we know: it is **dead code** — called by nothing. Phase 7 ADDS the real gate rule (the publish gate currently has no form rule at all — `PublishGateService.evaluate()` checks only share-drops and description collisions; its only `form_schema` reference is the change-summary row at L397).
    - What's unclear: whether the intended "≥1 `submit` form to publish" rule (D-05) belongs in `PublishGateService.evaluate()` or replaces the dead helper.
    - Recommendation: put the rule in `PublishGateService.evaluate()` (the real gate) and **delete** the dead helper. Add the APP-12 conflict rule ("a trigger resolving to >1 form is rejected at publish") in the same method.
+   - **RESOLVED — adopted by 07-08 Task 1:** the ≥1-submit, trigger-uniqueness, D-08-kinds, and config-completeness rules land in `PublishGateService.evaluate()`; the dead helper is deleted (grep-zero asserted).
 
 5. **Does the `list` kind's trigger routing need a distinct `RoutingOutcome` shape?**
    - What we know: `RoutingOutcome` today is `{kind:'link',toolId} | {kind:'clarify',toolIds}` — **no action and no kind** (`inbound-event.processor.ts` L424-448; `routing-orchestrator.ts`). `PublishedApp`/`AuthorizedApp` (`published-app-loader.ts` L7-29) have no action buckets.
    - What's unclear: whether a `list` trigger yields a link with `action: 'query'` through the *same* `RoutingOutcome` (D-02's "no routing change") or needs a new variant.
    - Recommendation: extend the tool projection (tool id → form kind → link action) **without** adding a `RoutingOutcome` variant — the outcome stays `{kind:'link',toolId}` and the action is resolved downstream at issuance. This preserves D-02's intent while acknowledging the projection change D-02 glossed over.
+   - **RESOLVED — adopted by 07-08 Task 3:** `RoutingOutcome` keeps its shape; the form-scoped tool id (`app:form`) is split at the processor and the kind→action mapping resolves downstream at issuance via `FORM_KIND_TO_ACTION`.
 
 ## Environment Availability
 
@@ -669,7 +677,7 @@ spec.
 
 ### Sampling Rate
 - **Per task commit:** `npx vitest run <specs touched by the task>`; for SPA tasks also `npx vitest run apps/app-builder/src/editor/publishGuards.spec.ts`.
-- **Per wave merge:** `npm test` (full vitest suite — 131 `*.spec.ts` files).
+- **Per wave merge:** `npm test` (full vitest suite — 128 `*.spec.ts` files pre-phase, measured via `npx vitest list`; grows to 129 when 07-01 adds `definition.forms.spec.ts`).
 - **Phase gate:** `npm test` **and** `npm run test:e2e` green before `/gsd-verify-work`; the frozen-claim spec must be green **without modification**.
 
 ### Wave 0 Gaps
