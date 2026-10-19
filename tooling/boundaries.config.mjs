@@ -178,8 +178,11 @@ export const ALLOWED_EDGES = Object.freeze({
   ]),
   // adapters → contract: inbound + outbound event shapes only. NOTHING else.
   adapters: Object.freeze(['platform', 'kernel', 'contract']),
-  // notifications → platform (own Mongo client / config), kernel, contract.
-  notifications: Object.freeze(['platform', 'kernel', 'contract']),
+  // notifications → platform (own Mongo client / config), kernel, contract,
+  // plus the submission/identity/link seams the notification assembler (NOT-03)
+  // traverses. dsl is required because SubmissionRepository is constructed over
+  // DslService (DAT-10/11).
+  notifications: Object.freeze(['platform', 'kernel', 'contract', 'submissions', 'identity', 'links', 'dsl']),
   pipeline: Object.freeze([
     'platform',
     'kernel',

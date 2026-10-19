@@ -2,6 +2,7 @@ export interface IdentityMapping {
   platform: string;
   chat_user_id: string;
   real_user_id: string;
+  channel_id?: string;
   email?: string;
   deactivated_at?: Date | null;
 }

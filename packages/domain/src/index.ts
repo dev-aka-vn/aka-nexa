@@ -156,6 +156,9 @@ export {
   type ConversationReferenceRecord,
   type ConversationReferenceInput,
 } from './notifications/data-access/conversation-reference.repository.js';
+export { NotificationAssemblerService } from './notifications/notification-assembler.service.js';
+export type { NotificationAssembleResult } from './notifications/notification-assembler.service.js';
+export { NotificationsModule } from './notifications/notifications.module.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,
