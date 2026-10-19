@@ -293,7 +293,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **IM-07**: A slash command acks empty and delivers its response asynchronously, because Slack's `response_url` permits only 5 responses per 30 minutes
 - [x] **IM-08**: The user sees a distinct, actionable message on both submission success and submission failure
 - [ ] **IM-09**: The Slack adapter supports inbound events, outbound messages, slash commands, and Slack's URL-verification challenge
-- [ ] **IM-10**: The Microsoft Teams adapter delivers the identical experience via `@microsoft/agents-hosting` + `-msteams`
+- [x] **IM-10**: The Microsoft Teams adapter delivers the identical experience via `@microsoft/agents-hosting` + `-msteams`
 - [ ] **IM-11**: An adapter's responses appear in the same thread as the user's message where the platform supports it
 
 ### App Builder
@@ -313,10 +313,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Notifications & Two-Way Sync
 
-- [ ] **NOT-01**: An external system can push a signed inbound webhook that maps an external entity ID to a `submission_id`
+- [x] **NOT-01**: An external system can push a signed inbound webhook that maps an external entity ID to a `submission_id`
 - [ ] **NOT-02**: An inbound webhook is protected against replay by timestamp and nonce validation
 - [ ] **NOT-03**: A notification is delivered via IM to the original submitter with a deep link bound to that user
-- [ ] **NOT-04**: Notification delivery retries 3 times if IM delivery fails
+- [x] **NOT-04**: Notification delivery retries 3 times if IM delivery fails
 - [ ] **NOT-05**: An external system that cannot sign its webhooks has a documented alternative trust mechanism, recorded per connector
 
 ---
@@ -538,11 +538,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | APP-11 | Phase 7 | Complete |
 | APP-12 | Phase 7 | Complete |
 | FRM-14 | Phase 7 | Complete |
-| IM-10 | Phase 8 | Pending |
-| NOT-01 | Phase 8 | Pending |
+| IM-10 | Phase 8 | Complete |
+| NOT-01 | Phase 8 | Complete |
 | NOT-02 | Phase 8 | Pending |
 | NOT-03 | Phase 8 | Pending |
-| NOT-04 | Phase 8 | Pending |
+| NOT-04 | Phase 8 | Complete |
 | NOT-05 | Phase 8 | Pending |
 | AUD-03 | Phase 9 | Pending |
 | AUD-04 | Phase 9 | Pending |
