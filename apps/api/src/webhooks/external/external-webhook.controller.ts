@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Headers,
   HttpCode,
+  Logger,
   Param,
   Post,
   RawBody,
@@ -13,13 +15,18 @@ import {
 import { NonceStoreService } from './nonce-store.service.js';
 import { ExternalWebhookService } from './external-webhook.service.js';
 import { WebhookHmacService } from './webhook-hmac.service.js';
+import { ConnectorTrustRepository, AuditRepository } from '@akane/domain';
 
 @Controller('webhooks/external')
 export class ExternalWebhookController {
+  private readonly logger = new Logger(ExternalWebhookController.name);
+
   constructor(
     private readonly nonceStore: NonceStoreService,
     private readonly webhookService: ExternalWebhookService,
     private readonly hmac: WebhookHmacService,
+    private readonly trustRepo: ConnectorTrustRepository,
+    private readonly audit: AuditRepository,
   ) {}
 
   @Post(':connectorId')
@@ -41,6 +48,31 @@ export class ExternalWebhookController {
       throw new UnauthorizedException('Missing nonce or timestamp headers');
     }
     await this.nonceStore.checkAndStoreNonce(nonce, timestamp, connectorId);
+
+    // 1b. Trust mechanism gate (NOT-05)
+    let trust: Awaited<ReturnType<ConnectorTrustRepository['get']>> | null = null;
+    try {
+      trust = await this.trustRepo.get(connectorId);
+    } catch (e) {
+      this.logger.warn({ reason: 'connector_trust_lookup_failed', connectorId, error: String(e) });
+      trust = null;
+    }
+    if (trust && trust.mechanism !== 'hmac-sha256') {
+      this.logger.warn({
+        reason: 'connector_trust_alternative',
+        connectorId,
+        mechanism: trust.mechanism,
+      });
+      await this.audit.append({
+        timestamp: new Date(),
+        actor: 'system',
+        action: 'webhook.refused_alternative_trust',
+        target: connectorId,
+        connectorId,
+        mechanism: trust.mechanism,
+      });
+      throw new ForbiddenException('Connector uses an alternative trust mechanism; unsigned webhook refused');
+    }
 
     // 2. Signature verification on raw body (NOT-01)
     if (!signature) {

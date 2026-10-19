@@ -147,6 +147,7 @@ export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
 export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
 export { ConnectorRegistry } from './connectors/connector.registry.js';
+export { ConnectorsModule } from './connectors/connectors.module.js';
 // Inbound adapters are intentionally NOT re-exported from this barrel: the
 // entrypoint-drift gate forbids the worker from reaching any
 // adapters/<name>/inbound/ path. api imports them via the @akane/domain
@@ -260,6 +261,12 @@ export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,
 } from './connectors/data-access/connector-credentials.repository.js';
+export {
+  ConnectorTrustRepository,
+  type ConnectorTrustRecord,
+  type ConnectorTrustMechanism,
+  type ConnectorTrustInput,
+} from './connectors/data-access/connector-trust.repository.js';
 export { RedmineAdapter } from './connectors/redmine.adapter.js';
 export { RestCore } from './connectors/rest-core.js';
 // Connector requests (BLD-10, D-97..D-100) —
