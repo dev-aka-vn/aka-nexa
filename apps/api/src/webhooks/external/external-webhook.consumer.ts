@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Queue } from '@akane/platform/queue/queue.js';
+import type { Job } from 'bullmq';
 
 import { ExternalWebhookService } from './external-webhook.service.js';
 
@@ -14,8 +14,8 @@ import { ExternalWebhookService } from './external-webhook.service.js';
 export class ExternalWebhookConsumer {
   constructor(private readonly webhookService: ExternalWebhookService) {}
 
-  async handle(job: any): Promise<void> {
-    const payload = job?.data || {};
+  async handle(job: Job): Promise<void> {
+    const payload: Record<string, unknown> = job.data ?? {};
     await this.webhookService.processNotification(payload);
   }
 }

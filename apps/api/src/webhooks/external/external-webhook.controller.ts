@@ -8,7 +8,6 @@ import {
   RawBody,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as crypto from 'crypto';
 
 import { NonceStoreService } from './nonce-store.service.js';
 import { ExternalWebhookService } from './external-webhook.service.js';

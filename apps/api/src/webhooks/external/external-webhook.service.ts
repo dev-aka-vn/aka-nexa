@@ -1,7 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import type { Queue } from '@akane/platform/queue/queue.js';
-import { OutboundMessage, OutboundMessageSchema } from '@akane/contract/events/outbound-message.js';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { OutboundMessageSchema, type OutboundMessage } from '@akane/contract';
 import { randomUUID } from 'crypto';
+
+/**
+ * Reads a `status` field from an unknown webhook body without widening it to
+ * `any`. The body arrives as untrusted JSON, so it is narrowed before indexing.
+ */
+function readBodyStatus(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || !('status' in body)) {
+    return undefined;
+  }
+
+  const status = (body as { status?: unknown }).status;
+  // Mirrors the original `payload.body?.['status'] || <default>` truthiness test:
+  // any falsy status (absent, null, '', 0) falls through to the caller's default.
+  return status ? String(status) : undefined;
+}
 
 /**
  * Service for processing inbound external webhooks.
@@ -12,7 +28,7 @@ import { randomUUID } from 'crypto';
  */
 @Injectable()
 export class ExternalWebhookService {
-  constructor(private readonly queue: Queue) {}
+  constructor(@InjectQueue('notification:send') private readonly queue: Queue) {}
 
   async enqueueNotification(payload: Record<string, unknown>): Promise<string> {
     const jobId = `webhook-notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -45,7 +61,7 @@ export class ExternalWebhookService {
       platform: 'teams', // Default for foundation; determined from submission lookup
       channel_id: String(payload.channelId || 'general'),
       chat_user_id: String(payload.chatUserId || 'user'),
-      text: String(payload.body?.['status'] || 'Status update from external system'),
+      text: readBodyStatus(payload.body) ?? 'Status update from external system',
       action: 'status',
       queue: 'notification:send',
       attempt: 0,

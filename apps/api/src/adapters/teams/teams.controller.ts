@@ -1,10 +1,29 @@
 import { Controller, Post, RawBody, Req, Res } from '@nestjs/common';
-import type { Request, Response } from 'express';
-import { AgentApplication, TurnContext, MemoryStorage, AuthConfiguration } from '@microsoft/agents-hosting';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import {
+  AgentApplication,
+  CloudAdapter,
+  MemoryStorage,
+  TurnState,
+  loadAuthConfigFromEnv,
+  type Request as AgentRequest,
+  type TurnContext,
+  type WebResponse,
+} from '@microsoft/agents-hosting';
 import { randomUUID } from 'crypto';
 
-import { InboundEvent, type InboundEvent as InboundEventType } from '@akane/contract/events/inbound-event.js';
-import type { Queue } from '@akane/platform/queue/queue.js';
+import { InboundEventSchema, type InboundEvent } from '@akane/contract';
+
+/**
+ * The Agents SDK's own `Activity` shape, reached through `TurnContext`.
+ *
+ * A direct `@microsoft/agents-activity` import would be a *phantom* dependency —
+ * that package is a transitive dependency of `@microsoft/agents-hosting`, not a
+ * declared one — so the type is derived from the SDK surface we already depend
+ * on. `TurnContext['activity']` is exactly that `Activity` type.
+ */
+type TeamsActivity = TurnContext['activity'];
 
 /**
  * Teams adapter controller - normalizes Teams activities to InboundEvent.
@@ -16,61 +35,65 @@ import type { Queue } from '@akane/platform/queue/queue.js';
  */
 @Controller('teams')
 export class TeamsController {
-  private readonly agentApp: AgentApplication;
+  private agentApp: AgentApplication<TurnState> | undefined;
 
-  constructor(private readonly queue: Queue) {
-    this.agentApp = new AgentApplication({
+  constructor(@InjectQueue('im:inbound') private readonly queue: Queue) {}
+
+  /**
+   * Built on first use rather than in the constructor: `loadAuthConfigFromEnv()`
+   * reads the Teams connection settings out of the environment, and a testing
+   * module that never handles a Teams turn must still boot without them.
+   */
+  private getAgentApp(): AgentApplication<TurnState> {
+    if (this.agentApp) {
+      return this.agentApp;
+    }
+
+    const app = new AgentApplication<TurnState>({
       storage: new MemoryStorage(),
-      auth: new AuthConfiguration({
-        // Auth configuration per environment; handled by Agents SDK
-      }),
+      adapter: new CloudAdapter(loadAuthConfigFromEnv()),
     });
 
-    // Register activity handler for message activities
-    this.agentApp.onMessage(async (context: TurnContext) => {
-      const activity = context.activity;
-      
-      // Normalize Teams activity to InboundEvent
-      const inboundEvent = this.normalizeTeamsActivity(activity);
-      
+    // Register the message handler. `onActivity` takes the activity type first;
+    // the previous catch-all registration only ever acted on `message`, so that
+    // single type expresses the same behaviour without an unroutable selector.
+    app.onActivity('message', async (context) => {
+      const inboundEvent = this.normalizeTeamsActivity(context.activity);
+
       // Enqueue processing with ack semantics < 200ms (IM-03)
       await this.queue.add('im:inbound', inboundEvent, {
         jobId: inboundEvent.event_id,
       });
     });
 
-    // Register generic activity handler for other event types
-    this.agentApp.onActivity(async (context: TurnContext) => {
-      const activity = context.activity;
-      // Only process message-type activities for now
-      if (activity.type === 'message') {
-        const inboundEvent = this.normalizeTeamsActivity(activity);
-        await this.queue.add('im:inbound', inboundEvent, {
-          jobId: inboundEvent.event_id,
-        });
-      }
-      // For other activity types, ack without enqueuing (tracer E2E focuses on messages)
-    });
+    this.agentApp = app;
+    return app;
   }
 
   @Post('events')
-  async handleEvents(@Req() req: Request, @Res() res: Response, @RawBody() _rawBody: Buffer): Promise<void> {
-    // Process activity via Agents SDK
-    await this.agentApp.processActivity(req, res);
+  async handleEvents(
+    @Req() req: AgentRequest,
+    @Res() res: WebResponse,
+    @RawBody() _rawBody: Buffer,
+  ): Promise<void> {
+    const app = this.getAgentApp();
+    // The CloudAdapter owns the HTTP contract; `run` dispatches the turn to the
+    // activity handler registered above.
+    await app.adapter.process(req, res, (context) => app.run(context));
   }
 
-  private normalizeTeamsActivity(activity: any): InboundEventType {
+  private normalizeTeamsActivity(activity: TeamsActivity): InboundEvent {
     const now = new Date().toISOString();
     const eventId = randomUUID();
-    
+
     // Extract text from message activity
     const text = typeof activity.text === 'string' ? activity.text : '';
-    
+
     // Extract channel and user IDs (opaque)
     const channelId = activity.conversation?.id ?? activity.channelId ?? randomUUID();
     const chatUserId = activity.from?.id ?? activity.recipient?.id ?? randomUUID();
-    
-    const event: InboundEventType = {
+
+    const event: InboundEvent = {
       event_id: eventId,
       platform: 'teams',
       channel_id: channelId,
@@ -79,10 +102,10 @@ export class TeamsController {
       action: 'message',
       queue: 'im:inbound',
       attempt: 0,
-      occurred_at: activity.timestamp ?? now,
+      occurred_at: activity.timestamp ? new Date(activity.timestamp).toISOString() : now,
     };
-    
+
     // Validate against schema to enforce contract at boundary
-    return InboundEvent.parse(event);
+    return InboundEventSchema.parse(event);
   }
 }
