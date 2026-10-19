@@ -22,6 +22,7 @@ import { AppBuilderModule } from './app-builder/app-builder.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { TeamsModule } from './adapters/teams/teams.module.js';
+import { ExternalWebhookModule } from './webhooks/external/external-webhook.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
 /**
@@ -81,6 +82,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     SubmissionsModule,
     AuditModule,
     TeamsModule,
+    ExternalWebhookModule,
   ],
   controllers: [HealthController],
   providers: [
