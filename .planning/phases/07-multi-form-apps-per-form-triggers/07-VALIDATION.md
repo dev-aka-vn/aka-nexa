@@ -3,9 +3,9 @@ phase: "7"
 slug: "multi-form-apps-per-form-triggers"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-10-17"
 ---
 
@@ -59,12 +59,12 @@ spec.
 | APP-11 | `SectionNameSchema` has 12 entries after `triggers` retirement; the mirror lists agree (13→12) | unit | `npx vitest run packages/domain/src/authz/builder-ability.spec.ts` | ✅ (extend) + new assertion |
 | APP-12 | A trigger activates exactly one form; a publish declaring a trigger that resolves to >1 form is **rejected** in `PublishGateService.evaluate()` | unit | `npx vitest run packages/domain/src/builder/publish-gate.service.spec.ts` | ✅ (extend) |
 | APP-12 | Publish requires **≥1 `submit` form** (D-05) | unit | `npx vitest run packages/domain/src/builder/publish-gate.service.spec.ts` | ✅ (extend) |
-| APP-12 | JEV tool list is derived from **forms declaring triggers** — a form with `triggers: null` produces no tool | unit | `npx vitest run packages/domain/src/decision/published-app-loader.spec.ts` | ❌ Wave 0 |
+| APP-12 | JEV tool list is derived from **forms declaring triggers** — a form with `triggers: null` produces no tool | unit | `npx vitest run packages/domain/src/decision/published-app-loader.spec.ts` | ✅ |
 | APP-04 (amended) | A trigger→form→link-action projection carries `kind`→`action` end-to-end (submit→create, list→query, show→view, edit→edit) | integration | `npx vitest run packages/domain/src/decision/decision-routing.integration.spec.ts` | ✅ (extend) |
 | APP-04 (amended) | The worker catalog is **not** hardcoded: a builder-published app becomes routable | integration | `npx vitest run packages/domain/src/decision/decision-routing.integration.spec.ts` | ✅ (extend) + new case |
 | FRM-14 | Every form in an app shares the app's collection, roles, and data-routing destination; a form's schema is scoped to its kind | integration | `npx vitest run packages/domain/src/builder/app-definition.service.spec.ts` | ✅ (extend) |
 | FRM-14 | `list` reuses the Phase-4 saved-query viewer-row projection with no new schema | integration | `npx vitest run packages/domain/src/builder/saved-query.repository.spec.ts` | ✅ (extend) |
-| Migration | `form_schema`→`forms:[{kind:'submit'}]` and app triggers→that form's triggers, idempotent, shape-detecting (only docs carrying `form_schema`) | integration | `npx vitest run packages/domain/src/builder/form-migration.spec.ts` | ❌ Wave 0 |
+| Migration | `form_schema`→`forms:[{kind:'submit'}]` and app triggers→that form's triggers, idempotent, shape-detecting (only docs carrying `form_schema`) | integration | `npx vitest run packages/domain/src/form-migration.spec.ts` | ✅ |
 | Migration | `app_definition_versions` snapshots are migrated so `rollback()` cannot restore the old shape | integration | `npx vitest run packages/domain/src/builder/app-definition.versions.spec.ts` | ✅ (extend) |
 | Migration | Seeds carry `forms[]` and validate against the updated `.strict()` `TemplateSeedSchema` | unit | `npx vitest run packages/domain/src/builder/template/template.spec.ts` | ✅ (extend) |
 | D-12 | Builder SPA exposes a form manager with an in-form trigger panel; the `Triggers` tab is gone | e2e | `npx playwright test --project=chromium` | ✅ (extend `apps/app-builder/e2e/editor.spec.ts` / `wizard.spec.ts`) |
@@ -96,11 +96,23 @@ spec.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated (2026-10-19)
+
+---
+
+## Validation Audit 2026-10-19
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 (all Wave 0 gaps filled during execution) |
+| Resolved | 2 (`form-migration.spec.ts`, `published-app-loader.spec.ts`) |
+| Escalated | 0 |
+
+All requirement → test mappings verified green (11 spec files, 102 tests). Frozen read-link-claims spec untouched.
