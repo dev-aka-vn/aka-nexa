@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
+
+import { NOTIFICATION_SEND_QUEUE } from '@akane/platform';
 import { OutboundMessageSchema, type OutboundMessage } from '@akane/contract';
 import { randomUUID } from 'crypto';
 
@@ -28,15 +30,20 @@ function readBodyStatus(body: unknown): string | undefined {
  */
 @Injectable()
 export class ExternalWebhookService {
-  constructor(@InjectQueue('notification:send') private readonly queue: Queue) {}
+  constructor(@InjectQueue(NOTIFICATION_SEND_QUEUE) private readonly queue: Queue) {}
 
   async enqueueNotification(payload: Record<string, unknown>): Promise<string> {
     const jobId = `webhook-notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await this.queue.add('notification:send', payload, { 
+    await this.queue.add(NOTIFICATION_SEND_QUEUE, payload, {
       jobId,
-      attempts: 3, // NOT-04: retry up to 3 times with backoff+jitter
+      // NOT-04 / D-13: backoff *with jitter*. BullMQ's built-in 'exponential'
+      // type is deterministic and carries none, so the jitter lives in the
+      // custom BackoffStrategy named 'notification-jitter' that the notification
+      // worker registers (08-08) — equal-jitter exponential: base = this delay
+      // × 2^(attemptsMade−1), capped, actual = base × uniform[0.5, 1.0].
+      attempts: 3,
       backoff: {
-        type: 'exponential',
+        type: 'notification-jitter',
         delay: 1000,
       },
     });
@@ -63,7 +70,7 @@ export class ExternalWebhookService {
       chat_user_id: String(payload.chatUserId || 'user'),
       text: readBodyStatus(payload.body) ?? 'Status update from external system',
       action: 'status',
-      queue: 'notification:send',
+      queue: NOTIFICATION_SEND_QUEUE,
       attempt: 0,
     };
     

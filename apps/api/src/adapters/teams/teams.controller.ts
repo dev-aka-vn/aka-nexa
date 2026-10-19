@@ -13,6 +13,8 @@ import {
 } from '@microsoft/agents-hosting';
 import { randomUUID } from 'crypto';
 
+import { INBOUND_EVENTS_QUEUE } from '@akane/platform';
+
 import { InboundEventSchema, type InboundEvent } from '@akane/contract';
 
 /**
@@ -37,7 +39,7 @@ type TeamsActivity = TurnContext['activity'];
 export class TeamsController {
   private agentApp: AgentApplication<TurnState> | undefined;
 
-  constructor(@InjectQueue('im:inbound') private readonly queue: Queue) {}
+  constructor(@InjectQueue(INBOUND_EVENTS_QUEUE) private readonly queue: Queue) {}
 
   /**
    * Built on first use rather than in the constructor: `loadAuthConfigFromEnv()`
@@ -61,9 +63,7 @@ export class TeamsController {
       const inboundEvent = this.normalizeTeamsActivity(context.activity);
 
       // Enqueue processing with ack semantics < 200ms (IM-03)
-      await this.queue.add('im:inbound', inboundEvent, {
-        jobId: inboundEvent.event_id,
-      });
+      await this.queue.add(INBOUND_EVENTS_QUEUE, inboundEvent);
     });
 
     this.agentApp = app;
@@ -84,7 +84,10 @@ export class TeamsController {
 
   private normalizeTeamsActivity(activity: TeamsActivity): InboundEvent {
     const now = new Date().toISOString();
-    const eventId = randomUUID();
+    // D-07: the platform event id is the dedupe key (08-06 builds Mongo
+    // dedupe on this field), so it must come from the Teams activity id, not a
+    // fresh UUID — and it must NOT be set as a BullMQ jobId.
+    const eventId = activity.id ?? randomUUID();
 
     // Extract text from message activity
     const text = typeof activity.text === 'string' ? activity.text : '';
@@ -100,7 +103,7 @@ export class TeamsController {
       chat_user_id: chatUserId,
       text,
       action: 'message',
-      queue: 'im:inbound',
+      queue: INBOUND_EVENTS_QUEUE,
       attempt: 0,
       occurred_at: activity.timestamp ? new Date(activity.timestamp).toISOString() : now,
     };

@@ -49,7 +49,7 @@ async function bootstrap(): Promise<void> {
 
   const { AppModule } = await import("./app.module.js");
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
 
   // T-06-01: the CSP posture the

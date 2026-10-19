@@ -1,5 +1,10 @@
+import { getQueueToken } from '@nestjs/bullmq';
+
 import {
+  INBOUND_EVENTS_QUEUE,
+  INBOUND_ADAPTER_REGISTRATIONS,
   JOB_SCHEDULER_REGISTRATIONS,
+  NOTIFICATION_SEND_QUEUE,
   QUEUE_PRODUCER_TOKEN,
   WORKER_CONSUMERS,
   type BoundaryManifest,
@@ -46,5 +51,15 @@ export const API_BOUNDARY_MANIFEST: BoundaryManifest = Object.freeze({
     QUEUE_PRODUCER_TOKEN,
     WORKER_CONSUMERS,
     JOB_SCHEDULER_REGISTRATIONS,
+  ]),
+  // D-37: the api process is the request path and must never hold the heartbeat
+  // producer token, a worker, or a scheduler. It DOES legitimately enqueue onto
+  // the two inbound/notification queues (IM-10, NOT-04) and it IS the inbound
+  // adapter surface, so those three tokens are named exceptions here rather than
+  // silent edits to `forbidden`. The heartbeat producer token stays forbidden.
+  allowed: Object.freeze([
+    getQueueToken(INBOUND_EVENTS_QUEUE),
+    getQueueToken(NOTIFICATION_SEND_QUEUE),
+    INBOUND_ADAPTER_REGISTRATIONS,
   ]),
 });

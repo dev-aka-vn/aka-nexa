@@ -116,6 +116,9 @@ export function createProviderBoundaryGuard(
         for (const [token, wrapper] of providers) {
           if (wrapper.instance === null || wrapper.instance === undefined) continue;
           if (!manifest.forbidden.includes(token)) continue;
+          // D-37: a token listed in both `forbidden` and `allowed` is a
+          // declared, reviewed exception — skip it.
+          if (manifest.allowed?.includes(token)) continue;
 
           throw new Error(
             `BOUNDARY_VIOLATION: ${describeToken(token)} resolved in ${manifest.app} but is forbidden`,

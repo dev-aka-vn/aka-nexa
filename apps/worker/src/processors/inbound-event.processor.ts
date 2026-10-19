@@ -1,4 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+
+import { INBOUND_EVENTS_QUEUE } from '@akane/platform';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import {
@@ -64,7 +66,7 @@ export type ProcessorOutcome =
   | { readonly kind: 'otp_consumed' };
 
 @Injectable()
-@Processor('inbound-events')
+@Processor(INBOUND_EVENTS_QUEUE)
 export class InboundEventProcessor extends WorkerHost {
   constructor(
     private readonly identity: IdentityService,
