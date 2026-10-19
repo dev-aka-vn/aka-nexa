@@ -49,6 +49,11 @@ export const DOMAIN_ELEMENT_TYPES = Object.freeze([
   'pipeline',
   'builder',
   'audit',
+  // Phase 8: conversation references and other cross-adapter notification
+  // state that must be reachable by both api and worker without dragging in
+  // an inbound adapter (D-03 R1). Kept separate from `adapters` so the
+  // worker can import it.
+  'notifications',
   // Phase 4: the Query DSL compiler. Pure functions over the contract's DSL
   // types — no I/O, no auth state — so its only edges point at the shared
   // vocabulary (contract) and the platform/kernel primitives. Every consumer
@@ -173,6 +178,8 @@ export const ALLOWED_EDGES = Object.freeze({
   ]),
   // adapters → contract: inbound + outbound event shapes only. NOTHING else.
   adapters: Object.freeze(['platform', 'kernel', 'contract']),
+  // notifications → platform (own Mongo client / config), kernel, contract.
+  notifications: Object.freeze(['platform', 'kernel', 'contract']),
   pipeline: Object.freeze([
     'platform',
     'kernel',

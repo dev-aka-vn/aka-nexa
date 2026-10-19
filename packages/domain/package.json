@@ -10,6 +10,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./adapters/teams/inbound/teams-inbound.module.js": {
+      "types": "./dist/adapters/teams/inbound/teams-inbound.module.d.ts",
+      "import": "./dist/adapters/teams/inbound/teams-inbound.module.js",
+      "default": "./dist/adapters/teams/inbound/teams-inbound.module.js"
+    },
+    "./adapters/teams/inbound/data-access/teams-event.repository.js": {
+      "types": "./dist/adapters/teams/inbound/data-access/teams-event.repository.d.ts",
+      "import": "./dist/adapters/teams/inbound/data-access/teams-event.repository.js",
+      "default": "./dist/adapters/teams/inbound/data-access/teams-event.repository.js"
     }
   }
 }

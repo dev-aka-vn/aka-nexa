@@ -147,6 +147,15 @@ export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
 export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
 export { ConnectorRegistry } from './connectors/connector.registry.js';
+// Inbound adapters are intentionally NOT re-exported from this barrel: the
+// entrypoint-drift gate forbids the worker from reaching any
+// adapters/<name>/inbound/ path. api imports them via the @akane/domain
+// subpath (see apps/api/src/adapters/teams/*).
+export {
+  ConversationReferenceRepository,
+  type ConversationReferenceRecord,
+  type ConversationReferenceInput,
+} from './notifications/data-access/conversation-reference.repository.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,

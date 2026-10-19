@@ -1,22 +1,36 @@
 import { Module } from '@nestjs/common';
-import { TeamsController } from './teams.controller.js';
-import { TeamsOutboundService } from './teams.outbound.service.js';
-import { TeamsAuthGuard } from './teams-auth.guard.js';
+import { MongoModule, MongoService } from '@akane/platform';
+
 import { ApiQueueModule } from '../../queue/api-queue.module.js';
+import { TeamsController } from './teams.controller.js';
+import { TeamsActivityService } from './teams-activity.service.js';
+import { TeamsOutboundService, TEAMS_CLOUD_ADAPTER, TeamsCloudAdapterHolder } from './teams.outbound.service.js';
+import { TeamsAuthGuard } from './teams-auth.guard.js';
+import { TeamsInboundModule } from '@akane/domain/adapters/teams/inbound/teams-inbound.module.js';
+import {
+  ConversationReferenceRepository,
+} from '@akane/domain';
 
 /**
  * The Teams receiver.
- *
- * `ApiQueueModule` is imported here — and by `ExternalWebhookModule` — rather
- * than from `apps/api/src/app.module.ts`: the two receivers are the *only* api
- * surfaces that enqueue, so the producer registration is scoped to them. The api
- * composition root must not bind `QueueModule` (entrypoint-drift asserts it), and
- * the heartbeat producer token stays forbidden in api (D-37).
  */
 @Module({
-  imports: [ApiQueueModule],
+  imports: [ApiQueueModule, MongoModule, TeamsInboundModule],
   controllers: [TeamsController],
-  providers: [TeamsOutboundService, TeamsAuthGuard],
-  exports: [TeamsOutboundService, TeamsAuthGuard],
+  providers: [
+    TeamsActivityService,
+    TeamsOutboundService,
+    TeamsAuthGuard,
+    {
+      provide: ConversationReferenceRepository,
+      useFactory: (mongo: MongoService) => new ConversationReferenceRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      provide: TEAMS_CLOUD_ADAPTER,
+      useFactory: () => new TeamsCloudAdapterHolder(),
+    },
+  ],
+  exports: [TeamsOutboundService, TeamsAuthGuard, TeamsActivityService, ConversationReferenceRepository],
 })
 export class TeamsModule {}
