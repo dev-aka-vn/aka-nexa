@@ -159,3 +159,6 @@ vite.config.ts.timestamp-*
 # Playwright generated output (e2e artifacts)
 test-results/
 playwright-report/
+
+# GSD runtime pin file (auto-generated, not portable across machines)
+.planning/gsd-root-pin.txt
