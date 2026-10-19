@@ -354,18 +354,19 @@ Plans:
   4. A connector that cannot sign its webhooks has a documented alternative trust mechanism recorded per connector and visible to the platform admin.
   5. A Teams outage queues and retries the user's request; no failure is silent to the user.
 
-**Plans**: 9 plans
+**Plans**: 5/9 plans executed
 
 Plans:
 - [x] 08-01-PLAN.md — Teams adapter foundation: normalized contract parity with the Slack path (InboundEvent/OutboundMessage only across the boundary)
 - [x] 08-02-PLAN.md — Teams adapter skeleton: controller, outbound service, auth guard scaffold
 - [x] 08-03-PLAN.md — external webhook receiver: controller, nonce store, enqueue with retry options
 - [x] 08-04-PLAN.md — notification enqueue path + consumer scaffold
-- [ ] 08-05-PLAN.md — gap closure (wave 1): full build gate green (21 ESLint + tsc errors in Phase 8 files)
+- [x] 08-05-PLAN.md — gap closure (wave 1): full build gate green (21 ESLint + tsc errors in Phase 8 files)
 - [ ] 08-06-PLAN.md — gap closure (wave 3): real Teams receiver — D-06 urlVerification challenge handshake, authorizeJWT guard, Mongo unique-index dedupe on the platform event id, fail-closed short-timeout storage, <200 ms ack, consumer-side RBAC/routing spec
 - [ ] 08-07-PLAN.md — gap closure (wave 4, requires 08-06): timing-safe per-connector HMAC over the raw body, replay rejection proven against real Redis with logged rejections, entity-reference→submitter lookup chain with user-bound notification link
 - [ ] 08-08-PLAN.md — gap closure (wave 5): `notification:send` WorkerHost consumer in the worker, Teams delivery via stored conversation references with D-13 jittered retry + terminal-failure audit + user-visible failure notice, NOT-05 per-connector trust records with admin listing
 - [ ] 08-09-PLAN.md — gap closure (wave 2, split from 08-05): shared queue-name constants + api producer registration per D-37 named exception + rawBody capture + D-13 jittered notification enqueue options
+
 **Notes**: The adapter is now a *known* shape â€” Phase 2 defined the `InboundEvent`/`OutboundMessage` contract â€” so adding a platform is additive rather than inventive. Teams uses `@microsoft/agents-hosting` 1.9.1 + `-msteams`; the Bot Framework SDK is retired (support ended 2025-12-31) and the package the PRD names does not exist on npm. **Zalo and Telegram are v2** â€” this phase does not include them, which is why spike S2 does not block the critical path.
 **Research**: `/gsd-plan-phase 8 --research-phase` â€” Microsoft Teams activity-delivery retry semantics beyond retry-on-429/502; the relevant Microsoft Learn pages returned 404 during research.
 
@@ -447,7 +448,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 5. Integration & Async Execution | 9/9 | In Progress|  |
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
 | 7. Multi-Form Apps & Per-Form Triggers | 8/8 | Complete    | 2026-10-18 |
-| 8. Multi-IM Expansion & Two-Way Sync | 0/TBD | Not started | - |
+| 8. Multi-IM Expansion & Two-Way Sync | 5/9 | In Progress|  |
 | 9. Production Readiness | 0/TBD | Not started | - |
 
 ---

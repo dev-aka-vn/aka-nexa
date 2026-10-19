@@ -4,13 +4,13 @@ current_phase: 8
 current_phase_name: Multi-IM Expansion & Two-Way Sync
 current_plan: Not started
 status: "Phase 07 shipped — PR #6"
-stopped_at: Phase 8 context gathered
-last_updated: "2026-10-19T05:27:33.418Z"
-state_head: 0ccb6e57ab420dc2c7c360352aae742b70baec11
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-10-19T12:11:39.552Z"
+state_head: 2848214fd39d9aa0a922986a063ec274de8a1d38
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 57
+  total_plans: 66
   completed_plans: 68
   percent: 78
 last_activity: 2026-10-19
@@ -27,9 +27,9 @@ Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-19T05:27:32.115Z
-**Stopped at:** Phase 8 context gathered
-**Resume file:** /home/chunghoi/dev-aka-vn/aka-nexa/.planning/phases/08-multi-im-expansion-two-way-sync/08-CONTEXT.md
+**Last session:** 2026-10-19T12:11:15.456Z
+**Stopped at:** Completed 08-05-PLAN.md
+**Resume file:** None
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Total Plans in Phase: 8
 | Phase 07 P04 | 60 | 3 tasks | 5 files |
 | Phase 07 P06 | 30min | 2 tasks | 4 files |
 | Phase 07 P07 | complete | 3 tasks | 4 files |
+| Phase 08 P05 | ~95min | 1 tasks | 6 files |
 
 ## Decisions
 
@@ -148,6 +149,8 @@ Total Plans in Phase: 8
 - [Phase 07]: Filter-guarded compare-and-set migration: find by {form_schema:{$exists:true}}, updateOne re-checks $exists
 - [Phase 07]: FormManager persists every add/remove through {section:'forms'} only; row label derived from app name + kind; remove blocks last-submit via callout-warn
 - [Phase 07]: 07-07: per-form designer dispatch via ?form=; U-1 FormTriggerPanel (inline-collapsible, D-08 disable); U-2 ReadFormConfig (show field selection/ordering, list query_id+columns)
+- [Phase 08]: 08-05 build gate: type/import-only fixes to 6 Phase 8 files; contract types from the @akane/contract root, Queue/Job from bullmq, REDIS_CACHE injected as ioredis Redis with SET NX EX 'OK'-only success, SDK loadAuthConfigFromEnv() + lazy AgentApplication<TurnState>; npm run build (eslint . && tsc -b) now exits 0
+- [Phase 08]: 08-05 deferred requirements marking: IM-10/NOT-02 left unmarked — 08-05 is a compile-only gate and 08-06/07/08/09 own the deliverables (state.advance-plan also declined phase completion with 4 plans outstanding)
 
 ## Blockers/Concerns
 
