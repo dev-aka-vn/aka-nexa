@@ -322,24 +322,24 @@ async function checkAndStoreNonce(nonce: string, windowSeconds: number): Promise
 
 **If this table is empty:** All claims in this research were verified or cited — no user confirmation needed.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Teams retry semantics beyond 429/502**  
+1. **Teams retry semantics beyond 429/502 (RESOLVED by 08-08-T1)**  
    - What we know: IM-05 requires treating unreachable IM platform as retryable; general guidance exists for HTTP 429/502.  
    - What's unclear: Agents SDK's activity delivery error handling and retry hints for Teams. Roadmap notes "Microsoft Teams activity-delivery retry semantics beyond 429/502 — research area called out in Phase 8 notes".  
    - Recommendation: During implementation (plan phase), test with mock failures and consult Agents SDK docs; align with existing BullMQ retry config (3 attempts for notifications per NOT-04; may differ for adapter-level retries).
 
-2. **External webhook header/signature scheme per connector (NOT-05)**  
+2. **External webhook header/signature scheme per connector (NOT-05) (RESOLVED by 08-07-T1 and 08-08-T3)**  
    - What we know: Must support alternative trust mechanism for systems that can't sign. Common schemes: HMAC-SHA256 in `x-signature` of raw body; some use `t.nonce.body` concatenation.  
    - What's unclear: Exact scheme for Redmine (first external system) and how flexible connector config needs to be.  
    - Recommendation: Make signature verification strategy configurable per connector (e.g. `hmac-sha256-rawbody`, `hmac-sha256-ts-nonce-body`, `shared-secret-header`, or `ip-whitelist+mTLS` alternative). Record per connector (NOT-05).
 
-3. **Deep link format and binding**  
+3. **Deep link format and binding (RESOLVED by 08-07-T3)**  
    - What we know: Must be bound to original submitter (NOT-03); reuse existing link machinery.  
    - What's unclear: Is it a view/read link (already implemented) scoped to that user? Or notification-specific? Need to ensure link verification enforces user binding.  
    - Recommendation: Prefer reusing signed read/view links (LNK-05-06) — they already enforce permission and user binding. Generate link for that submission+user context.
 
-4. **Teams AgentApplication auth configuration**  
+4. **Teams AgentApplication auth configuration (RESOLVED by 08-06-T1)**  
    - What we know: Must call `authorizeJWT(AuthConfiguration)` (D-03); SDK doesn't supply middleware.  
    - What's unclear: Exact `AuthConfiguration` shape for Teams (clientId, tenantId, etc.) and how it integrates with Nest middleware.  
    - Recommendation: Follow MS Agents SDK auth guidance; implement as Nest guard/interceptor on `/teams/events` if needed, or configure in AgentApplication initialization.
