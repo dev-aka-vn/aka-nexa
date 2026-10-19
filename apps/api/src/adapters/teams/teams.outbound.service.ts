@@ -1,31 +1,58 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  AgentApplication,
   CloudAdapter,
-  MemoryStorage,
-  TurnState,
   loadAuthConfigFromEnv,
+  type AuthConfiguration,
 } from '@microsoft/agents-hosting';
 import type { OutboundMessage } from '@akane/contract';
+import { ConversationReferenceRepository } from '@akane/domain';
+
+export const TEAMS_CLOUD_ADAPTER = Symbol('TEAMS_CLOUD_ADAPTER');
 
 /**
- * Reads the retry-relevant status/code off an unknown thrown value.
- *
- * The Agents SDK and `undici` surface failures differently (`statusCode` on an
- * SDK error, `response.status` on a fetch-style error, a string `code` on a
- * socket error), so all three are inspected here instead of the caller
- * reaching into an `any`.
+ * Lazily built holder around the Agents SDK CloudAdapter. Construction does not
+ * touch the environment; the adapter and auth config are built on first delivery
+ * so a module without Teams env vars still boots.
  */
+export class TeamsCloudAdapterHolder {
+  private authConfig?: AuthConfiguration;
+  private adapter?: CloudAdapter;
+
+  get botAppId(): string {
+    if (!this.authConfig) {
+      this.authConfig = loadAuthConfigFromEnv();
+    }
+    return this.authConfig.clientId ?? '';
+  }
+
+  async ensureAdapter(): Promise<CloudAdapter> {
+    if (!this.adapter) {
+      this.authConfig = loadAuthConfigFromEnv();
+      this.adapter = new CloudAdapter(this.authConfig);
+    }
+    return this.adapter;
+  }
+
+  async continueConversation(
+    botAppId: string,
+    reference: unknown,
+    logic: (context: { sendActivity: (activity: unknown) => Promise<unknown> }) => Promise<void>,
+    isResponse?: boolean,
+  ): Promise<void> {
+    const adapter = await this.ensureAdapter();
+    const id = botAppId && botAppId.length > 0 ? botAppId : this.botAppId;
+    await adapter.continueConversation(id, reference as never, logic as never, isResponse as never);
+  }
+}
+
 function readErrorStatus(error: unknown): number | string | undefined {
   if (typeof error !== 'object' || error === null) {
     return undefined;
   }
-
   const candidate = error as { statusCode?: unknown; response?: unknown; code?: unknown };
   if (typeof candidate.statusCode === 'number' || typeof candidate.statusCode === 'string') {
     return candidate.statusCode;
   }
-
   const response = candidate.response;
   if (typeof response === 'object' && response !== null) {
     const status = (response as { status?: unknown }).status;
@@ -33,52 +60,62 @@ function readErrorStatus(error: unknown): number | string | undefined {
       return status;
     }
   }
-
   if (typeof candidate.code === 'string') {
     return candidate.code;
   }
-
   return undefined;
 }
 
-/**
- * Teams outbound delivery service (IM-10, IM-11).
- *
- * Delivers OutboundMessage instances via Microsoft 365 Agents SDK.
- * Kernel remains IM-agnostic: only contract types cross the boundary.
- * No Teams SDK types are exported from this adapter.
- */
 @Injectable()
 export class TeamsOutboundService {
-  private readonly agentApp: AgentApplication<TurnState>;
+  constructor(
+    private readonly convRefRepo: ConversationReferenceRepository,
+    @Inject(TEAMS_CLOUD_ADAPTER) private readonly adapter: {
+      continueConversation: (
+        botAppId: string,
+        reference: unknown,
+        logic: (context: { sendActivity: (activity: unknown) => Promise<unknown> }) => Promise<void>,
+      ) => Promise<void>;
+      botAppId?: string;
+    },
+  ) {}
 
-  constructor() {
-    this.agentApp = new AgentApplication<TurnState>({
-      storage: new MemoryStorage(),
-      adapter: new CloudAdapter(loadAuthConfigFromEnv()),
-    });
+  private getBotAppId(): string {
+    const holder = this.adapter as { botAppId?: string };
+    if (typeof holder.botAppId === 'string' && holder.botAppId.length > 0) {
+      return holder.botAppId;
+    }
+    try {
+      return loadAuthConfigFromEnv().clientId ?? '';
+    } catch {
+      return '';
+    }
   }
 
   async sendMessage(message: OutboundMessage): Promise<void> {
-    // Validate platform
     if (message.platform !== 'teams') {
       throw new Error(`Invalid platform for Teams outbound: ${message.platform}`);
     }
 
-    // Create a turn context for delivery
-    // In a real scenario, we'd use the conversation reference from the inbound event
-    // For now, we prepare for delivery - actual send would require conversation context
+    const key = ConversationReferenceRepository.key(message.channel_id, message.chat_user_id);
+    const ref = await this.convRefRepo.get(key);
+    if (!ref) {
+      throw new Error(
+        `No conversation reference for ${message.channel_id}/${message.chat_user_id}`,
+      );
+    }
+
+    const logic = async (context: { sendActivity: (activity: unknown) => Promise<unknown> }) => {
+      await context.sendActivity({ type: 'message', text: message.text });
+    };
+
     try {
-      // This is a foundation implementation; full delivery logic will be
-      // completed as part of worker outbound pipeline integration
-      // For tracer E2E and boundary enforcement, we validate and structure the call
-      await this.deliverToTeams(message);
+      await this.adapter.continueConversation(this.getBotAppId(), ref.reference, logic);
     } catch (error: unknown) {
-      // Map errors to retryable vs non-retryable per IM-05
       if (this.isRetryableError(error)) {
-        throw error; // Let BullMQ retry based on error semantics
+        throw error;
       }
-      throw error;
+      throw new Error(`Non-retryable Teams delivery error: ${String(error)}`);
     }
   }
 
@@ -86,22 +123,11 @@ export class TeamsOutboundService {
     if (message.platform !== 'teams') {
       throw new Error(`Invalid platform for Teams outbound: ${message.platform}`);
     }
-    await this.deliverToTeams(message);
-  }
-
-  private async deliverToTeams(message: OutboundMessage): Promise<void> {
-    // Thread continuity (IM-11) - maintain conversation context
-    // channel_id and chat_user_id provide the conversation context
-    // Actual activity send requires TurnContext with conversation reference
-    // Foundation implementation for tracer E2E
-    // In production, the worker/consumer will use this with proper conversation context
-    // extracted from identity mapping or stored conversation references
-    void message; // Acknowledge parameter for foundation
+    await this.sendMessage(message);
   }
 
   private isRetryableError(error: unknown): boolean {
     const status = readErrorStatus(error);
-    // Retry on network errors, timeouts, 429, 5xx per IM-05
     if (status === 429) return true;
     if (typeof status === 'number' && status >= 500) return true;
     if (status === 'ECONNRESET' || status === 'ETIMEDOUT' || status === 'ECONNABORTED') return true;
