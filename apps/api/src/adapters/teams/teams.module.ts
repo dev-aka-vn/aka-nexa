@@ -6,6 +6,6 @@ import { TeamsAuthGuard } from './teams-auth.guard.js';
 @Module({
   controllers: [TeamsController],
   providers: [TeamsOutboundService, TeamsAuthGuard],
-  exports: [TeamsOutboundService],
+  exports: [TeamsOutboundService, TeamsAuthGuard],
 })
 export class TeamsModule {}
