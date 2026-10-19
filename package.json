@@ -26,6 +26,9 @@
   "dependencies": {
     "@casl/ability": "^7.0.1",
     "@formio/js": "5.6.1",
+    "@microsoft/agents-hosting": "^1.9.1",
+    "@microsoft/agents-hosting-express": "^1.9.1",
+    "@microsoft/agents-hosting-extensions-msteams": "^1.9.1",
     "@nestjs/bullmq": "12.0.0",
     "@nestjs/common": "^12.1.2",
     "@nestjs/config": "^12.0.1",
