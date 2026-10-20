@@ -18,6 +18,7 @@ import {
 } from '@akane/platform';
 
 import { ReadModule } from './read/read.module.js';
+import { ThrottlerAppModule } from './common/throttler/throttler.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { AppBuilderModule } from './app-builder/app-builder.module.js';
@@ -87,6 +88,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     TeamsModule,
     SlackModule,
     ExternalWebhookModule,
+    ThrottlerAppModule.forRoot(),
   ],
   controllers: [HealthController],
   providers: [
