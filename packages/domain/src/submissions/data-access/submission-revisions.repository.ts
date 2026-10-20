@@ -130,4 +130,26 @@ export class SubmissionRevisionsRepository {
   async findByEditJti(jti: string): Promise<SubmissionRevisionDocument | null> {
     return this.collection.findOne({ edit_jti: jti });
   }
+
+  async purgeSubmissionBodies(realUserId: string, refs?: Set<string> | string[]): Promise<number> {
+    await this.ensureIndex();
+    const refSet = refs instanceof Set ? refs : new Set(refs ?? []);
+    // Resolve submission ids owned by the subject.
+    const submissionIds: string[] = [];
+    try {
+      const subs = await this.mongo.db().collection('submissions').find({ real_user_id: realUserId }).project({ _id: 1 }).toArray();
+      for (const s of subs) submissionIds.push(String((s as { _id: unknown })._id));
+    } catch {
+      // ignore
+    }
+    const or: Record<string, unknown>[] = [];
+    if (submissionIds.length > 0) or.push({ submission_id: { $in: submissionIds } });
+    or.push({ real_user_id: realUserId });
+    or.push({ actor_ref: { $in: Array.from(refSet.size ? refSet : [realUserId]) } });
+    or.push({ actor: { $in: Array.from(refSet.size ? refSet : [realUserId]) } });
+    const filter = or.length > 0 ? { $or: or } : {};
+    const result = await this.collection.updateMany(filter as never, { $set: { data: null, purged_at: new Date() } } as never);
+    return result.modifiedCount ?? 0;
+  }
+
 }
