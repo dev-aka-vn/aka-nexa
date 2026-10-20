@@ -74,8 +74,10 @@ const AUDIT_ENTRY_ALLOWLIST = new Set([
   'actor',
   'action',
   'target',
+  'app_id',
   'previous_state',
   'new_state',
+  'ip',
   'request_id',
 ]);
 
@@ -238,7 +240,7 @@ describe('audit browse (AUD-01, D-43, T-06-32)', () => {
     }
     const seeded = entries[2] as Record<string, unknown>;
     expect(seeded['actor']).toBe(OWNER);
-    expect(seeded['ip']).toBeUndefined();
+    expect(seeded['ip']).toBe('10.0.0.7');
     expect(seeded['unlisted_extra']).toBeUndefined();
 
     // The pagination envelope echoes the applied
