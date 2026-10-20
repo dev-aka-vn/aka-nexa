@@ -384,7 +384,14 @@ Plans:
   4. A load test at **1,000 concurrent users and 50 IM events/second** passes, and reports the **measured** Redis cost of the three-tier throttler rather than assuming it.
   5. Each of the seven named alert conditions fires in a test â€” including `submission_status{status="partial"}` and all decision providers unhealthy â€” and a runbook exists for each of the five named incidents.
 
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 09-01-PLAN.md — Durable audit store (Mongo `audit_entries`), single delete owner + guard test, retention sweep with self-audit entry, two-phase purge with terminal `purged` lifecycle, console archived/purged marking (AUD-03, AUD-08, AUD-09) — wave 1
+- [ ] 09-02-PLAN.md — Closed audit-entry shape with `*_ref` fields, `GET /audit` search + `ip`, JSONL export, quarterly access review, `erase-actor` CLI erasure (AUD-04, AUD-05, AUD-06, AUD-07) — wave 2
+- [ ] 09-03-PLAN.md — Metric registry + OBS-03 instruments + five incident runbooks (OBS-03, OBS-10) — wave 2
+- [ ] 09-04-PLAN.md — Eight alert rules with promtool fire/no-fire tests, Grafana dashboards, log retention (OBS-06, OBS-07, OBS-09) — wave 3
+- [ ] 09-06-PLAN.md — WINDOW 7 key rotation: wrapped-DEK envelope, `kid` keyring, zero-downtime rotation CLI + runbook (OBS-10) — wave 3
+- [ ] 09-05-PLAN.md — Three-tier throttler over hand-written Redis storage, k6 load test, measured Redis commandstats cost (OBS-08) — wave 4
 **UI hint**: yes
 **Notes**: `AUD-04` is the concrete encoding of conflict #2 â€” `actor_ref` is tombstoneable precisely because Phase 1 decoupled the trace ID from `submission_id`. Conflict #3's narrowed erasure promise is delivered *here* as the combination of Phase 1's log allowlist, `AUD-04`'s tombstone, and `AUD-08`'s defined purge windows. **Do not promise full erasure of the audit record**, and do not present the "legitimate interest" framing as settled â€” that is a legal question for counsel, not a research question. Zero-downtime rolling deploys and zero-downtime key rotation are verified here.
 
