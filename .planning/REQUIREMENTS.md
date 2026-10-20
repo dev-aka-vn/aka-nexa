@@ -276,10 +276,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **OBS-03**: JEV latency and confidence, RBAC resolution latency, token issue/consume, connector success/failure, queue depth and **queue age**, form load time, and active IM connections are all exported as metrics
 - [x] **OBS-04**: `submission_status{status="partial"}` is exported, because a partial hybrid submission is otherwise invisible
 - [x] **OBS-05**: `routing_share{app_id}` is exported so routing traffic theft is detectable
-- [ ] **OBS-06**: Alerts fire on connector failure >5% over 5 min, token consume failure >10/min, average decision confidence <0.6 over 10 min, DLQ depth >50, Redis memory >80%, MongoDB replication lag >5 s, and all decision providers unhealthy
-- [ ] **OBS-07**: Logs are retained 30 days hot (searchable) and 1 year cold
+- [x] **OBS-06**: Alerts fire on connector failure >5% over 5 min, token consume failure >10/min, average decision confidence <0.6 over 10 min, DLQ depth >50, Redis memory >80%, MongoDB replication lag >5 s, and all decision providers unhealthy
+- [x] **OBS-07**: Logs are retained 30 days hot (searchable) and 1 year cold
 - [ ] **OBS-08**: A load test demonstrates 1,000 concurrent users and 50 IM events/sec, and measures the 3-tier throttler's Redis cost rather than assuming it
-- [ ] **OBS-09**: Dashboards show active users, submissions/min, decision accuracy, and connector health
+- [x] **OBS-09**: Dashboards show active users, submissions/min, decision accuracy, and connector health
 - [ ] **OBS-10**: Runbooks exist for decision-provider outage, connector timeout spike, Redis OOM, IM webhook failure, and double-submission reports
 
 ### IM Adapters
@@ -552,10 +552,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | AUD-08 | Phase 9 | Complete |
 | AUD-09 | Phase 9 | Complete |
 | OBS-03 | Phase 9 | Pending |
-| OBS-06 | Phase 9 | Pending |
-| OBS-07 | Phase 9 | Pending |
+| OBS-06 | Phase 9 | Complete |
+| OBS-07 | Phase 9 | Complete |
 | OBS-08 | Phase 9 | Pending |
-| OBS-09 | Phase 9 | Pending |
+| OBS-09 | Phase 9 | Complete |
 | OBS-10 | Phase 9 | Pending |
 
 **Phase distribution:**
