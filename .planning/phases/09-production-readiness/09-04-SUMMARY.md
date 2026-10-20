@@ -1,3 +1,51 @@
+---
+phase: 09
+plan: 04
+status: complete
+subsystem: observability
+tags: [prometheus, grafana, alerting, log-retention]
+requires:
+  - phase: 09-03
+    provides: metric registry and runbooks
+provides:
+  - eight alert rules
+  - two dashboards
+  - log retention deploy value
+affects: []
+tech-stack:
+  added: []
+  patterns: [promtool test rules, dashboard-as-code]
+key-files:
+  created:
+    - observability/prometheus/rules/connector.rules.yml
+    - observability/prometheus/rules/tokens.rules.yml
+    - observability/prometheus/rules/decision.rules.yml
+    - observability/prometheus/rules/queue.rules.yml
+    - observability/prometheus/rules/infrastructure.rules.yml
+    - observability/prometheus/rules/submissions.rules.yml
+    - observability/prometheus/tests/rules.test.yml
+    - observability/prometheus/tests/rule-names.spec.ts
+    - observability/grafana/dashboards/platform-health.json
+    - observability/grafana/dashboards/decision-and-connectors.json
+    - observability/grafana/dashboards/dashboard-queries.spec.ts
+    - observability/deploy/log-retention.yml
+    - observability/deploy/log-retention.spec.ts
+  modified:
+    - .github/workflows/ci.yml
+    - vitest.config.mts
+decisions:
+  - "Pinned prom/prometheus:v3.7.0 for the promtool CI gate."
+  - "WINDOW 5 left open; msg removal not attempted."
+  - "Confidence distribution stands in for decision accuracy (Q3)."
+metrics:
+  duration: 45
+  completed: 2026-10-20
+actuals:
+  tokens: 98000
+  tasks: 3
+  commits: 4
+---
+
 # Phase 09 Plan 04: Production Readiness — Alerts, Dashboards, Log Retention Summary
 
 **Eight alert rules proven by promtool, two dashboards validated against the metric registry, and a guarded log-retention deploy value.**
