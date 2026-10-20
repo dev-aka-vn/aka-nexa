@@ -1,0 +1,2 @@
+hot_retention_days: 30
+cold_retention_days: 365
