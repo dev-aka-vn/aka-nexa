@@ -1,4 +1,5 @@
 import type { ToolDescriptor } from '@akane/contract';
+import { createAclMetricsRecorder } from '../acl/acl.metrics.js';
 import type { AppFormKind, ReadLinkAction } from '@akane/contract';
 
 /**
@@ -78,7 +79,13 @@ export class PublishedAppLoader {
     const out: AuthorizedApp[] = [];
     for (const app of this.catalog) {
       if (app.status !== 'published') continue;
-      if (!(await this.authorize(app.id, realUserId))) continue;
+      const aclStartedAt = Date.now();
+      const allowed = await this.authorize(app.id, realUserId);
+      createAclMetricsRecorder().recordResolution({
+        outcome: allowed ? 'allowed' : 'denied',
+        durationMs: Date.now() - aclStartedAt,
+      });
+      if (!allowed) continue;
       // Form projection runs AFTER the RBAC filter (S8).
       for (const form of app.forms ?? []) {
         // Per-form tool, id scoped to the form.
