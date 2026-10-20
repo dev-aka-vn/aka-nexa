@@ -1,6 +1,9 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
+import { MongoService } from '@akane/platform';
+import { migrateAppForms } from '@akane/domain';
 import { otelBootstrapConfigFromEnv, startOtel } from '@akane/platform/otel';
 
 /**
@@ -42,6 +45,18 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // Best-effort forms migration (D-11) — the worker reads
+  // published definitions for routing, so it must tolerate
+  // and self-heal an un-migrated database. The migration is
+  // idempotent, so running it in both processes is safe.
+  const bootstrap = new Logger('Bootstrap');
+  try {
+    const migrated = await migrateAppForms(app.get(MongoService));
+    bootstrap.log(`forms migration (D-11) complete: ${migrated} document(s)`);
+  } catch (error) {
+    bootstrap.warn(`forms migration (D-11) deferred: ${String(error)}`);
+  }
 
   await app.listen(app.get(ConfigService).getOrThrow<number>('PORT'));
 }

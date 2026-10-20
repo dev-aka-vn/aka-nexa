@@ -42,7 +42,6 @@ import {
 export const APP_SECTION_PERMISSIONS = [
   'general',
   'metadata',
-  'triggers',
   'jev-behavior',
   'role-assignments',
   'roles-permissions',
@@ -162,8 +161,19 @@ export function createBuilderAbility(
         // Custom roles: exactly their granted subset
         // (BLD-03). A role with no grant operates
         // nothing.
+        // Unknown (retired) grants — e.g. a stored 'triggers'
+        // grant from the 13-section vocabulary — are a
+        // silent no-op: they grant no ability on any of
+        // the live sections (T-07-05). Filtered here so a
+        // stale grant cannot resurrect a retired subject.
         for (const section of assignment.permissions ?? []) {
-          can('operate', section);
+          if (
+            (APP_SECTION_PERMISSIONS as readonly string[]).includes(
+              section,
+            )
+          ) {
+            can('operate', section);
+          }
         }
     }
   }

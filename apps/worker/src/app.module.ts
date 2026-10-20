@@ -27,6 +27,7 @@ import {
   AuditRepository,
   ConnectorRateLimiter,
   ConnectorRegistry,
+  NotificationsModule,
   OutboxRepository,
   SubmissionRevisionsRepository,
   TransferRequestRepository,
@@ -52,6 +53,14 @@ import {
   TransferAutoCancelProcessor,
   transferAutoCancelWorkersProvider,
 } from './processors/transfer-auto-cancel.processor.js';
+import {
+  NotificationProcessor,
+} from './processors/notification.processor.js';
+import {
+  TeamsDeliveryService,
+  TEAMS_CLOUD_ADAPTER,
+  TeamsCloudAdapterHolder,
+} from './adapters/teams/teams-delivery.service.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const WORKER_READINESS_KEY = 'bullmq_workers';
@@ -68,6 +77,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     CryptoModule,
     MongoModule,
     QueueModule,
+    NotificationsModule,
     TerminusModule.forRoot(),
     MetricsModule,
   ],
@@ -84,6 +94,12 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     reconciliationWorkersProvider,
     TransferAutoCancelProcessor,
     transferAutoCancelWorkersProvider,
+    NotificationProcessor,
+    TeamsDeliveryService,
+    {
+      provide: TEAMS_CLOUD_ADAPTER,
+      useFactory: () => new TeamsCloudAdapterHolder(),
+    },
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
@@ -128,14 +144,15 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
         delivery: ConnectorDeliveryProcessor,
         reconciliation: ReconciliationProcessor,
         transferAutoCancel: TransferAutoCancelProcessor,
-      ) => [platform, relay, delivery, reconciliation, transferAutoCancel],
+        notification: NotificationProcessor,
+      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,

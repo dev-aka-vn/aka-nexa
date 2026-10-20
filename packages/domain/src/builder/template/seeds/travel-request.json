@@ -6,21 +6,27 @@
   "tags": ["travel", "all-staff"],
   "data_mode": "internal",
   "connector_ref": null,
-  "form_schema": {
-    "components": [
-      { "type": "textfield", "key": "destination", "label": "Destination", "input": true },
-      { "type": "date", "key": "start_date", "label": "Departure", "input": true },
-      { "type": "date", "key": "end_date", "label": "Return", "input": true },
-      { "type": "textarea", "key": "purpose", "label": "Purpose", "input": true }
-    ]
-  },
+  "forms": [
+    {
+      "form_id": "submit",
+      "kind": "submit",
+      "schema": {
+        "components": [
+          { "type": "textfield", "key": "destination", "label": "Destination", "input": true },
+          { "type": "date", "key": "start_date", "label": "Departure", "input": true },
+          { "type": "date", "key": "end_date", "label": "Return", "input": true },
+          { "type": "textarea", "key": "purpose", "label": "Purpose", "input": true }
+        ]
+      },
+      "form_version": 1,
+      "triggers": { "intents": [], "aliases": ["/travel"], "threshold": 0.8 },
+      "config": {}
+    }
+  ],
   "roles": {
     "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
     "admin": ["create", "edit", "publish", "assign-roles"],
     "manager": ["submit", "approve", "view"],
     "user": ["submit", "view"]
-  },
-  "triggers": [
-    { "id": "travel", "type": "slash", "command": "/travel", "description": "Request travel" }
-  ]
+  }
 }

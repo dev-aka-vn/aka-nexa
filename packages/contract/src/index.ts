@@ -172,6 +172,29 @@ export {
   UpdateSectionSchema,
   UpdateSectionInput,
 } from './builder/app-definition.contract.js';
+// Form-set contract (D-01/D-02/D-09) — the app's `forms[]`
+// element, its kind↔action bijection and its trigger.
+// Beside the frozen contracts, never modifying them.
+export {
+  AppFormKindSchema,
+  FORM_KIND_TO_ACTION,
+  formKindForAction,
+  FormTriggerSchema,
+  SubmitFormConfigSchema,
+  ShowFormConfigSchema,
+  ListFormConfigSchema,
+  EditFormConfigSchema,
+  AppFormConfigSchema,
+  AppFormElementSchema,
+} from './builder/forms.contract.js';
+export type {
+  AppFormKind,
+  FormTrigger,
+  AppFormConfig,
+  AppFormElement,
+  AppFormElementInput,
+} from './builder/forms.contract.js';
+
 export {
   ChangeSummaryRowSchema,
   type ChangeSummaryRow,

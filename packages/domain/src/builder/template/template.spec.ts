@@ -42,7 +42,11 @@ import {
   type AuditEntry,
   type AppDefinitionDocument,
 } from '../../index.js';
-import { TemplateSeed, TEMPLATE_SEEDS } from './template.seed.js';
+import {
+  TemplateSeed,
+  TEMPLATE_SEEDS,
+  TemplateSeedSchema,
+} from './template.seed.js';
 import { PLATFORM_TAGS } from './tag-set.js';
 import type { MongoService } from '@akane/platform';
 
@@ -352,6 +356,58 @@ describe('template gallery (D-105..D-108)', () => {
         expect(JSON.stringify(record)).not.toMatch(/credential|secret/i);
       }
     });
+
+    it('all ten seeds parse the strict seed contract carrying forms[] (D-09)', () => {
+      expect(TEMPLATE_SEEDS).toHaveLength(10);
+      for (const seed of TEMPLATE_SEEDS) {
+        const parsed = TemplateSeedSchema.safeParse(seed);
+        expect(parsed.success).toBe(true);
+      }
+    });
+
+    it('every seed carries a submit form with its folded trigger (D-06, D-11)', async () => {
+      const { templates } = setup();
+      await templates.load();
+
+      const loaded = await templates.listTemplates();
+      for (const record of loaded) {
+        const submit = record.forms.find((form) => form.kind === 'submit')!;
+        expect(submit).toBeDefined();
+        expect(submit.kind).toBe('submit');
+        expect(submit.form_id).toBe('submit');
+        expect(submit.form_version).toBe(1);
+        expect(submit.config).toEqual({});
+        // The retired slash row folded into the form's trigger:
+        // its `command` became an alias (D-06/D-11).
+        expect(submit.triggers?.threshold).toBe(0.8);
+        expect(submit.triggers?.aliases.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('rejects a seed still carrying the retired form_schema + triggers shape (Pitfall 6, T-07-02)', () => {
+      const legacySeed: Record<string, unknown> = {
+        template_id: 'legacy-seed',
+        name: 'Legacy Seed',
+        description: 'A pre-D-09 seed shape',
+        domain: 'legacy',
+        tags: ['time-off'],
+        data_mode: 'internal',
+        connector_ref: null,
+        form_schema: { components: [] },
+        triggers: [],
+        roles: {},
+      };
+
+      // `.strict()`: the stale key is an unrecognized key, so
+      // the seed is refused at load rather than silently loaded.
+      expect(TemplateSeedSchema.safeParse(legacySeed).success).toBe(false);
+
+      const migrated = { ...legacySeed };
+      delete migrated['form_schema'];
+      delete migrated['triggers'];
+      migrated['forms'] = [];
+      expect(TemplateSeedSchema.safeParse(migrated).success).toBe(true);
+    });
   });
 
   describe('the D-108 fork', () => {
@@ -377,14 +433,13 @@ describe('template gallery (D-105..D-108)', () => {
       expect(forked.createdBy).toBe(OWNER);
       expect(forked.data_mode).toBe('internal');
       // The template's content traveled with the fork...
-      expect(forked.form_schema).toEqual(template.form_schema);
-      expect(forked.triggers).toEqual(template.triggers);
+      expect(forked.forms).toEqual(template.forms);
       expect(forked.roles).toEqual(template.roles);
       expect(forked.tags).toEqual(template.tags);
 
       // ...as a deep copy, not a reference — mutating the
-      // fork's schema cannot reach the platform template.
-      expect(forked.form_schema).not.toBe(template.form_schema);
+      // fork's form set cannot reach the platform template.
+      expect(forked.forms).not.toBe(template.forms);
 
       // D-108: no origin-reference field, no provenance, no
       // update-subscription.

@@ -69,16 +69,21 @@ async function call(
 }
 
 /** The candidate the publish-modal sections build out. */
-const TRIGGERS_SECTION = {
-  section: 'triggers',
+const FORMS_TRIGGER_SECTION = {
+  section: 'forms',
   patch: {
-    triggers: [
+    forms: [
       {
-        id: 'expense',
-        type: 'slash',
-        command: '/expense',
-        intents: ['expense report'],
-        aliases: ['expense'],
+        form_id: 'submit',
+        kind: 'submit',
+        schema: null,
+        form_version: 1,
+        triggers: {
+          intents: ['expense report'],
+          aliases: ['expense'],
+          threshold: 0.8,
+        },
+        config: {},
       },
     ],
   },
@@ -86,7 +91,22 @@ const TRIGGERS_SECTION = {
 
 const FORMS_SECTION = {
   section: 'forms',
-  patch: { form_schema: { components: [{ type: 'text', key: 'vendor' }] } },
+  patch: {
+    forms: [
+      {
+        form_id: 'submit',
+        kind: 'submit',
+        schema: { components: [{ type: 'text', key: 'vendor' }] },
+        form_version: 1,
+        triggers: {
+          intents: ['expense report'],
+          aliases: ['expense'],
+          threshold: 0.8,
+        },
+        config: {},
+      },
+    ],
+  },
 };
 
 const DATA_ROUTING_SECTION = {
@@ -159,9 +179,10 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     // section edits land before the publish entry.
     const before = await audit.findAll();
 
-    // The wizard's sections: triggers, forms, data-routing.
+    // The wizard's sections: forms (trigger), forms (schema),
+    // data-routing.
     for (const section of [
-      TRIGGERS_SECTION,
+      FORMS_TRIGGER_SECTION,
       FORMS_SECTION,
       DATA_ROUTING_SECTION,
     ]) {
@@ -298,15 +319,20 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
       'PATCH',
       `${baseUrl}/apps/competitor-app`,
       {
-        section: 'triggers',
+        section: 'forms',
         patch: {
-          triggers: [
+          forms: [
             {
-              id: 'comp',
-              type: 'slash',
-              command: '/comp',
-              intents: ['expense report', 'expense'],
-              aliases: ['expense report', 'expense'],
+              form_id: 'submit',
+              kind: 'submit',
+              schema: null,
+              form_version: 1,
+              triggers: {
+                intents: ['expense report', 'expense'],
+                aliases: ['expense report', 'expense'],
+                threshold: 0.8,
+              },
+              config: {},
             },
           ],
         },
@@ -337,7 +363,7 @@ describe('POST /apps/:id/publish (APP-07, APP-08, BLD-06)', () => {
     const candidateTriggers = await call(
       'PATCH',
       `${baseUrl}/apps/gate-candidate`,
-      TRIGGERS_SECTION,
+      FORMS_TRIGGER_SECTION,
       OWNER,
     );
     expect(candidateTriggers.status).toBe(200);

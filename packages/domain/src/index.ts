@@ -113,11 +113,12 @@ export type {
   OutboundState,
   SubmissionRevisionDocument,
 } from './submissions/data-access/submission-revisions.repository.js';
-export { PublishedAppLoader } from './decision/published-app-loader.js';
+export { PublishedAppLoader, appIdOfToolId } from './decision/published-app-loader.js';
 export type {
   AuthorizedApp,
   AuthorizeApp,
   PublishedApp,
+  PublishedAppForm,
 } from './decision/published-app-loader.js';
 export { RuleBasedProvider } from './decision/rule-based.provider.js';
 export { RoutingOrchestrator } from './decision/routing-orchestrator.js';
@@ -146,6 +147,19 @@ export { DataRouterService } from './datarouter/data-router.service.js';
 export type { RouteSubmissionInput, RouteSubmissionResult, RouteSubmissionStatus, RoutingMode, RouteEditInput } from './datarouter/data-router.service.js';
 export { OutboxRepository } from './datarouter/data-access/outbox.repository.js';
 export { ConnectorRegistry } from './connectors/connector.registry.js';
+export { ConnectorsModule } from './connectors/connectors.module.js';
+// Inbound adapters are intentionally NOT re-exported from this barrel: the
+// entrypoint-drift gate forbids the worker from reaching any
+// adapters/<name>/inbound/ path. api imports them via the @akane/domain
+// subpath (see apps/api/src/adapters/teams/*).
+export {
+  ConversationReferenceRepository,
+  type ConversationReferenceRecord,
+  type ConversationReferenceInput,
+} from './notifications/data-access/conversation-reference.repository.js';
+export { NotificationAssemblerService } from './notifications/notification-assembler.service.js';
+export type { NotificationAssembleResult } from './notifications/notification-assembler.service.js';
+export { NotificationsModule } from './notifications/notifications.module.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,
@@ -205,6 +219,11 @@ export {
 export { RepositorySavedQueryLookup } from './builder/saved-query.repository.js';
 export { backfillSavedQueries } from './builder/saved-query.backfill.js';
 export {
+  migrateAppForms,
+  transformLegacyApp,
+  foldLegacyTriggers,
+} from './builder/migration/forms-migration.js';
+export {
   PUBLISH_SHARE_DROP_THRESHOLD_POINTS,
   DESCRIPTION_COLLISION_JACCARD_THRESHOLD,
   PublishGateService,
@@ -242,6 +261,12 @@ export {
   ConnectorCredentialsRepository,
   type ConnectorCredential,
 } from './connectors/data-access/connector-credentials.repository.js';
+export {
+  ConnectorTrustRepository,
+  type ConnectorTrustRecord,
+  type ConnectorTrustMechanism,
+  type ConnectorTrustInput,
+} from './connectors/data-access/connector-trust.repository.js';
 export { RedmineAdapter } from './connectors/redmine.adapter.js';
 export { RestCore } from './connectors/rest-core.js';
 // Connector requests (BLD-10, D-97..D-100) —
@@ -285,3 +310,8 @@ export {
   TransferRequestService,
   type TransferActor,
 } from './acl/transfer-request.service.js';
+export {
+  buildFormsFixture,
+  buildLegacyShapeDocument,
+  type LegacyShapeDocument,
+} from './builder/forms-fixture.js';

@@ -58,7 +58,8 @@ import type {
 import { BuilderError } from '../app-lifecycle.js';
 import type { AppDefinitionRepository } from '../data-access/app-definition.repository.js';
 import { AuditRepository } from '../../audit/audit.repository.js';
-import { AppIdSchema } from '@akane/contract';
+import { AppFormElementSchema, AppIdSchema } from '@akane/contract';
+import type { AppFormElement } from '@akane/contract';
 import type { MongoService } from '@akane/platform';
 
 import { assertCuratedTags } from './tag-set.js';
@@ -104,9 +105,9 @@ export interface TemplateSeedInput {
   readonly tags: readonly string[];
   readonly data_mode: AppDataMode;
   readonly connector_ref: string | null;
-  readonly form_schema: Record<string, unknown>;
+  /** The seed's form set (D-09) — one array is the whole form set. */
+  readonly forms: readonly AppFormElement[];
   readonly roles: Record<string, unknown>;
-  readonly triggers: readonly Record<string, unknown>[];
 }
 
 /**
@@ -129,7 +130,7 @@ export interface TemplateRecord extends TemplateSeedInput {
  * say — is rejected at load rather than stored
  * (T-06-18).
  */
-const TemplateSeedSchema = z
+export const TemplateSeedSchema = z
   .object({
     template_id: AppIdSchema,
     name: z.string().min(1).max(200),
@@ -139,9 +140,11 @@ const TemplateSeedSchema = z
     tags: z.array(z.string()).min(1),
     data_mode: z.enum(['internal', 'external', 'hybrid']),
     connector_ref: z.string().min(1).nullable().default(null),
-    form_schema: z.record(z.string(), z.unknown()),
+    // The form set (D-09/D-11): `strict()` per element so a
+    // stale seed still carrying `form_schema` is rejected at
+    // load rather than silently loading (T-07-02).
+    forms: z.array(AppFormElementSchema),
     roles: z.record(z.string(), z.unknown()),
-    triggers: z.array(z.record(z.string(), z.unknown())),
   })
   .strict()
   .refine(
@@ -155,7 +158,104 @@ const TemplateSeedSchema = z
       message:
         'external/hybrid templates carry a connector_ref; internal templates carry none',
     },
-  );
+  )
+  .superRefine((seed, ctx) => {
+    // D-02: at most one form per kind per app.
+    const seenKinds = new Set<string>();
+    seed.forms.forEach((form, index) => {
+      if (seenKinds.has(form.kind)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate form kind: ${form.kind}`,
+          path: ['forms', index, 'kind'],
+        });
+      }
+      seenKinds.add(form.kind);
+    });
+
+    const submitIndex = seed.forms.findIndex(
+      (form) => form.kind === 'submit',
+    );
+    const submitForm =
+      submitIndex >= 0 ? seed.forms[submitIndex] : undefined;
+
+    // A submit form without a schema is rejected.
+    if (submitForm !== undefined && submitForm.schema === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'submit form requires a schema',
+        path: ['forms', submitIndex, 'schema'],
+      });
+    }
+
+    // Collect the submit schema's component keys (one level).
+    const submitKeys = new Set<string>();
+    if (
+      submitForm !== undefined &&
+      submitForm.schema !== null &&
+      typeof submitForm.schema === 'object'
+    ) {
+      const components = (submitForm.schema as { components?: unknown })
+        .components;
+      if (Array.isArray(components)) {
+        for (const component of components) {
+          if (
+            component !== null &&
+            typeof component === 'object' &&
+            typeof (component as { key?: unknown }).key === 'string'
+          ) {
+            submitKeys.add((component as { key: string }).key);
+          }
+        }
+      }
+    }
+
+    // D-03: every show form's fields must be submit-schema keys.
+    seed.forms.forEach((form, index) => {
+      if (form.kind !== 'show') return;
+      const fields = form.config?.fields ?? [];
+      for (const field of fields) {
+        if (!submitKeys.has(field)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `show form field not in submit schema: ${field}`,
+            path: ['forms', index, 'config', 'fields'],
+          });
+        }
+      }
+      // If a show form exists but no submit schema to derive
+      // keys from, the subset rule cannot be satisfied.
+      if (submitForm === undefined || submitForm.schema === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'show form requires a submit form with a schema',
+          path: ['forms', index, 'kind'],
+        });
+      }
+    });
+
+    // D-04: list forms carry non-empty query_id + columns.
+    // (ListFormConfigSchema already enforces min(1); repeat here
+    // so the rejection is attributed to the seed's form.)
+    seed.forms.forEach((form, index) => {
+      if (form.kind !== 'list') return;
+      const config = form.config as { query_id?: string; columns?: string[] };
+      if (typeof config.query_id !== 'string' || config.query_id.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'list form requires a non-empty query_id',
+          path: ['forms', index, 'config', 'query_id'],
+        });
+      }
+      if (!Array.isArray(config.columns) || config.columns.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'list form requires non-empty columns',
+          path: ['forms', index, 'config', 'columns'],
+        });
+      }
+    });
+  });
 
 /**
  * The ten D-106 seed files: the eight internal
@@ -309,10 +409,10 @@ export class TemplateSeed {
     // mutated stored record cannot smuggle one in.
     assertCuratedTags(template.tags);
 
-    // The deep copy: the fork's schema, triggers and
-    // roles share no reference with the platform
-    // record, so no later template write can reach
-    // an existing fork.
+    // The deep copy: the fork's forms and roles share no
+    // reference with the platform record, so no later
+    // template write can reach an existing fork (D-108 —
+    // `forms` carried wholesale, no origin-reference field).
     const draft = await this.definitions.createDraft({
       app_id: appId,
       name: template.name,
@@ -320,8 +420,7 @@ export class TemplateSeed {
       createdBy: ownerUserId,
       data_mode: template.data_mode,
       tags: [...template.tags],
-      form_schema: structuredClone(template.form_schema),
-      triggers: structuredClone(template.triggers),
+      forms: structuredClone(template.forms) as AppFormElement[],
       roles: structuredClone(template.roles),
     });
 

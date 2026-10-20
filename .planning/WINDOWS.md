@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 15
 waived_count: 1
 fixed_count: 10
-total_count: 25
-last_updated: 2026-10-12T22:02:15.751Z
+total_count: 26
+last_updated: 2026-10-19T12:15:00.000Z
 ---
 
 # Broken Windows Ledger
@@ -40,3 +40,4 @@ last_updated: 2026-10-12T22:02:15.751Z
 | 23 | 06 | stub | apps/worker/src/processors/otp-delivery.service.ts |  | OtpDeliveryService logs delivery only; live Slack leg is the manual-verify item (06-VALIDATION.md) | open |  | 2026-10-12T06:20:41.628Z |  |
 | 24 | 06 | stub | apps/app-builder/src/settings/SettingsPage.tsx |  | 06-08: Settings page is an intentional read-only stub per D-109 — names the deferred platform-admin knobs (JEV chain, decision cache, circuit breaker) and renders no inputs; the deliverable itself, ships with deployment platform configuration | open |  | 2026-10-12T22:01:23.167Z |  |
 | 25 | 06 | deviation | apps/app-builder/src/App.tsx |  | 06-08: shell header row wraps at narrow widths (flexWrap) — the 8-link nav's min-content width exceeded the 768px tablet layout viewport, widening the document and breaking Playwright click hit-testing on wide tables (13 tablet e2e timeouts); proven causal by geometry probe, fixed, suite green | open |  | 2026-10-12T22:02:15.751Z |  |
+| 26 | 08 | deviation | apps/api/src/app.module.ts |  | 08-05: pre-existing orphan failure in tooling/entrypoint-drift.spec.ts — the api main.ts import closure never loads `adapters/slack/slack.module.ts`, `adapters/slack/slack-webhook.controller.ts`, `adapters/slack/slack-commands.controller.ts`, `common/filters/link-error.filter.ts`, `common/guards/permission.guard.ts` (SlackModule is not registered in app.module.ts; nothing imports the two common/ files). Proven pre-existing: at HEAD the spec reports 2 failed / 16 passed, after the 08-05 build-gate fix 1 failed / 17 passed — 08-05 removed one failure and created none. Outside 08-05's 6-file scope; wiring the orphans is a composition-root change needing a dedicated owner. See .planning/phases/08-multi-im-expansion-two-way-sync/deferred-items.md D-08-05-1. NOTE: this row was appended by hand because the current `windows append` verb requires a JSON entries block while this ledger is in the legacy table format. | open |  | 2026-10-19T12:15:00.000Z |  |

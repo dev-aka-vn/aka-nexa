@@ -46,6 +46,7 @@ const CATALOG: PublishedApp[] = [
     intents: ['request leave'],
     aliases: ['request leave', 'leave request'],
     threshold: 0.8,
+    forms: [],
     status: 'published',
   },
 ];

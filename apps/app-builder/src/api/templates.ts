@@ -50,10 +50,9 @@ export type TemplateDataMode = 'internal' | 'external' | 'hybrid';
 
 /**
  * One served template — the gallery card's
- * fields. The seed's `form_schema`,
- * `roles`, and `triggers` ride along in the
- * payload but are not read here (the fork
- * endpoint owns them).
+ * fields. The seed's `forms`, `roles`, and
+ * trigger set ride along in the payload but are
+ * not read here (the fork endpoint owns them).
  */
 export interface TemplateRecord {
   readonly template_id: string;

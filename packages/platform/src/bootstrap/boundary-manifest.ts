@@ -35,6 +35,13 @@ export interface BoundaryManifest {
    * symbol token matches by identity and a class token matches by reference.
    */
   readonly forbidden: ReadonlyArray<InjectionToken>;
+  /**
+   * D-37 named exception list: tokens that appear in `forbidden` but are
+   * deliberately resolved in this composition root. A token present in BOTH
+   * lists is a reviewed, named exception — not a silent bypass of the forbidden
+   * list. Optional so worker and scheduler manifests stay untouched.
+   */
+  readonly allowed?: ReadonlyArray<InjectionToken>;
 }
 
 /**

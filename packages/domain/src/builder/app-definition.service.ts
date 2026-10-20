@@ -1,7 +1,9 @@
 import {
+  AppFormElementSchema,
   CreateAppDraftSchema,
   DeprecateAppSchema,
   UpdateSectionSchema,
+  type AppFormElement,
   type CreateAppDraftInput,
   type PublishGateResult,
   type SectionName,
@@ -80,6 +82,75 @@ export class AppDefinitionValidationError extends BuilderError {
   }
 }
 
+/**
+ * Validate a `forms` section patch and derive each element's
+ * `form_version` per D-10 (APP-11, FRM-14).
+ *
+ * Every element is parsed `.strict()` — an unknown key is refused
+ * with the field named, and a `kind` outside `submit | list |
+ * show | edit` is refused (T-07-01). Two elements of the same
+ * `kind` are refused with the duplicated kind named (D-02).
+ *
+ * A form's `form_version` is the app version at which its
+ * `{schema, config}` content last changed: unchanged content keeps
+ * the stored `form_version`, changed content takes the incoming
+ * app version. Patching one form therefore leaves every other
+ * form's `form_version` unmoved (SC#1).
+ */
+export function deriveFormVersions(
+  patch: unknown,
+  current: AppDefinitionDocument | null,
+): AppFormElement[] {
+  if (!Array.isArray(patch)) {
+    throw new AppDefinitionValidationError([
+      {
+        code: 'custom',
+        path: ['forms'],
+        message: 'forms must be an array of form elements',
+      },
+    ]);
+  }
+  const seenKinds = new Set<string>();
+  return patch.map((element, index) => {
+    const parsed = AppFormElementSchema.safeParse(element);
+    if (!parsed.success) {
+      throw new AppDefinitionValidationError(parsed.error.issues);
+    }
+    const form = parsed.data;
+    if (seenKinds.has(form.kind)) {
+      throw new AppDefinitionValidationError([
+        {
+          code: 'custom',
+          path: ['forms', index, 'kind'],
+          message: `duplicate form kind: ${form.kind}`,
+        },
+      ]);
+    }
+    seenKinds.add(form.kind);
+
+    if (current === null) {
+      return form;
+    }
+    const existing = current.forms.find(
+      (candidate) => candidate.kind === form.kind,
+    );
+    if (existing === undefined) {
+      return form;
+    }
+    const unchanged =
+      canonicalFormContent(existing) === canonicalFormContent(form);
+    return {
+      ...form,
+      form_version: unchanged ? existing.form_version : current.version + 1,
+    };
+  });
+}
+
+/** The canonical `{schema, config}` content a form's version tracks (D-10). */
+function canonicalFormContent(form: AppFormElement): string {
+  return JSON.stringify({ schema: form.schema, config: form.config });
+}
+
 export class AppDefinitionService {
   constructor(
     private readonly repository: AppDefinitionRepository,
@@ -146,11 +217,20 @@ export class AppDefinitionService {
       assertCuratedTags(parsed.data.patch['tags']);
     }
 
+    let patchToApply = parsed.data.patch;
+    if (parsed.data.section === 'forms' && 'forms' in parsed.data.patch) {
+      const current = await this.repository.findByAppId(appId);
+      patchToApply = {
+        forms: deriveFormVersions(parsed.data.patch['forms'], current),
+      };
+    }
+
     const updated = await this.repository.updateSection(
       appId,
       parsed.data.section,
-      parsed.data.patch,
-    );    if (updated === null) {
+      patchToApply,
+    );
+    if (updated === null) {
       throw new AppNotFoundError(appId);
     }
 
@@ -307,21 +387,6 @@ export class AppDefinitionService {
       throw new AppNotFoundError(appId);
     }
     AppLifecycle.assertAcceptsSubmissions(appId, definition.lifecycle);
-  }
-
-  /**
-   * The trigger-registration seam's guard (APP-05): the
-   * path that activates an app's declared
-   * triggers/slash commands calls this before
-   * registering, so a deprecated app registers no new
-   * triggers.
-   */
-  async assertRegistersTriggers(appId: string): Promise<void> {
-    const definition = await this.repository.findByAppId(appId);
-    if (definition === null) {
-      throw new AppNotFoundError(appId);
-    }
-    AppLifecycle.assertRegistersTriggers(appId, definition.lifecycle);
   }
 
   async listByOwner(ownerUserId: string): Promise<AppDefinitionDocument[]> {

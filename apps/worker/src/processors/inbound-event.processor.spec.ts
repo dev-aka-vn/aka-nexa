@@ -80,6 +80,18 @@ const CATALOG: PublishedApp[] = [
     aliases: ['request leave', 'leave request', 'xin nghỉ phép'],
     threshold: 0.8,
     status: 'published',
+    forms: [
+      {
+        form_id: 'submit',
+        kind: 'submit',
+        action: 'create',
+        intents: ['request leave', 'xin nghỉ phép'],
+        aliases: ['request leave', 'leave request', 'xin nghỉ phép'],
+        threshold: 0.8,
+        description: 'Submit a new leave request',
+        form_version: 1,
+      },
+    ],
   },
   {
     id: 'hr-private',
@@ -89,6 +101,18 @@ const CATALOG: PublishedApp[] = [
     aliases: ['fire someone'],
     threshold: 0.8,
     status: 'published',
+    forms: [
+      {
+        form_id: 'submit',
+        kind: 'submit',
+        action: 'create',
+        intents: ['fire someone'],
+        aliases: ['fire someone'],
+        threshold: 0.8,
+        description: 'Restricted HR app',
+        form_version: 1,
+      },
+    ],
   },
 ];
 
@@ -103,7 +127,16 @@ async function buildProcessor(opts: {
   const loader = new PublishedAppLoader(CATALOG, async (appId) => authorizeIds.has(appId));
   const provider =
     opts.provider ??
-    new RuleBasedProvider(new Map(CATALOG.map((a) => [a.id, a.aliases])));
+    new RuleBasedProvider(
+      new Map(
+        CATALOG.flatMap((a) =>
+          (a.forms ?? []).map((form) => [
+            `${a.id}:${form.form_id}`,
+            [...form.intents, ...form.aliases],
+          ]),
+        ),
+      ),
+    )
   const decideSpy = vi.spyOn(provider, 'decide');
   const orchestrator = new RoutingOrchestrator([provider]);
   const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
@@ -142,13 +175,13 @@ describe('InboundEventProcessor — slash vs natural-language parity', () => {
     const slash = await processor.process({
       data: event({ action: 'slash_command', text: '/leave request' }),
     } as never);
-    expect(slash).toEqual({ kind: 'link', appId: 'leave-request', url: '/l/leave-request?u=usr_1' });
+    expect(slash).toEqual({ kind: 'link', appId: 'leave-request', url: '/l/leave-request?u=usr_1&a=create&f=submit&fv=1' });
     expect(decideSpy).not.toHaveBeenCalled();
 
     const message = await processor.process({
       data: event({ text: 'I want to request leave' }),
     } as never);
-    expect(message).toEqual({ kind: 'link', appId: 'leave-request', url: '/l/leave-request?u=usr_1' });
+    expect(message).toEqual({ kind: 'link', appId: 'leave-request', url: '/l/leave-request?u=usr_1&a=create&f=submit&fv=1' });
     expect(decideSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -170,7 +203,7 @@ describe('InboundEventProcessor — slash vs natural-language parity', () => {
     } as never);
     expect(decideSpy).toHaveBeenCalledTimes(1);
     const req = decideSpy.mock.calls[0][0] as JevRequest;
-    expect(req.tools.map((t) => t.id)).toEqual(['leave-request']);
+    expect(req.tools.map((t) => t.id)).toEqual(['leave-request:submit']);
   });
 
   it('verified:false from the provider never yields a link (D-23 negative path)', async () => {
@@ -178,7 +211,7 @@ describe('InboundEventProcessor — slash vs natural-language parity', () => {
     vi.spyOn(provider, 'decide').mockImplementation(async (req: JevRequest): Promise<JevResponse> => ({
       spec_version: '1.0',
       request_id: req.request_id,
-      choice: { tool_id: 'leave-request', confidence: 0.99, verified: false },
+      choice: { tool_id: 'leave-request:submit', confidence: 0.99, verified: false },
       clarification_needed: false,
       provider: 'rule-based',
       latency_ms: 1,
@@ -193,8 +226,8 @@ describe('InboundEventProcessor — slash vs natural-language parity', () => {
   it('a conflicting match clarifies instead of linking', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor } = await buildProcessor({
@@ -206,7 +239,7 @@ describe('InboundEventProcessor — slash vs natural-language parity', () => {
     } as never);
     expect(out.kind).toBe('clarify');
     if (out.kind === 'clarify') {
-      expect([...out.toolIds].sort()).toEqual(['hr-private', 'leave-request']);
+      expect([...out.toolIds].sort()).toEqual(['hr-private:submit', 'leave-request:submit']);
     }
   });
 });
@@ -215,8 +248,8 @@ describe('InboundEventProcessor — clarification session wiring', () => {
   it('creates a clarification session when the orchestrator returns clarify with alternatives', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor, clarification } = await buildProcessor({
@@ -234,15 +267,15 @@ describe('InboundEventProcessor — clarification session wiring', () => {
     const session = await clarification.getSession('usr_1', 'C1', 'C1');
     expect(session).not.toBeNull();
     expect(session?.original_question).toBe('request leave');
-    expect(session?.displayed_choice_ids).toEqual(['leave-request', 'hr-private']);
+    expect(session?.displayed_choice_ids).toEqual(['leave-request:submit', 'hr-private:submit']);
     expect(session?.replies_used).toBe(0);
   });
 
   it('resolves a numeric reply against the displayed choices in the same thread', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor } = await buildProcessor({
@@ -265,8 +298,8 @@ describe('InboundEventProcessor — clarification session wiring', () => {
   it('resolves a name reply against the displayed choices in the same thread', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor } = await buildProcessor({
@@ -288,7 +321,7 @@ describe('InboundEventProcessor — clarification session wiring', () => {
 
   it('re-evaluates original + reply as one context for a detail-adding follow-up', async () => {
     const provider = new RuleBasedProvider(
-      new Map([['leave-request', ['tomorrow']]]),
+      new Map([['leave-request:submit', ['tomorrow']]]),
     );
     const { processor, decideSpy } = await buildProcessor({ provider });
     // First message creates a clarification session (no match for "I need something").
@@ -313,8 +346,8 @@ describe('InboundEventProcessor — clarification session wiring', () => {
   it('escalates after two unsuccessful replies and invalidates the session', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor, clarification } = await buildProcessor({
@@ -351,8 +384,8 @@ describe('InboundEventProcessor — clarification session wiring', () => {
   it('re-filters revoked apps on every reply (D-50)', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor, clarification } = await buildProcessor({
@@ -428,8 +461,8 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
   it('a clarify outcome records nothing — the distribution is over routings to apps', async () => {
     const provider = new RuleBasedProvider(
       new Map([
-        ['leave-request', ['request leave']],
-        ['hr-private', ['request leave']],
+        ['leave-request:submit', ['request leave']],
+        ['hr-private:submit', ['request leave']],
       ]),
     );
     const { processor, routingOutcomes } = await buildProcessor({
@@ -445,7 +478,7 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
 
   it('the clarification re-evaluation records the applied outcome at its own routing id', async () => {
     const provider = new RuleBasedProvider(
-      new Map([['leave-request', ['tomorrow']]]),
+      new Map([['leave-request:submit', ['tomorrow']]]),
     );
     const { processor, routingOutcomes } = await buildProcessor({ provider });
     // First message creates a clarification session (no match for "I need something").
@@ -475,7 +508,16 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
     await repo.upsert({ platform: 'slack', chat_user_id: 'U1', real_user_id: 'usr_1' });
     const identity = new IdentityService(repo);
     const loader = new PublishedAppLoader(CATALOG, async () => true);
-    const provider = new RuleBasedProvider(new Map(CATALOG.map((a) => [a.id, a.aliases])));
+    const provider = new RuleBasedProvider(
+      new Map(
+        CATALOG.flatMap((a) =>
+          (a.forms ?? []).map((form) => [
+            `${a.id}:${form.form_id}`,
+            [...form.intents, ...form.aliases],
+          ]),
+        ),
+      ),
+    )
     const orchestrator = new RoutingOrchestrator([provider]);
     const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
     const onboarding = new OtpOnboardingService(
@@ -508,7 +550,7 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
     expect(out).toEqual({
       kind: 'link',
       appId: 'leave-request',
-      url: '/l/leave-request?u=usr_1',
+      url: '/l/leave-request?u=usr_1&a=create&f=submit&fv=1',
     });
   });
 });

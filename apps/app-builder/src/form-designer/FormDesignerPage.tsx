@@ -13,7 +13,7 @@
  * surface:
  *
  *  - **Builder** — FormioBuilderField
- *    mounts the app's `form_schema`; the
+ *    mounts the submit form's schema; the
  *    change event feeds the 50-action
  *    snapshot history (Pattern 2) that the
  *    undo/redo toolbar drives.
@@ -50,7 +50,10 @@ import {
 } from '../api/client.js';
 import {
   type AppDefinition,
+  type AppForm,
+  type FormTrigger,
   AppDefinitionSchema,
+  triggerThresholdFor,
 } from '../api/definition.js';
 import { useApiClient } from '../apiHooks.js';
 import { InlineError } from '../error/InlineError.js';
@@ -61,6 +64,8 @@ import {
   type FormioBuilderHandle,
 } from './FormioBuilderField.js';
 import { PreviewPane, type PreviewPaneHandle } from './PreviewPane.js';
+import { ReadFormConfig } from './ReadFormConfig.js';
+import { FormTriggerPanel } from './FormTriggerPanel.js';
 import { SubmissionSandbox } from './sandbox.js';
 
 /**
@@ -159,6 +164,21 @@ const EMPTY_FORM_SCHEMA: Record<string, unknown> = {
   display: 'Untitled form',
   components: [],
 };
+
+/** Read the `?form=` search param from the hash route (defaults to `submit`). */
+function readFormParam(): string {
+  try {
+    const hash = window.location.hash.replace(/^#/, '');
+    const qIndex = hash.indexOf('?');
+    if (qIndex === -1) {
+      return 'submit';
+    }
+    const params = new URLSearchParams(hash.slice(qIndex + 1));
+    return params.get('form') ?? 'submit';
+  } catch {
+    return 'submit';
+  }
+}
 
 export interface FormDesignerPageProps {
   /** The draft's immutable app_id. */
@@ -347,6 +367,13 @@ export function FormDesignerPage({
   const [schema, setSchema] = useState<
     Record<string, unknown>
   >(EMPTY_FORM_SCHEMA);
+  const formParam = readFormParam();
+  const [workingConfig, setWorkingConfig] = useState<
+    Record<string, unknown>
+  >({});
+  const [workingTriggers, setWorkingTriggers] = useState<
+    FormTrigger | null
+  >(null);
   const [historyState, setHistoryState] = useState({
     canUndo: false,
     canRedo: false,
@@ -411,17 +438,6 @@ export function FormDesignerPage({
         AppDefinitionSchema,
       );
       setDefinition(loaded);
-      // A draft with a schema edits it; a
-      // draft without one starts blank.
-      const restored = structuredClone(
-        (loaded.form_schema ??
-          EMPTY_FORM_SCHEMA) as Record<string, unknown>,
-      );
-      setSchema(restored);
-      // The served schema is the persistence baseline
-      // the dirty tracker compares builder edits
-      // against.
-      lastSavedJsonRef.current = JSON.stringify(restored);
       setDirty(false);
       setSavedVersion(null);
       setSaveError(null);
@@ -434,6 +450,36 @@ export function FormDesignerPage({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Resolve the routed form out of the served
+  // definition: seed the working schema/config/
+  // triggers for the `?form=` target. Runs on
+  // load and whenever the routed form changes.
+  useEffect(() => {
+    if (definition === null) {
+      return;
+    }
+    const target =
+      definition.forms.find((form) => form.form_id === formParam) ??
+      null;
+    if (target === null) {
+      return;
+    }
+    if (target.kind === 'submit') {
+      const restored = structuredClone(
+        (target.schema ?? EMPTY_FORM_SCHEMA) as Record<string, unknown>,
+      );
+      setSchema(restored);
+      lastSavedJsonRef.current = JSON.stringify(restored);
+      setDirty(false);
+    }
+    setWorkingConfig(
+      target.config && typeof target.config === 'object'
+        ? { ...target.config }
+        : {},
+    );
+    setWorkingTriggers(target.triggers ?? null);
+  }, [definition, formParam]);
 
   /**
    * The builder's change handler. The
@@ -460,9 +506,10 @@ export function FormDesignerPage({
 
   /**
    * Persist the builder's current schema (BLD-04's
-   * save leg): PATCH /apps/:id with the frozen
-   * `forms` section shape — `{section, patch:
-   * {form_schema}}` — the same version-bumped,
+   * save leg): PATCH /apps/:id with the `forms`
+   * section shape — `{section, patch: {forms}}`,
+   * the submit element's schema replaced by the
+   * builder's current one — the same version-bumped,
    * audited transition the editor's section saves
    * use. Returns whether the save landed, so the
    * exit controls can refuse to navigate away from
@@ -479,51 +526,81 @@ export function FormDesignerPage({
    * row.
    */
   const saveInFlightRef = useRef(false);
-  const saveForm = useCallback(async (): Promise<boolean> => {
-    if (saveInFlightRef.current) {
-      return false;
-    }
-    saveInFlightRef.current = true;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const current =
-        builderFieldRef.current?.builder?.schema ?? schema;
-      const response = await client.patch(
-        `/apps/${appId}`,
-        { section: 'forms', patch: { form_schema: current } },
-        AppDefinitionSchema,
-      );
-      setDefinition(response);
-      lastSavedJsonRef.current = JSON.stringify(current);
-      // Re-derive dirty against the LIVE builder
-      // schema, not the saved snapshot: edits made
-      // while the PATCH was in flight fired their own
-      // change events, and resetting dirty to false
-      // unconditionally would read the builder as
-      // clean while it still holds unsaved work —
-      // reopening, through a race window, the very
-      // silent-discard defect this control closes.
-      const live = builderFieldRef.current?.builder?.schema;
-      setDirty(
-        live === undefined
-          ? false
-          : JSON.stringify(live) !== lastSavedJsonRef.current,
-      );
-      setSavedVersion(response.version);
-      return true;
-    } catch (error) {
-      // savedVersion deliberately stays: a failed
-      // save must not wipe the record of the last
-      // successful one — the indicator keeps
-      // agreeing with server reality mid-failure.
-      setSaveError(error);
-      return false;
-    } finally {
-      saveInFlightRef.current = false;
-      setSaving(false);
-    }
-  }, [appId, client, schema]);
+  const saveForm = useCallback(
+    async (patch?: {
+      schema?: Record<string, unknown>;
+      config?: Record<string, unknown>;
+      triggers?: FormTrigger | null;
+    }): Promise<boolean> => {
+      if (saveInFlightRef.current) {
+        return false;
+      }
+      saveInFlightRef.current = true;
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const targetKind =
+          definition?.forms.find((form) => form.form_id === formParam)
+            ?.kind ?? 'submit';
+        // The routed form's latest data: canvas uses the
+        // builder's schema; config/trigger surfaces use
+        // their working state unless an explicit patch
+        // overrides it.
+        const schemaToSave =
+          patch?.schema ??
+          (targetKind === 'submit'
+            ? (builderFieldRef.current?.builder?.schema ?? schema)
+            : undefined);
+        const configToSave = patch?.config ?? workingConfig;
+        const triggersToSave =
+          patch?.triggers !== undefined
+            ? patch.triggers
+            : workingTriggers;
+        // The whole form set travels with the patch (the
+        // `forms` section owns the array); only the routed
+        // element's fields change, so every other form
+        // round-trips untouched, and D-10 leaves their
+        // versions stable.
+        const forms = (definition?.forms ?? []).map((form) => {
+          if (form.form_id !== formParam) {
+            return form;
+          }
+          return {
+            ...form,
+            ...(schemaToSave !== undefined ? { schema: schemaToSave } : {}),
+            config: configToSave,
+            triggers: triggersToSave,
+          };
+        });
+        const response = await client.patch(
+          `/apps/${appId}`,
+          { section: 'forms', patch: { forms } },
+          AppDefinitionSchema,
+        );
+        setDefinition(response);
+        if (targetKind === 'submit') {
+          const savedSchema =
+            schemaToSave ?? (schema as Record<string, unknown>);
+          lastSavedJsonRef.current = JSON.stringify(savedSchema);
+          const live = builderFieldRef.current?.builder?.schema;
+          setDirty(
+            live === undefined
+              ? false
+              : JSON.stringify(live) !== lastSavedJsonRef.current,
+          );
+        }
+        setSavedVersion(response.version);
+        return true;
+      } catch (error) {
+        setSaveError(error);
+        return false;
+      } finally {
+        saveInFlightRef.current = false;
+        setSaving(false);
+      }
+    },
+    [appId, client, definition, formParam, schema, workingConfig, workingTriggers],
+  );
 
   const handleHistoryChange = useCallback(
     (state: { canUndo: boolean; canRedo: boolean }): void => {
@@ -570,17 +647,22 @@ export function FormDesignerPage({
   }, [sandbox]);
 
   const routingConfig = definition?.routing_config ?? null;
+  const targetForm =
+    definition?.forms.find((form) => form.form_id === formParam) ?? null;
+  const unknownForm = definition !== null && targetForm === null;
+  const kind = targetForm?.kind ?? 'submit';
 
   return (
     <div className="view" data-testid="designer-page">
       <div className="page-head">
         <div className="titles">
           <h1>
-            {definition === null ? 'Form designer' : definition.name}
+            {definition === null
+              ? 'Form designer'
+              : `${formParam} · v${targetForm?.form_version ?? definition.version}`}
           </h1>
           <p className="sub">
-            Form designer · {appId} · v
-            {definition?.version ?? '…'}
+            Form designer · {appId} · {formParam}
           </p>
         </div>
         <a
@@ -625,6 +707,21 @@ export function FormDesignerPage({
         />
       ) : definition === null ? (
         <Skeleton variant="block" label="Loading the form schema" />
+      ) : unknownForm ? (
+        <div>
+          <InlineError
+            operation="load the form"
+            error={new Error(`Unknown form: ${formParam}`)}
+          />
+          <a
+            className="btn btn-sm"
+            data-testid="designer-back-to-manager"
+            href={`#/apps/${encodeURIComponent(appId)}`}
+            style={{ marginTop: 12, display: 'inline-block' }}
+          >
+            Back to the app
+          </a>
+        </div>
       ) : (
         <>
           <div
@@ -696,34 +793,74 @@ export function FormDesignerPage({
           ) : null}
 
           <div className="grid-main">
-            <section className="card">
-              <div className="card-head">
-                <h2>Builder</h2>
-                <span className="pill-mono">{appId}</span>
-              </div>
-              <div className="card-body">
-                <FormioBuilderField
-                  ref={builderFieldRef}
-                  schema={schema}
-                  onChange={handleSchemaChange}
-                  onHistoryChange={handleHistoryChange}
-                />
-              </div>
-            </section>
+            {kind === 'submit' ? (
+              <>
+                <section className="card">
+                  <div className="card-head">
+                    <h2>Builder</h2>
+                    <span className="pill-mono">{appId}</span>
+                  </div>
+                  <div className="card-body">
+                    <FormioBuilderField
+                      ref={builderFieldRef}
+                      schema={schema}
+                      onChange={handleSchemaChange}
+                      onHistoryChange={handleHistoryChange}
+                    />
+                  </div>
+                </section>
 
-            <div className="od-stack" style={{ '--od-gap': '18px' } as never}>
-              <PreviewPane
-                ref={previewPaneRef}
-                schema={schema}
-                sandbox={sandbox}
-              />
-              <MappingSurface
+                <div className="od-stack" style={{ '--od-gap': '18px' } as never}>
+                  <PreviewPane
+                    ref={previewPaneRef}
+                    schema={schema}
+                    sandbox={sandbox}
+                  />
+                  <MappingSurface
+                    appId={appId}
+                    client={client}
+                    schema={schema}
+                    routingConfig={routingConfig}
+                  />
+                </div>
+              </>
+            ) : kind === 'edit' ? (
+              <section className="card">
+                <div className="card-head">
+                  <h2>Edit form</h2>
+                  <span className="pill-mono">{appId}</span>
+                </div>
+                <div className="card-body">
+                  <div className="callout callout-info">
+                    Edits render from each submission&rsquo;s pinned schema at
+                    link time (FRM-02/FRM-03). No drag-and-drop canvas applies.
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <ReadFormConfig
                 appId={appId}
-                client={client}
-                schema={schema}
-                routingConfig={routingConfig}
+                form={targetForm as AppForm}
+                submitSchema={
+                  (definition?.forms.find((f) => f.kind === 'submit')
+                    ?.schema ?? {}) as Record<string, unknown>
+                }
+                config={workingConfig}
+                onChangeConfig={setWorkingConfig}
+                saveError={saveError}
               />
-            </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <FormTriggerPanel
+              form={targetForm as AppForm}
+              disabled={kind === 'show' || kind === 'edit'}
+              disabledReason="This form opens from an existing link, so it has no trigger."
+              thresholdDefault={triggerThresholdFor(definition as AppDefinition)}
+              triggers={workingTriggers}
+              onChangeTriggers={setWorkingTriggers}
+            />
           </div>
         </>
       )}

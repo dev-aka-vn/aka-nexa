@@ -6,20 +6,26 @@
   "tags": ["assets", "it"],
   "data_mode": "internal",
   "connector_ref": null,
-  "form_schema": {
-    "components": [
-      { "type": "textfield", "key": "asset_type", "label": "Asset type", "input": true },
-      { "type": "number", "key": "quantity", "label": "Quantity", "input": true },
-      { "type": "textarea", "key": "justification", "label": "Justification", "input": true }
-    ]
-  },
+  "forms": [
+    {
+      "form_id": "submit",
+      "kind": "submit",
+      "schema": {
+        "components": [
+          { "type": "textfield", "key": "asset_type", "label": "Asset type", "input": true },
+          { "type": "number", "key": "quantity", "label": "Quantity", "input": true },
+          { "type": "textarea", "key": "justification", "label": "Justification", "input": true }
+        ]
+      },
+      "form_version": 1,
+      "triggers": { "intents": [], "aliases": ["/asset"], "threshold": 0.8 },
+      "config": {}
+    }
+  ],
   "roles": {
     "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
     "admin": ["create", "edit", "publish", "assign-roles"],
     "manager": ["submit", "approve", "view"],
     "user": ["submit", "view"]
-  },
-  "triggers": [
-    { "id": "asset", "type": "slash", "command": "/asset", "description": "Request an asset" }
-  ]
+  }
 }

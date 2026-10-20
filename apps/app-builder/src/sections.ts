@@ -22,7 +22,6 @@ export type AppSection = (typeof APP_SECTIONS)[number];
 const SECTION_LABELS: Readonly<Record<AppSection, string>> = {
   general: 'General',
   metadata: 'Metadata',
-  triggers: 'Triggers',
   'jev-behavior': 'JEV behavior',
   'role-assignments': 'Role assignments',
   'roles-permissions': 'Roles & permissions',
@@ -51,11 +50,10 @@ export const SECTION_FIELDS: Readonly<
 > = {
   general: ['name', 'description'],
   metadata: ['tags', 'data_mode'],
-  triggers: ['triggers'],
   'jev-behavior': ['jev_behavior'],
   'role-assignments': ['role_assignments'],
   'roles-permissions': ['roles_permissions'],
-  forms: ['form_schema'],
+  forms: ['forms'],
   versioning: ['versioning_policy'],
   'data-routing': ['routing_config'],
   'field-mapping': ['field_mapping'],

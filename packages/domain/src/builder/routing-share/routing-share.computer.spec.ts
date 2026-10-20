@@ -66,6 +66,7 @@ const CATALOG: readonly PublishedApp[] = [
     intents: ['request leave'],
     aliases: ['request leave', 'leave request'],
     threshold: 0.8,
+    forms: [],
     status: 'published',
   },
   {
@@ -75,6 +76,7 @@ const CATALOG: readonly PublishedApp[] = [
     intents: ['request leave'],
     aliases: ['request leave'],
     threshold: 0.8,
+    forms: [],
     status: 'published',
   },
   {
@@ -84,6 +86,7 @@ const CATALOG: readonly PublishedApp[] = [
     intents: ['book travel'],
     aliases: ['book travel'],
     threshold: 0.8,
+    forms: [],
     status: 'published',
   },
 ];

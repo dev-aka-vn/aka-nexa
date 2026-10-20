@@ -19,14 +19,44 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import type {
+  AppFormElement,
+  FormTrigger,
+} from '@akane/contract';
 import type { AppDefinitionDocument } from './data-access/app-definition.repository.js';
 import { RuleBasedProvider } from '../decision/rule-based.provider.js';
 import { RoutingOrchestrator } from '../decision/routing-orchestrator.js';
 import type { RoutingOutcomeRecord } from './routing-share/routing-outcome.repository.js';
 import {
+  declaredLabels,
   descriptionsCollide,
   PublishGateService,
 } from './publish-gate.service.js';
+
+/** A persisted form trigger (D-06) in the strict `FormTriggerSchema` shape. */
+function trigger(overrides: Partial<FormTrigger> = {}): FormTrigger {
+  return {
+    intents: ['expense report'],
+    aliases: ['expense'],
+    threshold: 0.8,
+    ...overrides,
+  };
+}
+
+/** The app's submit form, carrying the given trigger and schema (D-09). */
+function submitForm(
+  triggers: FormTrigger | null = trigger(),
+  schema: Record<string, unknown> | null = { components: [] },
+): AppFormElement {
+  return {
+    form_id: 'submit',
+    kind: 'submit',
+    schema,
+    form_version: 1,
+    triggers,
+    config: {},
+  };
+}
 
 // ─── In-memory doubles ──────────────────────────────────
 //
@@ -101,16 +131,7 @@ function definition(overrides: Partial<AppDefinitionDocument> = {}): AppDefiniti
     lifecycle: 'draft',
     version: 2,
     tags: [],
-    form_schema: { components: [] },
-    triggers: [
-      {
-        id: 'expense',
-        type: 'slash',
-        command: '/expense',
-        intents: ['expense report'],
-        aliases: ['expense'],
-      },
-    ],
+    forms: [submitForm()],
     roles: {},
     routing_config: { collections: ['expenses'] },
     field_mapping: null,
@@ -172,8 +193,10 @@ describe('PublishGateService.evaluate', () => {
         app_id: 'leave-request',
         description: 'Request time off',
         lifecycle: 'published',
-        triggers: [
-          { id: 'leave', type: 'slash', command: '/leave', intents: ['request leave'] },
+        forms: [
+          submitForm(
+            trigger({ intents: ['request leave'], aliases: [] }),
+          ),
         ],
       }),
     );
@@ -198,9 +221,8 @@ describe('PublishGateService.evaluate', () => {
     const definitions = new FakeDefinitions();
     definitions.seed(
       definition({
-        form_schema: null,
+        forms: [submitForm(null, null)],
         routing_config: null,
-        triggers: [],
       }),
     );
     const gate = buildGate({ definitions, outcomes: new FakeOutcomeStore() });
@@ -235,14 +257,13 @@ describe('PublishGateService.evaluate — the APP-07 share-drop boundary', () =>
       name: appId,
       description: `The ${appId} app`,
       lifecycle: 'published',
-      triggers: [
-        {
-          id: appId,
-          type: 'slash',
-          command: `/${appId}`,
-          intents: ['expense report', 'expense'],
-          aliases: ['expense report', 'expense'],
-        },
+      forms: [
+        submitForm(
+          trigger({
+            intents: ['expense report', 'expense'],
+            aliases: ['expense report', 'expense'],
+          }),
+        ),
       ],
     });
   }
@@ -342,28 +363,26 @@ describe('PublishGateService.evaluate — the APP-07 share-drop boundary', () =>
           name: appId,
           description: `The ${appId} app`,
           lifecycle: 'published',
-          triggers: [
-            {
-              id: appId,
-              type: 'slash',
-              command: `/${appId}`,
-              intents: ['expense report'],
-              aliases: ['expense report'],
-            },
+          forms: [
+            submitForm(
+              trigger({
+                intents: ['expense report'],
+                aliases: ['expense report'],
+              }),
+            ),
           ],
         }),
       );
     }
     definitions.seed(
       definition({
-        triggers: [
-          {
-            id: 'expense',
-            type: 'slash',
-            command: '/expense',
-            intents: ['expense report'],
-            aliases: ['expense report'],
-          },
+        forms: [
+          submitForm(
+            trigger({
+              intents: ['expense report'],
+              aliases: ['expense report'],
+            }),
+          ),
         ],
       }),
     );
@@ -408,14 +427,10 @@ describe('PublishGateService.evaluate — the APP-07 share-drop boundary', () =>
         name: 'Travel Request',
         description: 'Book travel',
         lifecycle: 'published',
-        triggers: [
-          {
-            id: 'travel',
-            type: 'slash',
-            command: '/travel',
-            intents: ['book travel'],
-            aliases: ['book travel'],
-          },
+        forms: [
+          submitForm(
+            trigger({ intents: ['book travel'], aliases: ['book travel'] }),
+          ),
         ],
       }),
     );
@@ -477,14 +492,13 @@ describe('PublishGateService.evaluate — the APP-08 collision and the BLD-06 su
         // case-folded, the two are equal.
         description: 'SUBMIT AN EXPENSE REPORT',
         lifecycle: 'published',
-        triggers: [
-          {
-            id: 'existing',
-            type: 'slash',
-            command: '/existing',
-            intents: ['existing intent'],
-            aliases: ['existing intent'],
-          },
+        forms: [
+          submitForm(
+            trigger({
+              intents: ['existing intent'],
+              aliases: ['existing intent'],
+            }),
+          ),
         ],
       }),
     );
@@ -541,5 +555,61 @@ describe('PublishGateService.evaluate — the APP-08 collision and the BLD-06 su
       from: 'v7',
       to: 'v8',
     });
+  });
+});
+
+describe('declaredLabels — the form-set trigger vocabulary (D-06)', () => {
+  it('unions every form trigger\'s intents and aliases', () => {
+    const doc = definition({
+      forms: [
+        submitForm(trigger({ intents: ['create thing'], aliases: ['/thing'] })),
+        {
+          form_id: 'list',
+          kind: 'list',
+          schema: {},
+          form_version: 1,
+          triggers: trigger({ intents: ['list things'], aliases: ['/things'] }),
+          config: { query_id: 'things', columns: ['title'] },
+        },
+      ],
+    });
+
+    expect(declaredLabels(doc)).toEqual([
+      'create thing',
+      '/thing',
+      'list things',
+      '/things',
+    ]);
+  });
+
+  it('a form with no trigger contributes no labels', () => {
+    const doc = definition({
+      forms: [
+        submitForm(trigger({ intents: ['create thing'], aliases: [] })),
+        {
+          form_id: 'edit',
+          kind: 'edit',
+          schema: {},
+          form_version: 1,
+          triggers: null,
+          config: {},
+        },
+      ],
+    });
+
+    expect(declaredLabels(doc)).toEqual(['create thing']);
+  });
+
+  it('falls back to a trigger\'s own id/command when it declares no labels', () => {
+    const doc = definition({
+      forms: [
+        submitForm({
+          id: 'expense',
+          command: '/expense',
+        } as unknown as FormTrigger),
+      ],
+    });
+
+    expect(declaredLabels(doc)).toEqual(['expense', '/expense']);
   });
 });

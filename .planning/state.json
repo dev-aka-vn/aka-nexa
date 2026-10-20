@@ -35,19 +35,24 @@
     },
     {
       "number": "7",
+      "name": "Multi-Form Apps & Per-Form Triggers",
+      "status": "complete"
+    },
+    {
+      "number": "8",
       "name": "Multi-IM Expansion & Two-Way Sync",
       "status": "pending"
     },
     {
-      "number": "8",
+      "number": "9",
       "name": "Production Readiness",
       "status": "pending"
     }
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 2)",
-    "reason": "Phase 2 of 8 — needs a plan"
+    "label": "Advance to the next step (plan phase 8)",
+    "reason": "Phase 8 of 9 — needs a plan"
   },
-  "updated_at": "2026-10-17T08:52:51.564Z"
+  "updated_at": "2026-10-18T16:32:22.344Z"
 }

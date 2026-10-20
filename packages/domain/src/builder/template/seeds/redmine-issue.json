@@ -6,20 +6,26 @@
   "tags": ["external", "engineering"],
   "data_mode": "external",
   "connector_ref": "redmine",
-  "form_schema": {
-    "components": [
-      { "type": "textfield", "key": "subject", "label": "Subject", "input": true },
-      { "type": "select", "key": "tracker", "label": "Tracker", "input": true, "data": { "values": [{ "label": "Bug", "value": "bug" }, { "label": "Feature", "value": "feature" }, { "label": "Task", "value": "task" }] } },
-      { "type": "textarea", "key": "description", "label": "Description", "input": true }
-    ]
-  },
+  "forms": [
+    {
+      "form_id": "submit",
+      "kind": "submit",
+      "schema": {
+        "components": [
+          { "type": "textfield", "key": "subject", "label": "Subject", "input": true },
+          { "type": "select", "key": "tracker", "label": "Tracker", "input": true, "data": { "values": [{ "label": "Bug", "value": "bug" }, { "label": "Feature", "value": "feature" }, { "label": "Task", "value": "task" }] } },
+          { "type": "textarea", "key": "description", "label": "Description", "input": true }
+        ]
+      },
+      "form_version": 1,
+      "triggers": { "intents": [], "aliases": ["/redmine"], "threshold": 0.8 },
+      "config": {}
+    }
+  ],
   "roles": {
     "owner": ["create", "edit", "delete", "publish", "deprecate", "archive", "assign-roles"],
     "admin": ["create", "edit", "publish", "assign-roles"],
     "manager": ["submit", "approve", "view"],
     "user": ["submit", "view"]
-  },
-  "triggers": [
-    { "id": "redmine", "type": "slash", "command": "/redmine", "description": "File a Redmine issue" }
-  ]
+  }
 }

@@ -477,4 +477,106 @@ describe('submissions viewer + export (BLD-08, D-111)', () => {
       downstreamReference: 'TKT-2026-00042',
     });
   });
+
+  it('form removal keeps submissions listable/exportable with their form_id intact (T-07-14)', async () => {
+    // A two-form app: a submit form and a list form.
+    const created = await call('POST', `${baseUrl}/apps`, {
+      name: 'Survival App',
+      app_id: 'survival-app',
+      description: 'removal survival',
+    }, OWNER);
+    expect(created.status).toBe(201);
+
+    await call('PATCH', `${baseUrl}/apps/survival-app`, {
+      section: 'forms',
+      patch: {
+        forms: [
+          {
+            form_id: 'submit-form',
+            kind: 'submit',
+            schema: {},
+            form_version: 1,
+            triggers: null,
+            config: {},
+          },
+          {
+            form_id: 'list-form',
+            kind: 'list',
+            schema: null,
+            form_version: 1,
+            triggers: null,
+            config: { query_id: 'q-1', columns: ['a'] },
+          },
+        ],
+      },
+    }, OWNER);
+
+    // Submissions through both forms (same collection — FRM-14).
+    submissions.upsert({
+      _id: 'sub-survive-1',
+      real_user_id: 'emp-1',
+      app_id: 'survival-app',
+      form_id: 'submit-form',
+      form_version: 1,
+      form_schema: {},
+      data: {},
+      created_at: new Date(),
+      status: 'completed',
+    });
+    submissions.upsert({
+      _id: 'sub-survive-2',
+      real_user_id: 'emp-2',
+      app_id: 'survival-app',
+      form_id: 'list-form',
+      form_version: 1,
+      form_schema: {},
+      data: {},
+      created_at: new Date(),
+      status: 'completed',
+    });
+
+    // Remove the list form (definition mutation only).
+    const removed = await call('PATCH', `${baseUrl}/apps/survival-app`, {
+      section: 'forms',
+      patch: {
+        forms: [
+          {
+            form_id: 'submit-form',
+            kind: 'submit',
+            schema: {},
+            form_version: 1,
+            triggers: null,
+            config: {},
+          },
+        ],
+      },
+    }, OWNER);
+    expect(removed.status).toBe(200);
+
+    // Submissions still list with recorded form_id intact.
+    const listed = await call(
+      'GET',
+      `${baseUrl}/submissions?app_id=survival-app`,
+      undefined,
+      OWNER,
+    );
+    expect(listed.status).toBe(200);
+    const rows = (listed.body as { submissions: Record<string, unknown>[] })
+      .submissions;
+    const byId = new Map(rows.map((r) => [r['submission_id'], r['form_id']]));
+    expect(byId.get('sub-survive-1')).toBe('submit-form');
+    expect(byId.get('sub-survive-2')).toBe('list-form');
+
+    // CSV export still contains every row with form_id intact.
+    const res = await fetch(
+      `${baseUrl}/submissions/export?app_id=survival-app`,
+      { headers: { 'x-test-user': OWNER } },
+    );
+    expect(res.status).toBe(200);
+    const csv = await res.text();
+    expect(csv).toContain('sub-survive-1');
+    expect(csv).toContain('sub-survive-2');
+    expect(csv).toContain('submit-form');
+    expect(csv).toContain('list-form');
+  });
 });

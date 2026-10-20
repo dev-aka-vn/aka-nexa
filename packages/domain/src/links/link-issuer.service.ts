@@ -1,6 +1,11 @@
+import type { ReadLinkAction } from '@akane/contract';
+
 export interface IssueLinkInput {
   readonly appId: string;
   readonly realUserId: string;
+  readonly formId: string;
+  readonly formVersion: number;
+  readonly action: ReadLinkAction;
 }
 
 /**
@@ -12,6 +17,6 @@ export interface IssueLinkInput {
  */
 export class LinkIssuerService {
   async issue(input: IssueLinkInput): Promise<string> {
-    return `/l/${encodeURIComponent(input.appId)}?u=${encodeURIComponent(input.realUserId)}`;
+    return `/l/${encodeURIComponent(input.appId)}?u=${encodeURIComponent(input.realUserId)}&a=${encodeURIComponent(input.action)}&f=${encodeURIComponent(input.formId)}&fv=${input.formVersion}`;
   }
 }

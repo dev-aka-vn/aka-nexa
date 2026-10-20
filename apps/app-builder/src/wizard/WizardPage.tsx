@@ -31,6 +31,8 @@ import { createApiClient } from '../api/client.js';
 import {
   AppDefinitionSchema,
   type AppDefinition,
+  submitFormOf,
+  triggerThresholdFor,
 } from '../api/definition.js';
 import { Skeleton } from '../ui/Skeleton.js';
 import { redirectToOidcBegin } from '../auth/oidc-redirect.js';
@@ -303,10 +305,27 @@ export function WizardPage({ appId, step: routeStep }: WizardPageProps): ReactEl
     setStepError(null);
     try {
       if (step === 1) {
-        // Triggers: PATCH only when the step has content.
-        const normalized = normalizeTriggers(triggers);
-        if (normalized.length > 0) {
-          await saveSection('triggers', { triggers: normalized });
+        // Triggers: PATCH the submit form's `triggers` field in the
+        // `forms` section — only when the step has content (no dead
+        // write when there is no trigger to persist).
+        const threshold = triggerThresholdFor(draft);
+        const trigger = normalizeTriggers(triggers, threshold);
+        if (trigger !== null) {
+          const updated = await client.patch(
+            `/apps/${draft.app_id}`,
+            {
+              section: 'forms',
+              patch: {
+                forms: (draft.forms ?? []).map((form) =>
+                  form.kind === 'submit'
+                    ? { ...form, triggers: trigger }
+                    : form,
+                ),
+              },
+            },
+            AppDefinitionSchema,
+          );
+          setDraft(updated);
         }
       } else if (step === 2) {
         // RBAC: PATCH only when the step has content.
@@ -547,7 +566,7 @@ export function WizardPage({ appId, step: routeStep }: WizardPageProps): ReactEl
         {step === 3 && draft !== null ? (
           <FormStep
             appId={draft.app_id}
-            hasFormSchema={draft.form_schema !== null}
+            hasFormSchema={submitFormOf(draft).schema !== null}
           />
         ) : null}
         {step === 4 && draft !== null ? (

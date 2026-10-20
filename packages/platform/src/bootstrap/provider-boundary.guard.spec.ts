@@ -225,3 +225,45 @@ describe('eslint-plugin-boundaries pin (D-32, FND-04)', () => {
     ).toBe('7.2.0');
   });
 });
+describe('D-37 named exception list', () => {
+  it('a forbidden-only token with an instance still throws', async () => {
+    const app = await boot(WorkerLoadedModule);
+    const manifest: BoundaryManifest = {
+      app: 'api',
+      forbidden: [FORBIDDEN_TOKEN],
+    };
+
+    expect(() => createProviderBoundaryGuard(manifest).assert(app)).toThrowError(
+      /^BOUNDARY_VIOLATION: /,
+    );
+
+    await app.close();
+  });
+
+  it('the same token listed in `allowed` does not throw', async () => {
+    const app = await boot(WorkerLoadedModule);
+    const manifest: BoundaryManifest = {
+      app: 'api',
+      forbidden: [FORBIDDEN_TOKEN],
+      allowed: [FORBIDDEN_TOKEN],
+    };
+
+    expect(() => createProviderBoundaryGuard(manifest).assert(app)).not.toThrow();
+
+    await app.close();
+  });
+
+  it('`allowed` absent behaves exactly as today', async () => {
+    const app = await boot(WorkerLoadedModule);
+    const manifest: BoundaryManifest = {
+      app: 'api',
+      forbidden: [FORBIDDEN_TOKEN],
+    };
+
+    expect(() => createProviderBoundaryGuard(manifest).assert(app)).toThrowError(
+      /^BOUNDARY_VIOLATION: /,
+    );
+
+    await app.close();
+  });
+});

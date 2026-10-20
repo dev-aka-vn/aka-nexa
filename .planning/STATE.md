@@ -1,34 +1,34 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 7
+current_phase: 8
 current_phase_name: Multi-IM Expansion & Two-Way Sync
 current_plan: Not started
-status: "Phase 06 shipped — PR #5"
-stopped_at: Phase 06 complete, ready to plan Phase 07
-last_updated: "2026-10-17T09:34:21.161Z"
-state_head: 588c346e700d6c30c2fb0d22965635cb5c566f02
+status: "Phase 07 shipped — PR #6"
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-10-19T13:51:59.089Z"
+state_head: 53b288c3fd32a63dc62f91fc4b240a71176efd38
 progress:
-  total_phases: 8
-  completed_phases: 6
-  total_plans: 61
-  completed_plans: 61
-  percent: 75
-last_activity: 2026-10-17
-last_activity_desc: Phase 06 (Self-Service App Builder) marked complete — canonical verification regenerated to 25/25 passed, UAT 6/6, regression gate clean of phase-6 regressions.
+  total_phases: 9
+  completed_phases: 7
+  total_plans: 66
+  completed_plans: 68
+  percent: 78
+last_activity: 2026-10-19
+last_activity_desc: Phase 07 shipped — PR
 ---
 
 ## Current Position
 
-Phase: 7 — Multi-IM Expansion & Two-Way Sync
-Plan: Not started
-Status: Phase 06 shipped — PR #5
+Phase: 8 — Multi-IM Expansion & Two-Way Sync
+Plan: 8 of 8
+Status: Phase 07 shipped — PR #6
 Current Plan: Not started
-Total Plans in Phase: not yet planned
+Total Plans in Phase: 8
 
 ## Session
 
-**Last session:** 2026-10-17T09:05:00.000Z
-**Stopped at:** Phase 06 complete, ready to plan Phase 07
+**Last session:** 2026-10-19T12:11:15.456Z
+**Stopped at:** Completed 08-05-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -59,6 +59,14 @@ Total Plans in Phase: not yet planned
 | Phase 06-self-service-app-builder P11 | 55min | 2 tasks | 4 files |
 | Phase 06-self-service-app-builder P12 | 40min | 2 tasks | 6 files |
 | Phase 06-self-service-app-builder P10 | 55min | 2 tasks | 8 files |
+| Phase 07 P01 | 60 | 3 tasks | 20 files |
+| Phase 07 P02 | 10m | 2 tasks | 9 files |
+| Phase 07 P03 | 15 min | 2 tasks | 7 files |
+| Phase 07 P04 | 60 | 3 tasks | 5 files |
+| Phase 07 P06 | 30min | 2 tasks | 4 files |
+| Phase 07 P07 | complete | 3 tasks | 4 files |
+| Phase 08 P05 | ~95min | 1 tasks | 6 files |
+| Phase 08 P09 | 45 | 2 tasks | 14 files |
 
 ## Decisions
 
@@ -133,6 +141,17 @@ Total Plans in Phase: not yet planned
 - [Phase 06]: [Phase 06-10]: One generator two byte-identical artifacts holds - the renderer wires plan-06-09 formio-scope.css as-is, never regenerates or forks it
 - [Phase 06]: [Phase 06-10]: Renderer e2e shares one geometry helper across read+edit pages; edit stub is a live link (no editOutcome) so the form renders
 - [Phase 06]: [Phase 06-10]: Whole-suite-as-one-set green environmentally unproven (orphaned vite/playwright processes + OOM), not code-unproven - rerun npx playwright test --workers=1 on a healthy box
+- [Phase 07]: FormStep gets no save path (no dead writes)
+- [Phase 07]: publishedAppFromDefinition is single PublishedApp; per-form tool projection deferred to 07-08
+- [Phase 07]: Retired app-level Triggers section (13→12); triggers now live on the form (D-06/D-12). Stale triggers grants filtered as no-ops until 07-04 migration.
+- [Phase 07]: Per-kind config validation lives in TemplateSeedSchema via .superRefine (same-kind uniqueness, submit schema presence, show subset, list query_id/columns).
+- [Phase 07]: Seed gallery now ships genuine multi-form templates: leave-request submit+list over qry_pending_leave; expense-report and it-helpdesk-ticket carry show forms.
+- [Phase 07]: Migrate both apps and app_definition_versions in one run (D-11) so rollback() cannot resurrect retired shape
+- [Phase 07]: Filter-guarded compare-and-set migration: find by {form_schema:{$exists:true}}, updateOne re-checks $exists
+- [Phase 07]: FormManager persists every add/remove through {section:'forms'} only; row label derived from app name + kind; remove blocks last-submit via callout-warn
+- [Phase 07]: 07-07: per-form designer dispatch via ?form=; U-1 FormTriggerPanel (inline-collapsible, D-08 disable); U-2 ReadFormConfig (show field selection/ordering, list query_id+columns)
+- [Phase 08]: 08-05 build gate: type/import-only fixes to 6 Phase 8 files; contract types from the @akane/contract root, Queue/Job from bullmq, REDIS_CACHE injected as ioredis Redis with SET NX EX 'OK'-only success, SDK loadAuthConfigFromEnv() + lazy AgentApplication<TurnState>; npm run build (eslint . && tsc -b) now exits 0
+- [Phase 08]: 08-05 deferred requirements marking: IM-10/NOT-02 left unmarked — 08-05 is a compile-only gate and 08-06/07/08/09 own the deliverables (state.advance-plan also declined phase completion with 4 plans outstanding)
 
 ## Blockers/Concerns
 
@@ -180,3 +199,9 @@ Total Plans in Phase: not yet planned
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261015-p1h | Fix the App Builder dev stack so same-origin state-changing requests from the SPA succeed — every write currently 403s with `CSRF_ORIGIN_MISMATCH` because the Vite dev proxy rewrites the Host header. | 2026-10-15 | d57aeca | [261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal](./quick/261015-p1h-fix-dev-proxy-csrf-vite-changeorigin-fal/) |
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 7 edited: Phase 7 replaced: Multi-IM Expansion & Two-Way Sync -> Multi-Form Apps & Per-Form Triggers (APP-11, APP-12, FRM-14 added). Multi-IM renumbered to Phase 8; Production Readiness renumbered to Phase 9. Milestone scope 8 -> 9 phases.

@@ -21,6 +21,8 @@ export default defineConfig({
       '@akane/platform/crypto': fromRoot('./packages/platform/src/crypto/index.ts'),
       '@akane/platform': fromRoot('./packages/platform/src/index.ts'),
       '@akane/contract': fromRoot('./packages/contract/src/index.ts'),
+      '@akane/domain/adapters/teams/inbound/teams-inbound.module.js': fromRoot('./packages/domain/src/adapters/teams/inbound/teams-inbound.module.ts'),
+      '@akane/domain/adapters/teams/inbound/data-access/teams-event.repository.js': fromRoot('./packages/domain/src/adapters/teams/inbound/data-access/teams-event.repository.ts'),
       '@akane/domain': fromRoot('./packages/domain/src/index.ts'),
     },
   },

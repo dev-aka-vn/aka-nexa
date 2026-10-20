@@ -12,6 +12,7 @@ export interface SubmissionRevisionDocument {
   readonly createdAt: Date;
   readonly updatedAt?: Date;
   readonly downstreamReference?: string | null;
+  readonly connectorId?: string | null;
   readonly edit_jti?: string | null;
 }
 
@@ -26,15 +27,20 @@ export class SubmissionRevisionsRepository {
 
   private ensureIndex(): Promise<void> {
     if (this.ensureIndexPromise === null) {
-      this.ensureIndexPromise = this.collection
-        .createIndex(
+      this.ensureIndexPromise = Promise.all([
+        this.collection.createIndex(
           { edit_jti: 1 },
           {
             unique: true,
             partialFilterExpression: { edit_jti: { $exists: true } },
             background: true,
           },
-        )
+        ),
+        this.collection.createIndex(
+          { connectorId: 1, downstreamReference: 1 },
+          { background: true },
+        ),
+      ])
         .then(() => undefined)
         .catch(() => undefined);
     }
@@ -73,11 +79,32 @@ export class SubmissionRevisionsRepository {
     );
   }
 
-  async setConfirmed(submissionId: string, revision: number, downstreamReference?: string | null): Promise<void> {
+  async setConfirmed(
+    submissionId: string,
+    revision: number,
+    downstreamReference?: string | null,
+    connectorId?: string | null,
+  ): Promise<void> {
+    await this.ensureIndex();
     await this.collection.updateOne(
       { submission_id: submissionId, revision },
-      { $set: { outbound: 'confirmed', downstreamReference: downstreamReference ?? null, updatedAt: new Date() } },
+      {
+        $set: {
+          outbound: 'confirmed',
+          downstreamReference: downstreamReference ?? null,
+          ...(connectorId !== undefined ? { connectorId: connectorId ?? null } : {}),
+          updatedAt: new Date(),
+        },
+      },
     );
+  }
+
+  async findByDownstreamReference(
+    connectorId: string,
+    reference: string,
+  ): Promise<SubmissionRevisionDocument | null> {
+    await this.ensureIndex();
+    return this.collection.findOne({ connectorId, downstreamReference: reference });
   }
 
   async setSentUnconfirmed(submissionId: string, revision: number): Promise<void> {

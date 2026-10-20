@@ -7,6 +7,7 @@ import { otelBootstrapConfigFromEnv, startOtel } from '@akane/platform/otel';
 
 import {
   backfillSavedQueries,
+  migrateAppForms,
   TemplateSeed,
 } from '@akane/domain';
 import { MongoService } from '@akane/platform';
@@ -48,7 +49,7 @@ async function bootstrap(): Promise<void> {
 
   const { AppModule } = await import("./app.module.js");
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
 
   // T-06-01: the CSP posture the
@@ -102,6 +103,12 @@ async function bootstrap(): Promise<void> {
     await backfillSavedQueries(app.get(MongoService));
   } catch (error) {
     bootstrap.warn(`saved-query backfill (G-11) deferred: ${String(error)}`);
+  }
+  try {
+    const migrated = await migrateAppForms(app.get(MongoService));
+    bootstrap.log(`forms migration (D-11) complete: ${migrated} document(s)`);
+  } catch (error) {
+    bootstrap.warn(`forms migration (D-11) deferred: ${String(error)}`);
   }
 
   await app.listen(app.get(ConfigService).getOrThrow<number>('PORT'));

@@ -69,7 +69,11 @@ export class PublishController {
     // The gate: read-only, before any state change.
     const result = await this.gate.evaluate(appId, actor);
     if (!result.allowed) {
-      throw new BuilderError('PUBLISH_REFUSED', refusalMessage(result));
+      const formReason = formRuleRefusalMessage(definition);
+      throw new BuilderError(
+        'PUBLISH_REFUSED',
+        formReason ?? refusalMessage(result),
+      );
     }
 
     // BLD-06 boundary: an already-published app is a
@@ -106,6 +110,70 @@ export class PublishController {
       zero_change: false,
     };
   }
+}
+
+/** Form-set refusal reasons (D-05, APP-12/SC#2, D-08, FRM-14). */
+function formRuleRefusalMessage(
+  definition: AppDefinitionDocument,
+): string | null {
+  const forms = definition.forms ?? [];
+  if (!forms.some((f) => f.kind === 'submit')) {
+    return 'publish refused: app requires at least one submit form';
+  }
+  if (
+    forms.some(
+      (f) =>
+        (f.kind === 'show' || f.kind === 'edit') && f.triggers !== null,
+    )
+  ) {
+    return 'publish refused: a show or edit form cannot carry a trigger';
+  }
+  for (const form of forms) {
+    if (form.kind === 'list') {
+      const cfg = form.config as { query_id?: unknown; columns?: unknown };
+      if (
+        typeof cfg?.query_id !== 'string' ||
+        (cfg.query_id as string).length === 0
+      ) {
+        return 'publish refused: list form requires query_id';
+      }
+      if (!Array.isArray(cfg.columns) || cfg.columns.length === 0) {
+        return 'publish refused: list form requires columns';
+      }
+    }
+    if (form.kind === 'show') {
+      const cfg = form.config as { fields?: unknown };
+      if (!Array.isArray(cfg?.fields) || cfg.fields.length === 0) {
+        return 'publish refused: show form requires fields';
+      }
+    }
+  }
+  // trigger uniqueness
+  const counts = new Map<string, number>();
+  for (const form of forms) {
+    const trigger = form.triggers as Record<string, unknown> | null;
+    if (trigger === null || trigger === undefined) continue;
+    const declared = [
+      ...(Array.isArray(trigger['intents']) ? trigger['intents'] : []),
+      ...(Array.isArray(trigger['aliases']) ? trigger['aliases'] : []),
+    ].filter((l): l is string => typeof l === 'string' && l.length > 0);
+    // Dedupe per form (a single form listing the same label in
+    // both intents and aliases is one resolution, not a collision).
+    const uniqueDeclared = [...new Set(declared)];
+    const labels =
+      uniqueDeclared.length > 0
+        ? uniqueDeclared
+        : (['id', 'command'] as const)
+            .map((k) => trigger[k])
+            .filter((v): v is string => typeof v === 'string' && v.length > 0);
+    for (const label of labels) {
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  if ([...counts.values()].some((c) => c > 1)) {
+    return 'Publish blocked: a trigger resolves to more than one form. Each trigger activates exactly one form. Edit the trigger and publish again.';
+  }
+  return null;
 }
 
 /** The inline refusal: the named party and the named delta. */
