@@ -110,11 +110,11 @@ export async function verifyReadLinkJwt(
     }
   }
 
-  // Deduplicate by key string
   const seen = new Set<string>();
   const uniqueKeys = keyEntries.filter((e) => {
-    if (seen.has(e.key)) return false;
-    seen.add(e.key);
+    const key = e.kid ? `${e.kid}::${e.key}` : e.key;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 

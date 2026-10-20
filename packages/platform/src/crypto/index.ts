@@ -15,7 +15,7 @@
  * one here would be the mistake the decision exists to prevent.
  */
 
-export { CRYPTO_KEY_PROVIDER, DEK_LENGTH_BYTES, assertDekLength, unwrapDekChecked, wrapDekChecked } from './key-provider.js';
+export { CRYPTO_KEY_PROVIDER, DEK_LENGTH_BYTES, assertDekLength, unwrapDekChecked, wrapDekChecked, Keyring, createKeyring, newKeyring } from './key-provider.js';
 export type { KeyProvider } from './key-provider.js';
 
 export { LocalKeyProvider } from './local-key-provider.js';
@@ -28,8 +28,11 @@ export {
   IV_LENGTH_BYTES,
   decryptSecret,
   encryptSecret,
+  sealSecret,
+  openSecret,
+  rewrapSecret,
 } from './envelope.js';
-export type { SecretEnvelope } from './envelope.js';
+export type { SecretEnvelope, StoredSecret } from './envelope.js';
 
 export { assertKeyProviderAllowed } from './production-guard.js';
 export type { KeyProviderGuardConfig } from './production-guard.js';

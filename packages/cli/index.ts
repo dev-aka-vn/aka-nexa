@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { runConnectorLoader } from './connector.js';
 import { runEraseActor } from './erase-actor.js';
+import { runRotateKeys } from './rotate-keys.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -8,6 +9,9 @@ async function main() {
   if (command === 'erase-actor' || command === 'erase') {
     const rest = args.slice(1);
     await runEraseActor(rest);
+  } else if (command === 'rotate-keys' || command === 'rotate') {
+    const rest = args.slice(1);
+    await runRotateKeys(rest);
   } else if (command === 'connector' || command === 'upsert') {
     const rest = args.slice(1);
     await runConnectorLoader(rest);

@@ -82,6 +82,13 @@ export interface KeyProvider {
    *   whose length is not {@link DEK_LENGTH_BYTES}. Never truncate or pad.
    */
   unwrapDek(wrapped: Buffer, kid: string): Promise<Buffer>;
+
+  activeKid?(): Promise<string>;
+  retainedKids?(): Promise<readonly string[]>;
+  hasKid?(kid: string): Promise<boolean>;
+  promoteActive?(newKid: string, overlapMs?: number): Promise<void>;
+  retainKid?(kid: string, overlapMs?: number): Promise<void>;
+  removeKid?(kid: string): Promise<void>;
 }
 
 /**
@@ -146,3 +153,129 @@ export async function unwrapDekChecked(
   const dek = await provider.unwrapDek(wrapped, kid);
   return assertDekLength(dek, 'unwrapDek');
 }
+
+export class Keyring implements KeyProvider {
+  #activeProvider: KeyProvider;
+  #retainedProviders: KeyProvider[];
+  #providersByKid = new Map<string, KeyProvider>();
+  #overlapMs: number;
+  #resolved = false;
+  #activeKid = '';
+  #retainedKids = new Set<string>();
+  #retainedUntil = new Map<string, Date>();
+
+  constructor(
+    activeOrConfig: KeyProvider | { active: KeyProvider | string; retained?: (KeyProvider | string)[]; providers?: Map<string, KeyProvider>; overlapMs?: number },
+    retainedProviders: KeyProvider[] = [],
+    overlapMs = 24 * 60 * 60 * 1000,
+  ) {
+    if (activeOrConfig && typeof activeOrConfig === 'object' && 'keyId' in (activeOrConfig as KeyProvider)) {
+      this.#activeProvider = activeOrConfig as KeyProvider;
+      this.#retainedProviders = retainedProviders;
+      this.#overlapMs = overlapMs;
+    } else if (activeOrConfig && typeof activeOrConfig === 'object' && 'active' in activeOrConfig) {
+      const cfg = activeOrConfig as { active: KeyProvider | string; retained?: (KeyProvider | string)[]; providers?: Map<string, KeyProvider>; overlapMs?: number };
+      this.#overlapMs = cfg.overlapMs ?? overlapMs;
+      if (cfg.providers instanceof Map) {
+        for (const [k, v] of cfg.providers) this.#providersByKid.set(k, v);
+      }
+      if (typeof cfg.active !== 'string' && cfg.active && 'keyId' in cfg.active) {
+        this.#activeProvider = cfg.active as KeyProvider;
+      } else {
+        this.#activeProvider = (cfg.providers?.get(cfg.active as string) as KeyProvider) ?? ({} as KeyProvider);
+      }
+      this.#retainedProviders = (cfg.retained ?? []).map((r) =>
+        typeof r === 'string' ? (this.#providersByKid.get(r) as KeyProvider) : (r as KeyProvider),
+      ).filter(Boolean);
+    } else {
+      this.#activeProvider = activeOrConfig as KeyProvider;
+      this.#retainedProviders = retainedProviders;
+      this.#overlapMs = overlapMs;
+    }
+  }
+
+  async #resolve(): Promise<void> {
+    if (this.#resolved) return;
+    const active = await this.#activeProvider.keyId();
+    this.#activeKid = active;
+    this.#providersByKid.set(active, this.#activeProvider);
+    for (const p of this.#retainedProviders) {
+      const k = await p.keyId();
+      this.#providersByKid.set(k, p);
+      this.#retainedKids.add(k);
+    }
+    this.#resolved = true;
+  }
+
+  async keyId(): Promise<string> {
+    await this.#resolve();
+    return this.#activeKid;
+  }
+
+  activeKid(): Promise<string> {
+    return this.keyId();
+  }
+
+  async retainedKids(): Promise<readonly string[]> {
+    await this.#resolve();
+    return [...this.#retainedKids];
+  }
+
+  async hasKid(kid: string): Promise<boolean> {
+    await this.#resolve();
+    return kid === this.#activeKid || this.#retainedKids.has(kid);
+  }
+
+  async wrapDek(dek: Buffer): Promise<{ wrapped: Buffer; kid: string }> {
+    await this.#resolve();
+    const provider = this.#providersByKid.get(this.#activeKid)!;
+    const res = await provider.wrapDek(dek);
+    return { wrapped: res.wrapped, kid: this.#activeKid };
+  }
+
+  async unwrapDek(wrapped: Buffer, kid: string): Promise<Buffer> {
+    await this.#resolve();
+    if (!(kid === this.#activeKid || this.#retainedKids.has(kid))) {
+      throw new Error(`KEY_ID_MISMATCH: key ${kid} is not in the keyring`);
+    }
+    const provider = this.#providersByKid.get(kid);
+    if (!provider) throw new Error(`KEY_ID_MISMATCH: no provider for ${kid}`);
+    return provider.unwrapDek(wrapped, kid);
+  }
+
+  async promoteActive(newKid: string, overlapMs?: number): Promise<void> {
+    await this.#resolve();
+    if (newKid === this.#activeKid) return;
+    if (!this.#providersByKid.has(newKid)) throw new Error(`KEY_NOT_FOUND: ${newKid} is not in the keyring`);
+    const ms = overlapMs ?? this.#overlapMs;
+    this.#retainedKids.add(this.#activeKid);
+    this.#retainedUntil.set(this.#activeKid, new Date(Date.now() + ms));
+    this.#activeKid = newKid;
+  }
+
+  async retainKid(kid: string, overlapMs?: number): Promise<void> {
+    await this.#resolve();
+    if (!this.#providersByKid.has(kid)) throw new Error(`KEY_NOT_FOUND: ${kid} is not in the keyring`);
+    this.#retainedKids.add(kid);
+    this.#retainedUntil.set(kid, new Date(Date.now() + (overlapMs ?? this.#overlapMs)));
+  }
+
+  async removeKid(kid: string): Promise<void> {
+    this.#retainedKids.delete(kid);
+    this.#retainedUntil.delete(kid);
+    this.#providersByKid.delete(kid);
+  }
+
+  overlapExpiry(kid?: string): Date | undefined {
+    if (kid) return this.#retainedUntil.get(kid);
+    let latest: Date | undefined;
+    for (const d of this.#retainedUntil.values()) if (!latest || d > latest) latest = d;
+    return latest;
+  }
+}
+
+export async function createKeyring(active: KeyProvider, retained: KeyProvider[] = [], overlapMs?: number): Promise<Keyring> {
+  return new Keyring(active, retained, overlapMs);
+}
+
+export const newKeyring = createKeyring;
