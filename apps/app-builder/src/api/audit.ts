@@ -32,8 +32,10 @@ export interface AuditEntryView {
   readonly actor: string;
   readonly action: string;
   readonly target: string;
+  readonly app_id?: string;
   readonly previous_state?: string;
   readonly new_state?: string;
+  readonly ip?: string;
   readonly request_id?: string;
 }
 
@@ -51,8 +53,10 @@ const ENTRY_ALLOWLIST = new Set([
   'actor',
   'action',
   'target',
+  'app_id',
   'previous_state',
   'new_state',
+  'ip',
   'request_id',
 ]);
 
@@ -100,8 +104,10 @@ export const AuditBrowseSchema = {
         actor,
         action,
         target,
+        app_id,
         previous_state,
         new_state,
+        ip,
         request_id,
       } = record;
       if (
@@ -117,10 +123,12 @@ export const AuditBrowseSchema = {
         actor,
         action,
         target,
+        ...(typeof app_id === 'string' ? { app_id } : {}),
         ...(typeof previous_state === 'string'
           ? { previous_state }
           : {}),
         ...(typeof new_state === 'string' ? { new_state } : {}),
+        ...(typeof ip === 'string' ? { ip } : {}),
         ...(typeof request_id === 'string'
           ? { request_id }
           : {}),

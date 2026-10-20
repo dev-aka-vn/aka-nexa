@@ -176,6 +176,10 @@ export {
 export { AuditRepository } from './audit/audit.repository.js';
 export { AuditRetentionService } from './audit/audit-retention.service.js';
 export { AppPurgeService } from './audit/app-purge.service.js';
+export { AuditQueryService } from './audit/audit-query.service.js';
+export { AuditExportService } from './audit/audit-export.service.js';
+export { ActorErasureService } from './audit/actor-erasure.service.js';
+export { AccessReviewService } from './audit/access-review.service.js';
 export { type AuditEntry } from './audit/audit-entry.js';
 export { AuditEntry as AuditEntryType } from './audit/audit-entry.js';
 export { AppRepository, type AppDocument } from './registry/app.repository.js';
