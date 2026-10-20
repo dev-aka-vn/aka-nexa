@@ -384,10 +384,10 @@ Plans:
   4. A load test at **1,000 concurrent users and 50 IM events/second** passes, and reports the **measured** Redis cost of the three-tier throttler rather than assuming it.
   5. Each of the seven named alert conditions fires in a test â€” including `submission_status{status="partial"}` and all decision providers unhealthy â€” and a runbook exists for each of the five named incidents.
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 Plans:
 **Wave 1**
-- [ ] 09-01-PLAN.md — Durable audit store (Mongo `audit_entries`), single delete owner + guard test, retention sweep with self-audit entry, two-phase purge with terminal `purged` lifecycle, console archived/purged marking (AUD-03, AUD-08, AUD-09) — wave 1
+- [x] 09-01-PLAN.md — Durable audit store (Mongo `audit_entries`), single delete owner + guard test, retention sweep with self-audit entry, two-phase purge with terminal `purged` lifecycle, console archived/purged marking (AUD-03, AUD-08, AUD-09) — wave 1
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 09-02-PLAN.md — Closed audit-entry shape with `*_ref` fields, `GET /audit` search + `ip`, JSONL export, quarterly access review, `erase-actor` CLI erasure (AUD-04, AUD-05, AUD-06, AUD-07) — wave 2
@@ -464,7 +464,7 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
 | 7. Multi-Form Apps & Per-Form Triggers | 8/8 | Complete    | 2026-10-18 |
 | 8. Multi-IM Expansion & Two-Way Sync | 9/9 | In Progress|  |
-| 9. Production Readiness | 0/TBD | Not started | - |
+| 9. Production Readiness | 1/6 | In Progress|  |
 
 ---
 *Roadmap created: 2026-10-01 â€” v1, 145/145 requirements mapped across 9 phases*

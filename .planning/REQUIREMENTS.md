@@ -243,13 +243,13 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 - [x] **AUD-01**: Every state-changing action writes an append-only audit entry; no update or delete operation on the audit log is permitted
 - [x] **AUD-02**: An audit entry records timestamp, actor, action, target, previous state, new state, IP, and request ID
-- [ ] **AUD-03**: Audit logs are retained for a minimum of 3 years, configurable
+- [x] **AUD-03**: Audit logs are retained for a minimum of 3 years, configurable
 - [ ] **AUD-04**: `actor_ref` is tombstoneable, so an erasure request can null the actor reference without deleting the audit row
 - [ ] **AUD-05**: A global admin can search the audit trail by user, app, action, and date range
 - [ ] **AUD-06**: A global admin can export the audit trail as CSV or JSON Lines
 - [ ] **AUD-07**: A quarterly access review report is auto-generated showing who holds access to what
-- [ ] **AUD-08**: A purge is soft-delete first, then hard delete after a 30-day grace period, and every purge is logged with operator ID and timestamp
-- [ ] **AUD-09**: Archived app data stays queryable by a global admin for compliance
+- [x] **AUD-08**: A purge is soft-delete first, then hard delete after a 30-day grace period, and every purge is logged with operator ID and timestamp
+- [x] **AUD-09**: Archived app data stays queryable by a global admin for compliance
 - [x] **AUD-10**: Rate limiting is applied per user and per link `jti` — never per IP — and blocks only on signature failure
 
 ### Observability & Operations
@@ -544,13 +544,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | NOT-03 | Phase 8 | Pending |
 | NOT-04 | Phase 8 | Complete |
 | NOT-05 | Phase 8 | Pending |
-| AUD-03 | Phase 9 | Pending |
+| AUD-03 | Phase 9 | Complete |
 | AUD-04 | Phase 9 | Pending |
 | AUD-05 | Phase 9 | Pending |
 | AUD-06 | Phase 9 | Pending |
 | AUD-07 | Phase 9 | Pending |
-| AUD-08 | Phase 9 | Pending |
-| AUD-09 | Phase 9 | Pending |
+| AUD-08 | Phase 9 | Complete |
+| AUD-09 | Phase 9 | Complete |
 | OBS-03 | Phase 9 | Pending |
 | OBS-06 | Phase 9 | Pending |
 | OBS-07 | Phase 9 | Pending |

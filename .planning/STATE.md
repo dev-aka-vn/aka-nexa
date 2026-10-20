@@ -4,15 +4,15 @@ current_phase: 09
 current_phase_name: Production Readiness
 current_plan: Not started
 status: "Phase 8 shipped — PR #6 merged + SECURITY.md audited"
-stopped_at: Phase 9 context gathered
-last_updated: "2026-10-20T11:41:22.125Z"
-state_head: 02f39d12fb548011a707ffba2316ae611119cca6
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-10-20T12:32:04.500Z"
+state_head: 20359adff862ffa6594ee23c554460e41ca59220
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 72
   completed_plans: 74
-  percent: 33
+  percent: 89
 last_activity: 2026-10-20
 last_activity_desc: Phase 8 shipped — all 9 plans executed, 6/6 requirements verified, SECURITY.md audited
 ---
@@ -27,9 +27,9 @@ Total Plans in Phase: 6
 
 ## Session
 
-**Last session:** 2026-10-20T06:53:27.908Z
-**Stopped at:** Phase 9 context gathered
-**Resume file:** .planning/phases/09-production-readiness/09-CONTEXT.md
+**Last session:** 2026-10-20T12:31:57.278Z
+**Stopped at:** Completed 09-01-PLAN.md
+**Resume file:** None
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Total Plans in Phase: 6
 | Phase 07 P07 | complete | 3 tasks | 4 files |
 | Phase 08 P05 | ~95min | 1 tasks | 6 files |
 | Phase 08 P09 | 45 | 2 tasks | 14 files |
+| Phase 09 P01 | 0 | 3 tasks | 33 files |
 
 ## Decisions
 
@@ -152,6 +153,7 @@ Total Plans in Phase: 6
 - [Phase 07]: 07-07: per-form designer dispatch via ?form=; U-1 FormTriggerPanel (inline-collapsible, D-08 disable); U-2 ReadFormConfig (show field selection/ordering, list query_id+columns)
 - [Phase 08]: 08-05 build gate: type/import-only fixes to 6 Phase 8 files; contract types from the @akane/contract root, Queue/Job from bullmq, REDIS_CACHE injected as ioredis Redis with SET NX EX 'OK'-only success, SDK loadAuthConfigFromEnv() + lazy AgentApplication<TurnState>; npm run build (eslint . && tsc -b) now exits 0
 - [Phase 08]: 08-05 deferred requirements marking: IM-10/NOT-02 left unmarked — 08-05 is a compile-only gate and 08-06/07/08/09 own the deliverables (state.advance-plan also declined phase completion with 4 plans outstanding)
+- [Phase 09]: Audit trail moved to Mongo audit_entries; retention service sole delete owner; two-phase purge with terminal purged state.
 
 ## Blockers/Concerns
 
