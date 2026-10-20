@@ -43,22 +43,22 @@ rolling deploys and zero-downtime key rotation.
 
 ### Audit trail durability & retention
 
-- **D-01 (Store)**: The audit trail moves to a **Mongo `audit_entries` collection**. `AuditRepository`
+- **D-01 (Store):** The audit trail moves to a **Mongo `audit_entries` collection**. `AuditRepository`
   keeps its existing `append` / read interface and delegates to
   `MongoService.db().collection<T>()` — the same lazy-access pattern
   `app-definition.repository.ts` already uses — so no call site changes.
   — **Reversibility:** costly — undoing means reimplementing a durable store and abandoning every
   row written while Mongo was the store.
-- **D-02 (Retention ownership)**: The **3-year window lives in deployment config**, with a hard
+- **D-02 (Retention ownership):** The **3-year window lives in deployment config**, with a hard
   3-year floor; the operator may *extend* it, never shorten it. AUD-03's "configurable" is that
   extend-only knob. The per-app `retention_policy` (already in the app-definition contract, currently
   `null`) governs that app's **submission data only** — it never governs the audit trail.
-- **D-03 (Boundary sweep)**: When a row crosses the retention boundary it is deleted by a
+- **D-03 (Boundary sweep):** When a row crosses the retention boundary it is deleted by a
   **BullMQ Job Scheduler sweep**, and the sweep **appends its own audit entry** (cutoff date, row
   count, `operator: system`). The deletion is therefore itself evidence. BullMQ Job Schedulers are
   the only durable scheduling mechanism — `@nestjs/schedule` is banned for durable work because a
   purge that silently does not run is a compliance failure, not a missed tick.
-- **D-04 (Preserving AUD-01)**: AUD-01's "append-only by construction" survives by giving the
+- **D-04 (Preserving AUD-01):** AUD-01's "append-only by construction" survives by giving the
   delete capability a **single named owner**: a retention service that is the only thing in the
   repository permitted to call `deleteMany` on `audit_entries`, enforced by a guard test that fails
   if any other module mutates or deletes audit rows. The guarantee stops being an *absence* of
@@ -66,7 +66,7 @@ rolling deploys and zero-downtime key rotation.
 
 ### Erasure and `actor_ref`
 
-- **D-05 (Indirection, not nulling)**: Audit rows carry an **opaque `actor_ref`**, never a user id.
+- **D-05 (Indirection, not nulling):** Audit rows carry an **opaque `actor_ref`**, never a user id.
   An `actor_identities` mapping collection resolves `actor_ref → real_user_id`, mirroring the
   existing `identity-mapping.repository.ts` shape. An erasure deletes **one mapping row** and writes
   **no audit row**, so AUD-01 needs no erasure exception at all. The erasure act is itself
@@ -75,20 +75,20 @@ rolling deploys and zero-downtime key rotation.
   which is the intended outcome.
   — **Reversibility:** one-way — undoing requires rewriting every audit row and back-filling
   identities that the erasure was performed to destroy.
-- **D-06 (Closed entry shape)**: The entry's `[key: string]: unknown` index signature is **removed**;
+- **D-06 (Closed entry shape):** The entry's `[key: string]: unknown` index signature is **removed**;
   the entry carries an explicit field set. Identity-bearing fields are named `*_ref`
   (`actor_ref`, `from_user_ref`, `to_user_ref`, `updated_by_ref`), and erasure redacts **every field
   matching `*_ref`** by name convention. Free-text `changeSummary` is replaced by a structured,
   non-identifying summary. This is what makes D-05's promise mechanically complete rather than a
   list someone has to remember to extend.
   — **Reversibility:** costly — every append site must be updated and the type is exported.
-- **D-07 (Execution)**: Erasure is an **operator CLI command in `packages/cli`**, following the
+- **D-07 (Execution):** Erasure is an **operator CLI command in `packages/cli`**, following the
   existing CLI harness (`rebind.ts`, `provision.ts` already inject an `AuditRepository`). The
   operator supplies the `real_user_id` and a ticket reference; the command redacts every `*_ref`,
   deletes the mapping row, purges submission bodies inside the app's retention window, and appends
   `erasure.executed`. Erasure is rare, deliberate and irreversible, so it does not get a console
   button.
-- **D-08 (Reach)**: Erasure in this phase reaches **the audit refs and the submission bodies** —
+- **D-08 (Reach):** Erasure in this phase reaches **the audit refs and the submission bodies** —
   exactly the narrowed promise frozen in REQUIREMENTS' conflict table row 3 (allowlist before
   serialisation + tombstone of the actor reference + defined purge windows for submission bodies).
   `ProfileRepository` and `IdentityMappingRepository` hold email/name/employee_code but are
@@ -97,32 +97,32 @@ rolling deploys and zero-downtime key rotation.
 
 ### Compliance operator surfaces
 
-- **D-09 (The `ip` field — correcting a stale justification)**: `GET /audit` **serves `ip`**.
+- **D-09 (The `ip` field — correcting a stale justification):** `GET /audit` **serves `ip`**.
   `audit.controller.ts:37` and `AuditPage.tsx` both justify dropping it by citing D-43, but D-43's
   `LOG_FIELD_ALLOWLIST` **includes** `ip` and `user_agent` (the "actor/context fields (D-43, LNK-09)"
   group in `packages/platform/src/logging/log-allowlist.ts`), AUD-02 already requires the entry to
   record IP, and the mockup renders an IP column. The shipped projection is narrower than both the
   contract and the design; the projection wins and the stale comments are corrected in the same
   change. `user_agent` stays store-only.
-- **D-10 (Search)**: AUD-05 is delivered by **extending `GET /audit`** with `user`, `app_id`,
+- **D-10 (Search):** AUD-05 is delivered by **extending `GET /audit`** with `user`, `app_id`,
   `action`, `from` and `to` filters pushed into a Mongo query with supporting compound indexes —
   not by a second endpoint, and not by filtering the loaded page. **`app_id` becomes a first-class
   entry field**, which fixes a second mockup-vs-contract gap: the audit table renders an **App**
   column but the view has no app field, and `target` is an app id for some actions and a
   transfer/connector id for others.
-- **D-11 (Export)**: AUD-06 ships **JSON Lines only**, matching the mockup's single
+- **D-11 (Export):** AUD-06 ships **JSON Lines only**, matching the mockup's single
   "Export JSON Lines" button. AUD-06's wording is "CSV **or** JSON Lines", so one format satisfies
   it, and JSONL is lossless for the optional fields the trail carries with no dependency and no
   flattening decisions. (`csv-stringify` is already a dependency via the submissions export —
   a CSV sibling is cheap if an operator ever asks, but it is not built now.)
-- **D-12 (Access review)**: AUD-07 is a **quarterly BullMQ Job Scheduler job** that computes who
+- **D-12 (Access review):** AUD-07 is a **quarterly BullMQ Job Scheduler job** that computes who
   holds which role on which app, stores the report, and appends an `access_review.generated` audit
   entry — plus a **new global-admin console route** rendering the latest report and offering the same
   JSON Lines download. This route is **not depicted in the mockup** (its nav is Dashboard / Apps /
   Submissions / Connectors / Audit Log / User Management / Settings); the mockup is amended rather
   than treated as licence to improvise, and no acceptance criteria come from it.
   — **Reversibility:** costly — adds a nav surface and a stored artifact shape that later phases read.
-- **D-13 (Purge is a lifecycle state)**: **`purged` is added to the lifecycle enum**
+- **D-13 (Purge is a lifecycle state):** **`purged` is added to the lifecycle enum**
   (`packages/contract/src/builder/publish.contract.ts:82`, currently
   `draft|published|deprecated|archived`) as the **single permitted exit from `archived`**, which
   `app-lifecycle.ts` currently refuses outright. A purge record carries the grace-period fields
@@ -132,42 +132,42 @@ rolling deploys and zero-downtime key rotation.
   not the irreversible act. This matches the mockup, whose state list already reads
   `["draft","published","deprecated","archived","purged"]`.
   — **Reversibility:** one-way — amends a frozen published contract enum that consumers switch on.
-- **D-14 (AUD-09)**: Archived (not yet purged) apps stay in the **global admin's existing
+- **D-14 (AUD-09):** Archived (not yet purged) apps stay in the **global admin's existing
   Submissions scope**, marked "Archived". No new compliance read surface. Purged data disappears on
   schedule — the honest reading of AUD-08 and AUD-09 together is *archived is queryable, purged is
   not*.
 
 ### Observability
 
-- **D-15 (Alert set is eight, not seven)**: The alert set is **OBS-06's seven plus
+- **D-15 (Alert set is eight, not seven):** The alert set is **OBS-06's seven plus
   `submission_status{status="partial"}`**. SC#5 says "each of the seven named alert conditions fires
   in a test — including `submission_status{status="partial"}` and all decision providers unhealthy",
   but `partial` is not in OBS-06's seven (it is OBS-04, already complete). A partial hybrid
   submission is otherwise invisible — OBS-04's own stated rationale. Implementing the union
   satisfies both readings, and the divergence in the requirement wording is **recorded, not
   rewritten**.
-- **D-16 (How "fires in a test" is proven)**: Alert rules are **Prometheus rule files committed
+- **D-16 (How "fires in a test" is proven):** Alert rules are **Prometheus rule files committed
   in-repo**, each with a **`promtool test rules` case run in CI** against the official Prometheus
   image (Docker is already available through the testcontainers harness in `tooling/`). This uses
   Prometheus's own evaluation semantics, so the test proves the *rule* fires — not merely that a
   metric crossed a threshold, which would let a typo in an `expr` pass.
-- **D-17 (Load test)**: OBS-08 is a **k6** scenario set committed in-repo — 1,000 concurrent VUs and
+- **D-17 (Load test):** OBS-08 is a **k6** scenario set committed in-repo — 1,000 concurrent VUs and
   50 IM events/s — run on demand and in a dedicated CI job against a containerized stack. k6 is an
   external binary, so `node_modules` does not grow, and it can hold 1,000 VUs where a single-threaded
   Node process cannot. The **throttler's Redis cost is measured** from `INFO commandstats` deltas
   sampled before and after, broken out per Redis command, so the three round-trips per request
   become a number rather than the currently-unmeasured note in the ledger.
-- **D-18 (Metric coverage)**: **Every signal OBS-03 names** — JEV latency, JEV confidence, RBAC
+- **D-18 (Metric coverage):** **Every signal OBS-03 names** — JEV latency, JEV confidence, RBAC
   resolution latency, token issue, token consume (success/failure), connector success/failure, queue
   depth, queue age, form load time, active IM connections — gets a **real instrument *and* a real
   emit site**, with a completeness test asserting every declared instrument name appears in a scrape.
   This deliberately closes the `queue.oldest.item.age` precedent (a name constant with nothing behind
   it), which is the exact failure OBS-03 exists to prevent.
-- **D-19 (Dashboards)**: OBS-09 is **Grafana dashboard-as-code committed in-repo**, with a test
+- **D-19 (Dashboards):** OBS-09 is **Grafana dashboard-as-code committed in-repo**, with a test
   asserting every panel query references only metric names the app actually emits (the same canonical
   registry D-16 and D-18 use). It consumes the `/metrics` endpoint that already exists, so there is
   no new app surface, no second auth boundary and no console-to-Prometheus credential story.
-- **D-20 (Retention and runbooks as guarded artifacts)**: OBS-07's log retention is committed
+- **D-20 (Retention and runbooks as guarded artifacts):** OBS-07's log retention is committed
   **deploy values** (Loki 30-day hot retention, 1-year cold in object storage) with a test asserting
   the numbers match the requirement, so the configuration cannot drift from it. OBS-10's five
   runbooks live at `docs/runbooks/<incident>.md`, each referenced by its alert rule's `runbook_url`
@@ -176,7 +176,7 @@ rolling deploys and zero-downtime key rotation.
 
 ### Key rotation — the ROADMAP note is currently unsatisfiable
 
-- **D-21 (Close WINDOW 7 here, then verify)**: WINDOW 7 is closed **in this phase** by persisting the
+- **D-21 (Close WINDOW 7 here, then verify):** WINDOW 7 is closed **in this phase** by persisting the
   wrapped DEK beside the envelope — explicitly additive, since D-25's five envelope fields do not
   change (that is D-25's own note). Only then can **both** the JWT link-signing keyring (additive by
   construction: `jwt-verifier.ts` resolves `kid → key`) **and** envelope rotation be verified as
