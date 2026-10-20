@@ -183,6 +183,7 @@ export const ALLOWED_EDGES = Object.freeze({
   // traverses. dsl is required because SubmissionRepository is constructed over
   // DslService (DAT-10/11).
   notifications: Object.freeze(['platform', 'kernel', 'contract', 'submissions', 'identity', 'links', 'dsl']),
+  audit: Object.freeze(['platform', 'kernel', 'contract']),
   pipeline: Object.freeze([
     'platform',
     'kernel',

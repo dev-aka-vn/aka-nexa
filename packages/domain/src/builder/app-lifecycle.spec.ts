@@ -84,12 +84,13 @@ describe('AppLifecycle state machine (APP-02, APP-05, APP-06)', () => {
       }
     });
 
-    it('exactly the four states exist, in ladder order', () => {
+    it('exactly the five states exist, in ladder order', () => {
       expect([...APP_LIFECYCLE_STATES]).toEqual([
         'draft',
         'published',
         'deprecated',
         'archived',
+        'purged',
       ]);
     });
   });

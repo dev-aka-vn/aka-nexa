@@ -398,7 +398,7 @@ describe('submission export (BLD-08, D-111)', () => {
       target: 'leave-request',
       row_count: 1,
     });
-    const filters = entries[0]!.filters as Record<string, unknown>;
+    const filters = (entries[0] as any).filters as Record<string, unknown>;
     expect(filters).toEqual({
       status: 'completed',
       from: '2026-10-01T00:00:00.000Z',

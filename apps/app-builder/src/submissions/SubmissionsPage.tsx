@@ -50,6 +50,7 @@ import {
   type SubmissionViewerRow,
 } from '../api/submissions.js';
 import { useApiClient } from '../apiHooks.js';
+import { AppDefinitionSchema, type AppDefinition } from '../api/definition.js';
 import { InlineError } from '../error/InlineError.js';
 import { Skeleton } from '../ui/Skeleton.js';
 import { ScopedAppPicker } from '../ui/ScopedAppPicker.js';
@@ -111,6 +112,7 @@ function SubmissionsViewer({
   const [rows, setRows] = useState<
     readonly SubmissionViewerRow[] | null
   >(null);
+  const [app, setApp] = useState<AppDefinition | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [selectedId, setSelectedId] = useState<
     string | null
@@ -162,6 +164,24 @@ function SubmissionsViewer({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await client.get(
+          `/apps/${encodeURIComponent(appId)}`,
+          AppDefinitionSchema,
+        );
+        if (!cancelled) setApp(response);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, appId]);
 
   /** The distinct form ids the loaded rows carry — the form filter's options. */
   const formOptions = useMemo(() => {
@@ -222,6 +242,11 @@ function SubmissionsViewer({
               ← Apps
             </a>
             <span className="pill-mono">{appId}</span>
+            {app?.lifecycle === 'archived' ? (
+              <span className="badge badge-archived">Archived</span>
+            ) : app?.lifecycle === 'purged' ? (
+              <span className="badge badge-archived">Purged</span>
+            ) : null}
           </div>
           <h1>Submissions</h1>
           <p className="sub">

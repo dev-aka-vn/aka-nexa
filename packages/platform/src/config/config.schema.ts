@@ -88,6 +88,8 @@ const AppConfigShape = {
     // the exporters. An OTLP endpoint has to be reachable over HTTP.
     .refine((value) => /^https?:\/\//i.test(value), 'expected an http(s) OTLP endpoint')
     .optional(),
+  AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1095).default(1095),
+  PURGE_GRACE_DAYS: z.coerce.number().int().nonnegative().default(30),
 };
 
 /**

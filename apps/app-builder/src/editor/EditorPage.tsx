@@ -544,6 +544,26 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
         </div>
       </div>
 
+      {definition.lifecycle === 'purged' ? (
+        <div
+          className="callout callout-warn"
+          role="alert"
+          data-testid="purge-grace-callout"
+          style={{ marginBottom: 16 }}
+        >
+          {definition.executed_at == null ? (
+            <>
+              <b>Purged — grace period.</b>{' '}
+              Scheduled hard-delete after{' '}
+              <span className="cell-mono">{definition.execute_after}</span>{' '}
+              by <span className="cell-mono">{definition.operator_id}</span>.
+            </>
+          ) : (
+            <b>Purged app data has been hard-deleted per policy.</b>
+          )}
+        </div>
+      ) : null}
+
       <AppTabs active={activeSection} onSelect={selectSection} />
 
       {/*

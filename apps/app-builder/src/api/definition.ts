@@ -23,6 +23,7 @@ export const APP_LIFECYCLE_STATES = [
   'published',
   'deprecated',
   'archived',
+  'purged',
 ] as const;
 
 export type AppLifecycleState = (typeof APP_LIFECYCLE_STATES)[number];
@@ -99,6 +100,10 @@ export interface AppDefinition {
   readonly createdBy: string;
   readonly createdAt: string;
   readonly updatedAt?: string;
+  readonly requested_at?: string | null;
+  readonly operator_id?: string | null;
+  readonly execute_after?: string | null;
+  readonly executed_at?: string | null;
 }
 
 /**
@@ -323,6 +328,14 @@ export const AppDefinitionSchema = {
       createdBy: typeof doc.createdBy === 'string' ? doc.createdBy : '',
       createdAt: typeof doc.createdAt === 'string' ? doc.createdAt : '',
       updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : undefined,
+      requested_at:
+        typeof doc.requested_at === 'string' ? doc.requested_at : null,
+      operator_id:
+        typeof doc.operator_id === 'string' ? doc.operator_id : null,
+      execute_after:
+        typeof doc.execute_after === 'string' ? doc.execute_after : null,
+      executed_at:
+        typeof doc.executed_at === 'string' ? doc.executed_at : null,
     };
   },
 };

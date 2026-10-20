@@ -1,4 +1,6 @@
 import { Module, type OnApplicationShutdown } from '@nestjs/common';
+import './common/filters/link-error.filter.js';
+import './common/guards/permission.guard.js';
 import { TerminusModule } from '@nestjs/terminus';
 
 import {
@@ -22,6 +24,7 @@ import { AppBuilderModule } from './app-builder/app-builder.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { TeamsModule } from './adapters/teams/teams.module.js';
+import { SlackModule } from './adapters/slack/slack.module.js';
 import { ExternalWebhookModule } from './webhooks/external/external-webhook.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 
@@ -82,6 +85,7 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     SubmissionsModule,
     AuditModule,
     TeamsModule,
+    SlackModule,
     ExternalWebhookModule,
   ],
   controllers: [HealthController],

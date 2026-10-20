@@ -436,7 +436,7 @@ describe('submissions viewer + export (BLD-08, D-111)', () => {
       target: 'leave-request',
       row_count: viewCount,
     });
-    expect((entry.filters as Record<string, unknown>)).toEqual({
+    expect(((entry as any).filters as Record<string, unknown>)).toEqual({
       status: null,
       from: null,
       to: null,

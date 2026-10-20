@@ -442,7 +442,7 @@ describe('app-definition lifecycle (BLD-02, APP-02, APP-05, D-86)', () => {
     expect(entry.target).toBe('leave-request');
     expect(entry.previous_state).toBe('draft');
     expect(entry.new_state).toBe('draft');
-    expect(entry.section).toBe('general');
+    expect((entry as any).section).toBe('general');
   });
 
   it('PATCH /apps/:id refuses an unknown section inline', async () => {
