@@ -43,6 +43,7 @@ import {
   AppDefinitionRepository,
   AppDefinitionService,
   AuditRepository,
+  AppPurgeService,
   ConnectorRequestRepository,
   ConnectorRequestService,
   FieldMappingService,
@@ -78,6 +79,11 @@ import { TransferRequestController } from './transfer-request.controller.js';
   ],
   providers: [
     AuditRepository,
+    {
+      provide: AppPurgeService,
+      useFactory: (mongo: MongoService, audit: AuditRepository): AppPurgeService => new AppPurgeService(mongo, audit, 30),
+      inject: [MongoService, AuditRepository],
+    },
     {
       provide: AppDefinitionRepository,
       useFactory: (mongo: MongoService): AppDefinitionRepository =>

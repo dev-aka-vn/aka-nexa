@@ -130,6 +130,7 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
    * than inventing a diff.
    */
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   /**
    * The BLD-06 blocked-chord notice — the
    * inline refusal the shortcut renders
@@ -434,6 +435,28 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
    * gate's confirm control calls
    * `publish()`.
    */
+
+  const requestPurge = useCallback((): void => {
+    setPurgeConfirmOpen(true);
+  }, []);
+
+  const confirmPurge = useCallback(async (): Promise<void> => {
+    setPurgeConfirmOpen(false);
+    setSaving(true);
+    try {
+      const response = await client.post(
+        `/apps/${appId}/purge`,
+        undefined,
+        AppDefinitionSchema,
+      );
+      setDefinition(response);
+    } catch (error) {
+      setSaveError(error);
+    } finally {
+      setSaving(false);
+      }
+  }, [client, appId]);
+
   const requestPublish = useCallback((): void => {
     setBlockedNotice(null);
     setConfirmOpen(true);
@@ -553,16 +576,39 @@ export function EditorPage({ appId }: EditorPageProps): ReactElement {
         >
           {definition.executed_at == null ? (
             <>
-              <b>Purged — grace period.</b>{' '}
-              Scheduled hard-delete after{' '}
-              <span className="cell-mono">{definition.execute_after}</span>{' '}
-              by <span className="cell-mono">{definition.operator_id}</span>.
+              <b>Purge requested — soft-deleted now. Data is hard-deleted after the 30-day grace period.</b>
+              <div className="cell-mono">execute_after {String(definition.execute_after)} · operator {String(definition.operator_id)}</div>
             </>
           ) : (
             <b>Purged app data has been hard-deleted per policy.</b>
           )}
         </div>
       ) : null}
+
+      <section className="card" data-testid="lifecycle-card" style={{ marginBottom: 16 }}>
+        <div className="card-head">
+          <h2>Lifecycle</h2>
+          <span className="spacer" />
+          <span className="pill-mono">{definition.lifecycle}</span>
+        </div>
+        <div className="card-body">
+          <div className="od-row" style={{ '--od-gap': '8px' } as never}>
+            <button type="button" className="btn btn-sm btn-danger" data-testid="editor-purge" onClick={requestPurge} disabled={saving}>
+              Purge
+            </button>
+          </div>
+          {purgeConfirmOpen ? (
+            <div role="dialog" aria-modal="true" data-testid="purge-confirm-modal" style={{ marginTop: 12 }}>
+              <h3>Purge app?</h3>
+              <p>Purge app? This soft-deletes the app now; data is hard-deleted after the 30-day grace period.</p>
+              <div className="od-row" style={{ '--od-gap': '8px' } as never}>
+                <button type="button" className="btn btn-sm" data-testid="purge-cancel" onClick={() => setPurgeConfirmOpen(false)}>Cancel</button>
+                <button type="button" className="btn btn-sm btn-danger" data-testid="purge-confirm" onClick={() => { void confirmPurge(); }}>Purge</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
 
       <AppTabs active={activeSection} onSelect={selectSection} />
 

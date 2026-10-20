@@ -62,7 +62,7 @@ function lifecycleTone(
     case 'archived':
       return 'badge-archived';
     case 'purged':
-      return 'badge-archived';
+      return 'badge-purged';
     default:
       return 'badge-draft';
   }

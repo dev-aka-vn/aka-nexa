@@ -12,6 +12,7 @@ import type { Request } from 'express';
 
 import {
   AppDefinitionService,
+  AppPurgeService,
   AuditRepository,
   BuilderError,
   PUBLISH_SHARE_DROP_THRESHOLD_POINTS,
@@ -44,6 +45,7 @@ export class PublishController {
     private readonly definitions: AppDefinitionService,
     private readonly gate: PublishGateService,
     private readonly audit: AuditRepository,
+    private readonly purgeService: AppPurgeService,
   ) {}
 
   /**
@@ -109,6 +111,32 @@ export class PublishController {
       changeSummary: result.changeSummary,
       zero_change: false,
     };
+  }
+  @Post('apps/:id/purge')
+  @HttpCode(200)
+  async purge(
+    @Param('id') appId: string,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    const actor = actorOf(req);
+    const user = (req as Request & { user?: { role?: string } }).user;
+    if (user?.role !== 'global-admin') {
+      throw new BuilderError('GLOBAL_ADMIN_REQUIRED', 'global-admin session required');
+    }
+    const definition = await this.definitions.findByAppId(appId);
+    if (definition === null) {
+      throw new NotFoundException(errorBody('APP_NOT_FOUND', `app not found: ${appId}`));
+    }
+    await this.purgeService.softDelete(appId, actor);
+    await this.audit.append({
+      timestamp: new Date(),
+      actor,
+      action: 'purge.requested',
+      target: appId,
+      operator: actor,
+    });
+    const updated = await this.definitions.findByAppId(appId);
+    return toDefinitionResponse(updated ?? definition);
   }
 }
 
@@ -189,6 +217,7 @@ function refusalMessage(result: PublishGateResult): string {
   }
   return 'publish refused: routing share drop exceeds the threshold';
 }
+
 
 /** The authenticated builder admin's identity (D-104). */
 function actorOf(req: Request): string {
