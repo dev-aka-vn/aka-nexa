@@ -30,6 +30,14 @@ export {
 } from './business-metrics.js';
 export { MetricsController } from './metrics.controller.js';
 export {
+  type EmittedMetric,
+  type MetricKind,
+  type MetricTier,
+  EMITTED_METRICS,
+  SCRAPED_NAMES,
+  EXTERNAL_SCRAPED,
+} from './metric-registry.js';
+export {
   MetricsModule,
   prometheusExporterProvider,
   requirePrometheusExporter,
