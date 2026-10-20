@@ -110,3 +110,16 @@ jobs:
           docker run --rm --entrypoint promtool \
             -v "$PWD":/w -w /w prom/prometheus:v3.7.0 \
             test rules observability/prometheus/tests/rules.test.yml
+
+  # OBS-08: smoke-level k6 run. The full target-load run (1000 VUs, 50 ev/s)
+  # is on-demand and needs resources a CI runner does not have; this job only
+  # exercises the scenario structure and the harness using a pinned image.
+  k6-smoke:
+    name: k6-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run k6 smoke
+        run: |
+          docker run --rm -v "$PWD":/w -w /w grafana/k6:0.53.0 \
+            run load/k6/scenarios.js --vus 1 --duration 5s
