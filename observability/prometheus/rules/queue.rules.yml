@@ -1,0 +1,11 @@
+groups:
+  - name: akane.queue
+    rules:
+      - alert: AkaneDlqDepthHigh
+        expr: max(queue_depth) > 50
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "DLQ depth above 50"
+          runbook_url: "docs/runbooks/connector-timeout-spike.md"

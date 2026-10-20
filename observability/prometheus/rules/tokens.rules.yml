@@ -1,0 +1,11 @@
+groups:
+  - name: akane.tokens
+    rules:
+      - alert: AkaneTokenConsumeFailure
+        expr: sum(increase(read_link_token_consume_total{result!="ok"}[1m])) > 10
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Token consume failure rate above 10 per minute"
+          runbook_url: "docs/runbooks/double-submission-reports.md"

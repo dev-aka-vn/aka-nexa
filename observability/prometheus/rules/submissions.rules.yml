@@ -1,0 +1,11 @@
+groups:
+  - name: akane.submissions
+    rules:
+      - alert: AkanePartialSubmissions
+        expr: increase(submission_status{status="partial"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Partial submissions increasing over 10 minutes"
+          runbook_url: "docs/runbooks/double-submission-reports.md"

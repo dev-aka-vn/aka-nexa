@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - rules/connector.rules.yml
+  - rules/tokens.rules.yml
+  - rules/decision.rules.yml
+  - rules/queue.rules.yml
+  - rules/infrastructure.rules.yml
+  - rules/submissions.rules.yml
+
+scrape_configs:
+  - job_name: akane
+    static_configs:
+      - targets: ['localhost:9464']

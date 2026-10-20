@@ -1,0 +1,19 @@
+groups:
+  - name: akane.decision
+    rules:
+      - alert: AkaneDecisionConfidenceLow
+        expr: avg(jev_decision_confidence) < 0.6
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Average decision confidence below 0.6 over 10 minutes"
+          runbook_url: "docs/runbooks/decision-provider-outage.md"
+      - alert: AkaneDecisionProvidersAllDown
+        expr: sum(platform_heartbeat) == 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "All decision providers unhealthy"
+          runbook_url: "docs/runbooks/decision-provider-outage.md"

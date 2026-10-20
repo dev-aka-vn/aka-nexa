@@ -1,0 +1,234 @@
+rule_files:
+  - ../rules/connector.rules.yml
+  - ../rules/tokens.rules.yml
+  - ../rules/decision.rules.yml
+  - ../rules/queue.rules.yml
+  - ../rules/infrastructure.rules.yml
+  - ../rules/submissions.rules.yml
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'connector_outcome{outcome="failure"}'
+        values: '0 10 20 30 40'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkaneConnectorFailureRate
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneConnectorFailureRate
+              severity: page
+            exp_annotations:
+              summary: "Connector failure rate above 5% for 5 minutes"
+              runbook_url: "docs/runbooks/connector-timeout-spike.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'connector_outcome{outcome="failure"}'
+        values: '0 1 2 3 4'
+      - series: 'connector_outcome{outcome="success"}'
+        values: '0 19 38 57 76'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkaneConnectorFailureRate
+        exp_alerts: []
+
+  - interval: 30s
+    input_series:
+      - series: 'read_link_token_consume_total{result="denied"}'
+        values: '0 0 0 0 0 0 0 0 11'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkaneTokenConsumeFailure
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneTokenConsumeFailure
+              severity: page
+            exp_annotations:
+              summary: "Token consume failure rate above 10 per minute"
+              runbook_url: "docs/runbooks/double-submission-reports.md"
+
+  - interval: 30s
+    input_series:
+      - series: 'read_link_token_consume_total{result="denied"}'
+        values: '0 0 0 0 0 0 0 0 10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkaneTokenConsumeFailure
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'jev_decision_confidence'
+        values: '0.5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDecisionConfidenceLow
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneDecisionConfidenceLow
+              severity: page
+            exp_annotations:
+              summary: "Average decision confidence below 0.6 over 10 minutes"
+              runbook_url: "docs/runbooks/decision-provider-outage.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'jev_decision_confidence'
+        values: '0.6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDecisionConfidenceLow
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'platform_heartbeat'
+        values: '0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDecisionProvidersAllDown
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneDecisionProvidersAllDown
+              severity: page
+            exp_annotations:
+              summary: "All decision providers unhealthy"
+              runbook_url: "docs/runbooks/decision-provider-outage.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'platform_heartbeat'
+        values: '1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDecisionProvidersAllDown
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'queue_depth'
+        values: '51'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDlqDepthHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneDlqDepthHigh
+              severity: page
+            exp_annotations:
+              summary: "DLQ depth above 50"
+              runbook_url: "docs/runbooks/connector-timeout-spike.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'queue_depth'
+        values: '50'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneDlqDepthHigh
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes'
+        values: '90'
+      - series: 'redis_memory_max_bytes'
+        values: '100'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneRedisMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneRedisMemoryHigh
+              severity: page
+            exp_annotations:
+              summary: "Redis memory usage above 80%"
+              runbook_url: "docs/runbooks/redis-oom.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes'
+        values: '80'
+      - series: 'redis_memory_max_bytes'
+        values: '100'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneRedisMemoryHigh
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'mongodb_mongod_replset_member_replication_lag'
+        values: '6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneMongoReplicationLag
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneMongoReplicationLag
+              severity: page
+            exp_annotations:
+              summary: "MongoDB replication lag above 5 seconds"
+              runbook_url: "docs/runbooks/README.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'mongodb_mongod_replset_member_replication_lag'
+        values: '5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AkaneMongoReplicationLag
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'submission_status{status="partial"}'
+        values: '0 0 0 0 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkanePartialSubmissions
+        exp_alerts:
+          - exp_labels:
+              alertname: AkanePartialSubmissions
+              severity: page
+              status: partial
+            exp_annotations:
+              summary: "Partial submissions increasing over 10 minutes"
+              runbook_url: "docs/runbooks/double-submission-reports.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'submission_status{status="partial"}'
+        values: '0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkanePartialSubmissions
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'connector_outcome{outcome="failure"}'
+        values: '0 10 20 30 40'
+      - series: 'submission_status{status="partial"}'
+        values: '0 0 0 0 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AkaneConnectorFailureRate
+        exp_alerts:
+          - exp_labels:
+              alertname: AkaneConnectorFailureRate
+              severity: page
+            exp_annotations:
+              summary: "Connector failure rate above 5% for 5 minutes"
+              runbook_url: "docs/runbooks/connector-timeout-spike.md"
+      - eval_time: 4m
+        alertname: AkanePartialSubmissions
+        exp_alerts:
+          - exp_labels:
+              alertname: AkanePartialSubmissions
+              severity: page
+              status: partial
+            exp_annotations:
+              summary: "Partial submissions increasing over 10 minutes"
+              runbook_url: "docs/runbooks/double-submission-reports.md"
