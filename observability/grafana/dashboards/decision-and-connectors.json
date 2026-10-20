@@ -1,0 +1,37 @@
+{
+  "title": "Decision and Connectors",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Decision latency",
+      "description": "Decision accuracy is not an emitted metric (Q3): confidence distribution stands in; true accuracy requires a labeled outcome join not present in v1.",
+      "targets": [{ "expr": "jev_decision_duration_ms", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Decision confidence",
+      "targets": [{ "expr": "jev_decision_confidence", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Connector health by outcome",
+      "targets": [{ "expr": "sum(rate(connector_outcome[5m])) by (outcome)", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "RBAC resolution duration",
+      "targets": [{ "expr": "rbac_resolution_duration_ms", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Form load duration",
+      "targets": [{ "expr": "form_load_duration_ms", "refId": "A" }]
+    }
+  ]
+}

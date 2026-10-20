@@ -32,6 +32,7 @@ export default defineConfig({
       'packages/**/*.spec.ts',
       'apps/**/*.spec.ts',
       'tooling/**/*.spec.ts',
+      'observability/**/*.spec.ts',
     ],
     // Playwright e2e specs (apps/app-builder/e2e/**) match
     // the include glob but are not vitest specs — they
