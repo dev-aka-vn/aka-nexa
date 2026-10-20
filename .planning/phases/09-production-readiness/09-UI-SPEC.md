@@ -1,10 +1,11 @@
 ---
 phase: "09"
 slug: "production-readiness"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-20"
+reviewed_at: "2026-10-20"
 ---
 
 # Phase 9 — UI Design Contract
@@ -354,17 +355,31 @@ new npm packages** — it extends the shipped React + `chrome.css` surfaces alre
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: **FLAG** (non-blocking — the component list declares
-      itself non-exhaustive with a genuine "could not enumerate" reason: no installed component
-      package exists; identical to the approved 07-UI-SPEC disposition)
+Verdict: **APPROVED** — 4 PASS, 3 non-blocking FLAG (no BLOCK).
 
-**Approval:** pending (status `draft` — awaiting `gsd-ui-checker`)
+- [x] Dimension 1 Copywriting: **PASS** — every CTA is a specific verb+noun or a mockup-verbatim
+      state transition; empty states are specific and error states carry a solution path.
+- [x] Dimension 2 Visuals: **FLAG** (non-blocking) — no explicit focal-point declaration; hierarchy
+      is derivable from the Display role + 60/30/10 + the accent reserved-for list. *Recommendation:
+      the executor may name a primary visual anchor per changed/new screen (Audit Log table,
+      Access Review report table, lifecycle step rail) but is not required to restyle anything.*
+- [x] Dimension 3 Color: **PASS** — 60/30/10 declared; the 7-item accent reserved-for list is
+      exhaustive; destructive colour scoped; semantic scales justified as status.
+- [x] Dimension 4 Typography: **FLAG** (non-blocking) — 4 sizes / 2 weights within limits, but the
+      anchors carry shipped `chrome.css` instantiations (12px, 13.5px, 15.5px) and `Heading` reads
+      16px in the table vs `.card-head h2` at 15.5px. **Resolution recorded here so no executor
+      restyles shipped CSS:** the table is the *target scale for new markup*; anchor values are
+      shipped instantiations that win as-is (inherit, not edit).
+- [x] Dimension 5 Spacing: **PASS** — scale is exactly {4, 8, 16, 24, 32, 48, 64}; non-4 values
+      appear only as cited, justified, do-not-touch inherited exceptions.
+- [x] Dimension 6 Registry Safety: **PASS** — no third-party registries, shadcn not initialised,
+      manual design system declared; nothing to vet.
+- [x] Dimension 7 Inventory Provenance: **FLAG** (non-blocking) — genuine `Could not enumerate:`
+      reason placed above the table, and the list declares itself non-exhaustive and never a closed
+      allowlist. **The executor may use any selector already present in `chrome.css` beyond this
+      table; checking outside it is the expected path, not an exception.**
+
+**Approval:** approved 2026-10-20 (`gsd-ui-checker`, 7 dimensions evaluated, revision loop not spent)
 
 **Open before implementation:** the five `checkpoint:human-verify` items in
 [Undepicted Surfaces](#undepicted-surfaces--checkpointhuman-verify) — **U-2 (Access Review page)**
