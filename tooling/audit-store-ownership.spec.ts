@@ -22,11 +22,26 @@ describe('audit store single delete owner (D-04)', () => {
     for (const file of files) {
       const src = readFileSync(file, 'utf8');
       const rel = relative(ROOT, file);
-      // Direct delete calls against the audit collection.
-      const directDelete =
-        /audit_entries/.test(src) &&
-        /\.deleteMany\(|\.deleteOne\(|findOneAndDelete|bulkWrite/.test(src) &&
-        !rel.endsWith('packages/domain/src/audit/audit.repository.ts');
+      // Direct delete calls against the audit collection. The delete must be
+      // audit-scoped: a delete call with `audit_entries` (or an audit-named
+      // collection variable) in the preceding statement. Files that merely
+      // mention `audit_entries` while deleting a *different* collection (e.g.
+      // the erasure service redacts audit rows but only deletes mapping rows)
+      // are not offenders.
+      let directDelete = false;
+      if (/\.deleteMany\(|\.deleteOne\(|findOneAndDelete|bulkWrite/.test(src)) {
+        const re = /\.deleteMany\(|\.deleteOne\(|findOneAndDelete|bulkWrite/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+          const start = Math.max(0, m.index - 200);
+          const window = src.slice(start, m.index);
+          if (/audit_entries|auditCollection|audit_collection/.test(window)) {
+            directDelete = true;
+            break;
+          }
+        }
+      }
+      directDelete = directDelete && !rel.endsWith('packages/domain/src/audit/audit.repository.ts');
       // Or a call to the repository's single delete entry point.
       const viaRepo = /\.deleteOlderThan\(/.test(src);
       if (directDelete || viaRepo) {

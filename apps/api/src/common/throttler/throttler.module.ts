@@ -1,9 +1,9 @@
-import { DynamicModule } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
-import { REDIS_CACHE } from '@akane/platform';
+import { REDIS_CACHE, redisCacheProvider } from '@akane/platform';
 import { RedisThrottlerStorage } from './redis-throttler.storage.js';
 
 /**
@@ -18,12 +18,16 @@ import { RedisThrottlerStorage } from './redis-throttler.storage.js';
  * `getTracker` overrides below ensure no tier ever keys on a client address,
  * which is both spoofable behind a proxy and incorrect behind a corporate NAT.
  */
+@Module({ providers: [redisCacheProvider], exports: [REDIS_CACHE] })
+class ThrottlerRedisModule {}
+
 export class ThrottlerAppModule {
   static forRoot(): DynamicModule {
     return {
       module: ThrottlerAppModule,
       imports: [
         ThrottlerModule.forRootAsync({
+          imports: [ThrottlerRedisModule],
           inject: [ConfigService, REDIS_CACHE],
           useFactory: (config: ConfigService, redis: unknown) => ({
             storage: new RedisThrottlerStorage(redis as never),
