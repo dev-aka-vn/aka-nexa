@@ -279,6 +279,40 @@ Applicable state considerations resolved: 13 covered, 1 backstop, 2 unresolved
 | long-text | archived badge beside a long app name (scope picker / page head) | ⚠ unresolved | Wrap vs truncate is not decided anywhere upstream; planner treats it as an assumption. |
 | zero-one-many | `purged` apps in the Submissions scope picker | ⚠ unresolved | D-14 guarantees *archived* is queryable and *purged* is not, but never says whether a purged app stays listed (until the sweep) or is hidden; planner treats picker membership as an assumption. |
 
+### GSD Edge Coverage (spec-less probe fallback)
+
+> This phase has no SPEC.md, so plan-phase §7.95 ran the deterministic edge probe over the 13 phase
+> requirement IDs and resolved the applicable edges below. These predicates are lifted into every
+> PLAN.md's `must_haves` by the planner's `## Edge Coverage` lift rule. Probe report:
+> 30 applicable edges across 12 requirements, 6 unclassified requirements, 0 left unresolved.
+
+| Req ID | Edge category | Edge | Resolved behaviour |
+|---|---|---|---|
+| AUD-03 | boundary | Exactly 3 years old | Retained. Only rows **strictly** older than the cutoff are deleted; the cutoff is fixed once per sweep run. |
+| AUD-03 | precision | Window arithmetic | UTC millisecond BSON dates throughout; the window is `days × 86_400_000` ms, identical in config parsing and in the sweep. No calendar arithmetic, no second truncation. |
+| AUD-03 | idempotency | Sweep run twice | Second run deletes zero rows and appends **zero** summaries. A zero-count deletion produces no audit entry — no-op runs are silent. |
+| AUD-03 | concurrency | Two sweeps at once | Fixed `jobId` plus a Redis `SET NX` lock with a TTL exceeding the max run duration; the loser skips. Delete runs before summary append; a crash between them is accepted and named. |
+| AUD-04 | idempotency | Same actor erased twice | Second run is a no-op: mapping row already gone, zero audit rows affected, zero new `erasure.executed` entries. Reported as *already erased*, distinct from *nothing matched*. |
+| AUD-04 | concurrency | Erasure racing new appends | Mapping row is deleted **first**, redaction second. Rows appended during the erase still carry only the opaque ref. Survivor property: after the command returns, no audit row resolves to that actor. |
+| AUD-05 | adjacency | `from` / `to` boundaries | Inclusive both ends. A bare `to` date widens to the end of that day in the deployment timezone before UTC conversion. |
+| AUD-05 | empty | No filters / empty filter / unknown app | No filters = today's unfiltered newest-first page. Blank `user`/`action` = absent, never match-nothing. Unknown `app_id` = 0 rows and **200**, not 404. |
+| AUD-05 | ordering | Two entries, same millisecond | `timestamp DESC, _id DESC` — deterministic and stable across pages and re-runs; offset paging over that total order. |
+| AUD-05 | concurrency | Row appended between pages | One row may repeat across the page boundary; accepted, matches shipped behaviour, documented rather than fixed with a cursor. |
+| OBS-03 | adjacency | Enum-valued signals | Never merged: `partial` and `failed` are separate series. An absent/unknown attribute value lands on an explicit `unknown` series, never dropped. |
+| OBS-03 | empty | Emit site never runs | Emits nothing — which is why the completeness test asserts **instrument + call site**, not a value. A real zero is recorded; absence is never synthesized into zero. |
+| OBS-03 | ordering | Emission order | Not asserted (carries no meaning). The one asserted ordering property: registry ↔ alert rules agree on names, and the dotted→scraped-underscore mapping is **total**. |
+| OBS-06 | boundary | Every threshold, one step either side | Failure > 5% not at 5%; tokens > 10/min; confidence < 0.6 not at 0.6; DLQ > 50 not at 50; Redis > 80% not at 80%; lag > 5s not at 5s. `for:` durations exercised by advancing the test clock. |
+| OBS-06 | adjacency | Overlapping rules | Fire independently, never suppress each other. A rule with no series stays silent — and for Redis memory / Mongo lag the **exporter's presence is asserted**, so "silent because the series cannot exist" cannot pass green. |
+| OBS-06 | empty | Zero / absent series | Never fires a threshold alert. All-providers-unhealthy is the deliberate exception, written as an explicit `up == 0`-style condition so it fires on total absence **by design**. |
+| OBS-06 | ordering | Rule evaluation order | Prometheus's own; not asserted. Asserted instead: all eight rules load, unique `alert` names, every rule carries a `runbook_url`. |
+| OBS-06 | precision | Rate arithmetic vs the threshold | Boundary-test data points differ by a margin larger than any arithmetic error; `>`/`<` direction documented where `>=`/`<=` would flip a verdict. |
+| AUD-06 | — (unclassified) | JSON Lines shape | One JSON object per line, newline-terminated, UTF-8, no BOM, no array wrapper. Absent optional fields are **omitted**, not nulled. Export applies the same filters and exports the whole filtered set, not the loaded page. Zero matches = zero-byte file + 200. |
+| AUD-07 | — (unclassified) | Regeneration is idempotent | Re-running a quarter overwrites that quarter's stored report and appends exactly one `access_review.generated` entry per run. An entitlement-free quarter still produces a (zero-count) report, so absence is distinguishable from a job that never ran. |
+| AUD-08 | — (unclassified) | Two-phase purge | Soft-delete stamps operator ID + timestamp and sets `purged` (data physically present, unqueryable). Sweep hard-deletes when `execute_after <= now` (a row exactly at it is eligible), is idempotent, stamps `executed_at`. Grace ≥ 0, configurable. `purged` is terminal — the lifecycle guard refuses every exit. |
+| AUD-09 | — (unclassified) | Scope membership | Archived apps stay listed and marked `Archived`; submissions render as for a live app; no extra banner/filter/read-only affordance beyond the badge. Purged apps leave the picker once hard-deleted. |
+| OBS-08 | — (unclassified) | Open-model load + measured cost | k6 asserts the **arrival rate** (1,000 users, 50 events/s), so a slow system cannot lower offered load and still pass. Pass = zero dropped beyond the error budget, webhook ack p95 < 200 ms, no 5xx. Redis cost = `INFO commandstats` delta around a fixed steady-state window ÷ throttled requests in it — measured, never assumed. |
+| OBS-09 | — (unclassified) | Panels over real metrics | Every panel's query names a metric present in the emitted-metric registry; a test fails on a panel over a metric no instrument emits. Dashboards are committed JSON and are the only source. |
+
 ---
 
 ## Mockup Amendments
