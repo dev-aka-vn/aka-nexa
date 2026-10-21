@@ -24,7 +24,6 @@ import { stringify } from 'csv-stringify';
 
 import {
   AuditRepository,
-  type AuditEntry,
   type SubmissionRepository,
   type SubmissionRevisionDocument,
   type SubmissionListFilter,
@@ -139,7 +138,7 @@ export class SubmissionExportService {
         form: filter.form_id ?? null,
       },
       row_count: rows.length,
-    } satisfies AuditEntry);
+    });
 
     return {
       csv,

@@ -131,6 +131,18 @@ export class LocalKeyProvider implements KeyProvider {
     return this.#kid;
   }
 
+  async activeKid(): Promise<string> {
+    return this.#kid;
+  }
+
+  async retainedKids(): Promise<readonly string[]> {
+    return [];
+  }
+
+  async hasKid(kid: string): Promise<boolean> {
+    return kid === this.#kid;
+  }
+
   async wrapDek(dek: Buffer): Promise<{ wrapped: Buffer; kid: string }> {
     assertDekLength(dek, 'LocalKeyProvider.wrapDek');
     const iv = randomBytes(IV_LENGTH_BYTES);

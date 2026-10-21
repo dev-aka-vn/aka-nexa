@@ -79,7 +79,7 @@ export const PublishResponseSchema = z
     name: z.string(),
     description: z.string(),
     data_mode: z.enum(['internal', 'external', 'hybrid']),
-    lifecycle: z.enum(['draft', 'published', 'deprecated', 'archived']),
+    lifecycle: z.enum(['draft', 'published', 'deprecated', 'archived', 'purged']),
     version: z.number().int(),
     tags: z.array(z.string()),
     forms: z.array(AppFormElementSchema),

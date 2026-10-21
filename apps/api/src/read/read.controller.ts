@@ -15,6 +15,7 @@ import {
 import type { ReadLinkConfig } from './read.module.js';
 import { projectSubmissionStatus } from './status-projection.js';
 import type { SignatureBlockRecorder } from '../common/metrics/read-deny.metrics.js';
+import { createReadLinkMetricsRecorder } from './read-link.metrics.js';
 
 const logger = new Logger('ReadController');
 
@@ -207,6 +208,7 @@ export class ReadController {
     // 2. Check for existing outcome (replay)
     const existingOutcome = await this.tokenStore.readOutcome(jti);
     if (existingOutcome) {
+      createReadLinkMetricsRecorder().recordConsume('replayed');
       res.status(200).json({
         status: 'replayed',
         submission_id: existingOutcome.submission_id,
@@ -228,6 +230,7 @@ export class ReadController {
         editJti: jti,
       });
 
+      createReadLinkMetricsRecorder().recordConsume('ok');
       // 4. Record outcome
       const outcome = {
         submission_id: result.claims.target_id ?? '',
@@ -251,6 +254,7 @@ export class ReadController {
         if (existing) {
           const outcomeReplay = await this.tokenStore.readOutcome(jti);
           if (outcomeReplay) {
+            createReadLinkMetricsRecorder().recordConsume('replayed');
             res.status(200).json({
               status: 'replayed',
               submission_id: outcomeReplay.submission_id,

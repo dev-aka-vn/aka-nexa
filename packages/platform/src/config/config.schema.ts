@@ -88,6 +88,14 @@ const AppConfigShape = {
     // the exporters. An OTLP endpoint has to be reachable over HTTP.
     .refine((value) => /^https?:\/\//i.test(value), 'expected an http(s) OTLP endpoint')
     .optional(),
+  AUDIT_RETENTION_DAYS: z.coerce.number().int().min(1095).default(1095),
+  PURGE_GRACE_DAYS: z.coerce.number().int().nonnegative().default(30),
+  // Per-connector default policy for the `perConnector` named throttler tier
+  // (NFR-SEC-6). Read by `ThrottlerAppModule`, never hardcoded at the call
+  // site. Aliases are accepted so a deployment can name the value either way.
+  THROTTLE_PER_CONNECTOR_LIMIT: z.coerce.number().int().positive().default(60),
+  THROTTLE_PER_CONNECTOR_RPM: z.coerce.number().int().positive().default(60),
+  PER_CONNECTOR_RATE_LIMIT: z.coerce.number().int().positive().default(60),
 };
 
 /**

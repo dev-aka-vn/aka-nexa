@@ -283,7 +283,7 @@ describe('AppDefinitionService (BLD-02, APP-03, D-86)', () => {
     expect(entry.target).toBe('leave-request');
     expect(entry.previous_state).toBe('draft');
     expect(entry.new_state).toBe('draft');
-    expect(entry.section).toBe('general');
+    expect((entry as any).section).toBe('general');
   });
 
   it('refuses a section update on an unknown app', async () => {

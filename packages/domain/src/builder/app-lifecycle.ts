@@ -41,13 +41,14 @@
  */
 
 /** The four lifecycle states (APP-02's reachability ladder). */
-export type AppLifecycleState = 'draft' | 'published' | 'deprecated' | 'archived';
+export type AppLifecycleState = 'draft' | 'published' | 'deprecated' | 'archived' | 'purged';
 
 export const APP_LIFECYCLE_STATES: readonly AppLifecycleState[] = [
   'draft',
   'published',
   'deprecated',
   'archived',
+  'purged',
 ] as const;
 
 /**
@@ -71,10 +72,11 @@ const LEGAL_TRANSITIONS: ReadonlyMap<
   AppLifecycleState,
   ReadonlySet<AppLifecycleState>
 > = new Map([
-  ['draft', new Set(['published', 'archived'])],
-  ['published', new Set(['deprecated', 'archived'])],
-  ['deprecated', new Set(['published', 'archived'])],
-  ['archived', new Set()],
+  ['draft', new Set(['published', 'archived', 'purged'])],
+  ['published', new Set(['deprecated', 'archived', 'purged'])],
+  ['deprecated', new Set(['published', 'archived', 'purged'])],
+  ['archived', new Set(['purged'])],
+  ['purged', new Set()],
 ]);
 
 /** An illegal lifecycle transition (APP-02's ladder, enforced). */
@@ -142,7 +144,7 @@ export class AppLifecycle {
    * including submissions.
    */
   static acceptsSubmissions(lifecycle: AppLifecycleState): boolean {
-    return lifecycle !== 'archived';
+    return lifecycle !== 'archived' && lifecycle !== 'purged';
   }
 
   static assertAcceptsSubmissions(

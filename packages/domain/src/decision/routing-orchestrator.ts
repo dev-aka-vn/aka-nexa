@@ -8,6 +8,7 @@ import {
 } from '@akane/contract';
 
 import type { ProviderHealthService } from './provider-health.service.js';
+import { createDecisionMetricsRecorder } from './decision.metrics.js';
 
 export interface RoutingInput {
   readonly draft: Omit<JevRequest, 'tools'>;
@@ -82,13 +83,33 @@ export class RoutingOrchestrator {
       const cap = this.options.attemptCaps?.get(provider.name);
       const budget = cap !== undefined ? Math.min(remaining, cap) : remaining;
 
+      const startedAt = Date.now();
       let decision: unknown;
       try {
         decision = await withBudget(provider.decide(req), budget);
       } catch {
+        createDecisionMetricsRecorder().recordDecision({
+          provider: provider.name,
+          outcome: 'error',
+          durationMs: Date.now() - startedAt,
+        });
         continue; // provider failure never becomes a link
       }
-      if (decision === BUDGET_EXHAUSTED) continue; // slow/hung provider: degrade, never a late link
+      if (decision === BUDGET_EXHAUSTED) {
+        createDecisionMetricsRecorder().recordDecision({
+          provider: provider.name,
+          outcome: 'timeout',
+          durationMs: Date.now() - startedAt,
+        });
+        continue; // slow/hung provider: degrade, never a late link
+      }
+      const rawConfidence = (decision as { choice?: { confidence?: unknown } } | null)?.choice?.confidence;
+      createDecisionMetricsRecorder().recordDecision({
+        provider: provider.name,
+        outcome: 'ok',
+        durationMs: Date.now() - startedAt,
+        confidence: typeof rawConfidence === 'number' ? rawConfidence : undefined,
+      });
       const parsed = JevResponseSchema.safeParse(decision);
       if (
         !parsed.success ||

@@ -434,7 +434,7 @@ describe('ownership transfer (ACL-05, ACL-10, T-06-31)', () => {
     // The AUD-01 auto-cancel entry.
     const entries = (await audit.findAll()) as AuditEntry[];
     const autoCancelEntry = entries.find(
-      (entry) => entry.transfer_id === transferId,
+      (entry) => (entry as any).transfer_id === transferId,
     );
     expect(autoCancelEntry).toMatchObject({
       action: 'transfer.auto-cancelled',

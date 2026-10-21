@@ -413,7 +413,7 @@ describe('connector requests (BLD-10, D-97..D-100)', () => {
       (entry) =>
         entry.action === 'connector_request.provisioned' &&
         entry.target === 'leave-request' &&
-        entry.connector_id === 'redmine',
+        (entry as any).connector_id === 'redmine',
     );
     expect(provisionEntries).toHaveLength(1);
     expect(provisionEntries[0]).toMatchObject({

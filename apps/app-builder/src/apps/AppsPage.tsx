@@ -61,6 +61,8 @@ function lifecycleTone(
       return 'badge-deprecated';
     case 'archived':
       return 'badge-archived';
+    case 'purged':
+      return 'badge-purged';
     default:
       return 'badge-draft';
   }

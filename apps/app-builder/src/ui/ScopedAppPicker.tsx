@@ -107,7 +107,15 @@ export function ScopedAppPicker({
           className="od-grid"
           style={{ '--od-cols': '3' } as never}
         >
-          {apps.map((app) => (
+          {apps
+            .filter(
+              (app) =>
+                !(
+                  app.lifecycle === 'purged' &&
+                  app.executed_at != null
+                ),
+            )
+            .map((app) => (
             <a
               key={app.app_id}
               className="card"
@@ -118,7 +126,32 @@ export function ScopedAppPicker({
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
               <div className="card-body">
-                <h3 style={{ fontSize: 16 }}>{app.name}</h3>
+                <div
+                  className="od-row"
+                  style={{
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontSize: 16,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    {app.name}
+                  </h3>
+                  {app.lifecycle === 'archived' ? (
+                    <span className="badge badge-archived">Archived</span>
+                  ) : app.lifecycle === 'purged' ? (
+                    <span className="badge badge-archived">Purged</span>
+                  ) : null}
+                </div>
                 <div
                   className="lr-s"
                   style={{

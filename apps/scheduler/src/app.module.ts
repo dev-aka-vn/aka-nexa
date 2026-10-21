@@ -27,6 +27,8 @@ import {
 
 import { SCHEDULER_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
 import { RECONCILE_OUTBOUND_ID, registerReconciliation } from './reconciliation.registration.js';
+import { AUDIT_RETENTION_ID, registerAuditRetention } from './audit-retention.registration.js';
+import { PURGE_SWEEP_ID, registerPurgeSweep } from './purge-sweep.registration.js';
 import {
   TRANSFER_AUTO_CANCEL_ID,
   registerTransferAutoCancel,
@@ -88,6 +90,8 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
         PLATFORM_HEARTBEAT_ID,
         RECONCILE_OUTBOUND_ID,
         TRANSFER_AUTO_CANCEL_ID,
+        AUDIT_RETENTION_ID,
+        PURGE_SWEEP_ID,
       ]),
     },
     {
@@ -113,16 +117,28 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
             queue,
             TRANSFER_AUTO_CANCEL_ID,
           );
+          const auditRetentionRegistered = await jobSchedulerReadyIndicator(
+            queue,
+            AUDIT_RETENTION_ID,
+          );
+          const purgeSweepRegistered = await jobSchedulerReadyIndicator(
+            queue,
+            PURGE_SWEEP_ID,
+          );
           const registered =
             heartbeatRegistered &&
             reconcileRegistered &&
-            transferAutoCancelRegistered;
+            transferAutoCancelRegistered &&
+            auditRetentionRegistered &&
+            purgeSweepRegistered;
           return registered
             ? session.up({
                 schedulers: [
                   PLATFORM_HEARTBEAT_ID,
                   RECONCILE_OUTBOUND_ID,
                   TRANSFER_AUTO_CANCEL_ID,
+                  AUDIT_RETENTION_ID,
+                  PURGE_SWEEP_ID,
                 ],
               })
             : session.down({
@@ -130,6 +146,8 @@ const SCHEDULER_READINESS_KEY = 'job_schedulers';
                   PLATFORM_HEARTBEAT_ID,
                   RECONCILE_OUTBOUND_ID,
                   TRANSFER_AUTO_CANCEL_ID,
+                  AUDIT_RETENTION_ID,
+                  PURGE_SWEEP_ID,
                 ],
               });
         },
@@ -146,6 +164,8 @@ export class AppModule implements OnApplicationBootstrap, OnApplicationShutdown 
     await registerPlatformHeartbeat(this.queue);
     await registerReconciliation(this.queue);
     await registerTransferAutoCancel(this.queue);
+    await registerAuditRetention(this.queue);
+    await registerPurgeSweep(this.queue);
   }
 
   async onApplicationShutdown(): Promise<void> {

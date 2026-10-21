@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 import {
+  DEK_LENGTH_BYTES,
   unwrapDekChecked,
   wrapDekChecked,
   type KeyProvider,
@@ -99,14 +100,6 @@ export interface SecretEnvelope {
  * unwrapped value) and identical on the encrypt and decrypt path, which is what
  * lets `decryptSecret(envelope)` reconstruct the key from the envelope alone.
  */
-async function deriveDek(
-  keyProvider: KeyProvider,
-): Promise<{ dek: Buffer; kid: string }> {
-  const { wrapped, kid } = await wrapDekChecked(keyProvider, DEK_DERIVATION_LABEL);
-  const dek = await unwrapDekChecked(keyProvider, wrapped, kid);
-  return { dek, kid };
-}
-
 /**
  * Seal a secret.
  *
@@ -124,25 +117,21 @@ export async function encryptSecret(
     throw new Error('ENVELOPE_PLAINTEXT_INVALID: expected a Buffer or string');
   }
 
-  const { dek, kid } = await deriveDek(keyProvider);
+  const dek = randomBytes(DEK_LENGTH_BYTES);
+  const { wrapped, kid } = await wrapDekChecked(keyProvider, dek);
   try {
-    // Fresh per encryption. Never a counter, never derived from the plaintext —
-    // a 96-bit nonce reused under one key breaks GCM outright.
     const iv = randomBytes(IV_LENGTH_BYTES);
     const cipher = createCipheriv(CIPHER, dek, iv);
     const ct = Buffer.concat([cipher.update(bytes), cipher.final()]);
     const tag = cipher.getAuthTag();
 
     if (tag.length !== AUTH_TAG_LENGTH_BYTES) {
-      // Cannot happen with `createCipheriv`, and if it ever did the tag would be
-      // silently stored wrong. Fail here rather than persist an unauthenticable
-      // envelope.
       throw new Error(
         `ENVELOPE_AUTH_TAG_INVALID: expected ${AUTH_TAG_LENGTH_BYTES} bytes, got ${tag.length}`,
       );
     }
 
-    return {
+    const envelope: SecretEnvelope = {
       v: ENVELOPE_VERSION,
       alg: ENVELOPE_ALG,
       kid,
@@ -150,8 +139,14 @@ export async function encryptSecret(
       tag: tag.toString('base64url'),
       ct: ct.toString('base64url'),
     };
+    Object.defineProperty(envelope, 'wrappedDek', {
+      value: wrapped,
+      enumerable: false,
+      writable: false,
+      configurable: true,
+    });
+    return envelope;
   } finally {
-    // Best-effort: the DEK should not outlive the call that needed it.
     dek.fill(0);
   }
 }
@@ -166,12 +161,36 @@ export async function encryptSecret(
  *
  * @returns the plaintext as a `Buffer` (round-trip a `string` with `.toString('utf8')`)
  */
+function normalizeSecretInput(input: unknown): { envelope: SecretEnvelope; wrappedDek?: Buffer } {
+  if (input && typeof input === 'object' && 'envelope' in (input as Record<string, unknown>)) {
+    const rec = input as Record<string, unknown>;
+    const env = rec['envelope'] as SecretEnvelope;
+    const wrapped =
+      (rec['wrappedDek'] as Buffer | undefined) ??
+      (rec['wrapped_dek'] as Buffer | undefined) ??
+      (rec['wrapped'] as Buffer | undefined);
+    const envWrapped = (env as unknown as { wrappedDek?: Buffer }).wrappedDek;
+    return { envelope: env, wrappedDek: wrapped ?? envWrapped };
+  }
+  const env = input as SecretEnvelope;
+  const wrapped = (env as unknown as { wrappedDek?: Buffer }).wrappedDek;
+  return { envelope: env, wrappedDek: wrapped };
+}
+
+async function providerHasKid(keyProvider: KeyProvider, kid: string): Promise<boolean> {
+  if (typeof keyProvider.hasKid === 'function') {
+    return await keyProvider.hasKid(kid);
+  }
+  const active = typeof keyProvider.keyId === 'function' ? await keyProvider.keyId() : undefined;
+  return active === kid;
+}
+
 export async function decryptSecret(
-  envelope: SecretEnvelope,
+  input: SecretEnvelope | { envelope: SecretEnvelope; wrappedDek?: Buffer; wrapped_dek?: Buffer; wrapped?: Buffer },
   keyProvider: KeyProvider,
 ): Promise<Buffer> {
-  // The version and the algorithm are refused, never inferred. A future
-  // `A192GCM` envelope must fail rather than be opened with the wrong cipher.
+  const { envelope, wrappedDek } = normalizeSecretInput(input);
+
   if (envelope?.v !== ENVELOPE_VERSION) {
     throw new Error(`ENVELOPE_VERSION_UNSUPPORTED: expected ${ENVELOPE_VERSION}, got ${String(envelope?.v)}`);
   }
@@ -190,26 +209,30 @@ export async function decryptSecret(
     throw new Error(`ENVELOPE_IV_INVALID: expected ${IV_LENGTH_BYTES} bytes, got ${iv.length}`);
   }
   if (tag.length !== AUTH_TAG_LENGTH_BYTES) {
-    // This is the "losing the auth tag must fail loudly" rule. A missing or
-    // truncated tag is a hard error, not a default of zeros.
     throw new Error(
       `ENVELOPE_AUTH_TAG_INVALID: expected ${AUTH_TAG_LENGTH_BYTES} bytes, got ${tag.length}`,
     );
   }
 
-  const { dek, kid } = await deriveDek(keyProvider);
-  if (envelope.kid !== kid) {
-    // Rotation guard: a provider holding one key cannot open an envelope sealed
-    // under another. Refusing is what makes `kid` meaningful.
-    dek.fill(0);
-    throw new Error(`KEY_ID_MISMATCH: envelope was sealed under ${envelope.kid}, provider is ${kid}`);
+  const present = await providerHasKid(keyProvider, envelope.kid);
+  if (!present) {
+    throw new Error(`KEY_ID_MISMATCH: envelope was sealed under ${envelope.kid}, provider does not hold it`);
+  }
+
+  let dek: Buffer;
+  if (wrappedDek) {
+    dek = await unwrapDekChecked(keyProvider, wrappedDek, envelope.kid);
+  } else {
+    const { wrapped, kid } = await wrapDekChecked(keyProvider, DEK_DERIVATION_LABEL);
+    if (kid !== envelope.kid) {
+      throw new Error(`KEY_ID_MISMATCH: envelope was sealed under ${envelope.kid}, provider is ${kid}`);
+    }
+    dek = await unwrapDekChecked(keyProvider, wrapped, envelope.kid);
   }
 
   try {
     const decipher = createDecipheriv(CIPHER, dek, iv);
     decipher.setAuthTag(tag);
-    // `final()` is the authentication check. It throws on a corrupted tag or
-    // ciphertext; there is no branch that returns unauthenticated plaintext.
     return Buffer.concat([decipher.update(ct), decipher.final()]);
   } catch (cause) {
     throw new Error('ENVELOPE_DECRYPT_FAILED: authentication failed', { cause });
@@ -227,6 +250,26 @@ export async function decryptSecret(
  * non-empty carry a length assertion at the call site (`iv` 12 bytes, `tag` 16),
  * which is the stronger check anyway.
  */
+export interface StoredSecret {
+  readonly envelope: SecretEnvelope;
+  readonly wrappedDek: Buffer;
+}
+
+export async function sealSecret(plaintext: Buffer | string, keyProvider: KeyProvider): Promise<StoredSecret> {
+  const env = await encryptSecret(plaintext, keyProvider);
+  const wrapped = (env as unknown as { wrappedDek?: Buffer }).wrappedDek as Buffer;
+  return { envelope: env, wrappedDek: wrapped };
+}
+
+export async function openSecret(record: StoredSecret | SecretEnvelope, keyProvider: KeyProvider): Promise<Buffer> {
+  return decryptSecret(record as never, keyProvider);
+}
+
+export async function rewrapSecret(record: StoredSecret | SecretEnvelope, keyProvider: KeyProvider): Promise<StoredSecret> {
+  const opened = await openSecret(record, keyProvider);
+  return sealSecret(opened, keyProvider);
+}
+
 function decodeField(value: string, field: string): Buffer {
   if (typeof value !== 'string') {
     throw new Error(`ENVELOPE_FIELD_INVALID: ${field} must be a base64url string`);

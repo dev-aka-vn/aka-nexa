@@ -71,6 +71,7 @@ import { SubmissionsPage } from './submissions/SubmissionsPage.js';
 import { ConnectorsPage } from './connectors/ConnectorsPage.js';
 import { UsersPage } from './users/UsersPage.js';
 import { AuditPage } from './audit/AuditPage.js';
+import { AccessReviewPage } from './access-review/AccessReviewPage.js';
 import { SettingsPage } from './settings/SettingsPage.js';
 import { AppsPage } from './apps/AppsPage.js';
 import { FormioBuilderField } from './form-designer/FormioBuilderField';
@@ -110,6 +111,7 @@ type RouteName =
   | 'connectors'
   | 'users'
   | 'audit'
+  | 'access-review'
   | 'settings'
   | 'unknown';
 
@@ -182,6 +184,9 @@ function parseRoute(route: string): ParsedRoute {
   }
   if (head === 'audit') {
     return { name: 'audit' };
+  }
+  if (head === 'access-review') {
+    return { name: 'access-review' };
   }
   if (head === 'settings') {
     return { name: 'settings' };
@@ -578,6 +583,13 @@ export function App(): ReactElement {
               </a>
               <a
                 className="btn btn-ghost btn-sm"
+                href="#/access-review"
+                data-testid="nav-access-review"
+              >
+                Access Review
+              </a>
+              <a
+                className="btn btn-ghost btn-sm"
                 href="#/settings"
                 data-testid="nav-settings"
               >
@@ -638,6 +650,8 @@ function RoutedPage({ route }: { route: ParsedRoute }): ReactElement {
       return <UsersPage />;
     case 'audit':
       return <AuditPage />;
+    case 'access-review':
+      return <AccessReviewPage />;
     case 'settings':
       return <SettingsPage />;
     case 'editor':

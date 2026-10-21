@@ -44,7 +44,7 @@ All three share the same DI graph and boundary configuration via `packages/platf
 | JWT / Link tokens | **`jose` 6.2.12** | Replaces `@nestjs/jwt`/`jsonwebtoken`; supports JWKS, `kid`-keyed keyring resolution, and `keyResolver` for 90-day dual-key rotation (NFR-SEC-9) without downtime |
 | OIDC SSO | **`openid-client` 6.8.8** | Admin SSO with MFA; 16.7M dl/week, actively maintained, depends on `jose` + `oauth4webapi` (same primitives already chosen) |
 | Observability | **manual OTel** (SDK + 49 auto-instrumentations) | Exporters: trace/metrics/logs → OTLP HTTP → Tempo/Jaeger; `exporter-prometheus` for single metrics path; pino for structured JSON logs; `@nestjs/terminus` for health checks |
-| Rate limiting | **@nestjs/throttler 6.7.1** + hand-written `ThrottlerStorage` over ioredis | Three named throttlers (per-user 10/min, per-app 100/min, per-connector per config); both community Redis throttler storages are dead/unsable; hand-write ~40 lines over ioredis already owned |
+| Rate limiting | **@nestjs/throttler 6.7.1** + hand-written `ThrottlerStorage` over ioredis | Three named throttlers (per-user 10/min, per-app 100/min, per-connector per config); keys on user and link `jti`, never on IP; both community Redis throttler storages are dead/unsable; hand-write ~40 lines over ioredis already owned |
 | RBAC | **`@casl/ability` 7.0.1** | Replaces deprecated `casl`; capability-based authorization |
 | Password / OTP hashing | **`@node-rs/argon2` 2.2.1** | Ships prebuilt N-API binaries — no `node-gyp` in CI or K8s image; engines `>=10` |
 | Form renderer | **`@formio/js` 5.6.1** | MIT, dual CJS/ESM, ships drag-and-drop builder (dragula is a direct dep); `formiojs` 4.x is in maintenance mode |

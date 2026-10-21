@@ -515,8 +515,10 @@ describe('entrypoint import closure — three processes that cannot drift (FND-0
     // consumer in the platform-heartbeat shape (its own blocking connection,
     // prefix-pinned, lifecycle-owned), not a `WorkerHost`.
     expect(workerBindingSites('worker')).toEqual([
+      'apps/worker/src/processors/audit-retention.processor.ts -> bullmq',
       'apps/worker/src/processors/outbox-relay.processor.ts -> bullmq',
       'apps/worker/src/processors/platform-heartbeat.processor.ts -> bullmq',
+      'apps/worker/src/processors/purge-sweep.processor.ts -> bullmq',
       'apps/worker/src/processors/reconciliation.processor.ts -> bullmq',
       'apps/worker/src/processors/transfer-auto-cancel.processor.ts -> bullmq',
     ]);

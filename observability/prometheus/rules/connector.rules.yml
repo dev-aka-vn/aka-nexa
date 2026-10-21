@@ -1,0 +1,14 @@
+groups:
+  - name: akane.connector
+    rules:
+      - alert: AkaneConnectorFailureRate
+        expr: |
+          sum(rate(connector_outcome{outcome="failure"}[5m]))
+            /
+          sum(rate(connector_outcome[5m])) > 0.05
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Connector failure rate above 5% for 5 minutes"
+          runbook_url: "docs/runbooks/connector-timeout-spike.md"

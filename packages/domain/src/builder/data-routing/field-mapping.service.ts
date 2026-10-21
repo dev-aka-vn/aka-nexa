@@ -37,7 +37,7 @@ import {
   type AppDefinitionDocument,
   type AppDefinitionRepository,
 } from '../data-access/app-definition.repository.js';
-import { AuditRepository, type AuditEntry } from '../../audit/audit.repository.js';
+import { AuditRepository } from '../../audit/audit.repository.js';
 
 /** A Zod validation failure, carried inline with the offending fields (BLD-07). */
 export class FieldMappingValidationError extends Error {
@@ -127,7 +127,7 @@ export class FieldMappingService {
       previous_state: String(before?.version ?? 0),
       new_state: String(updated.version),
       field_count: Object.keys(parsed.data.field_mapping).length,
-    } satisfies AuditEntry);
+    });
 
     return {
       app_id: appId,

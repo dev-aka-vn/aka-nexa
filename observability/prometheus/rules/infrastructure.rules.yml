@@ -1,0 +1,19 @@
+groups:
+  - name: akane.infrastructure
+    rules:
+      - alert: AkaneRedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Redis memory usage above 80%"
+          runbook_url: "docs/runbooks/redis-oom.md"
+      - alert: AkaneMongoReplicationLag
+        expr: mongodb_mongod_replset_member_replication_lag > 5
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "MongoDB replication lag above 5 seconds"
+          runbook_url: "docs/runbooks/README.md"

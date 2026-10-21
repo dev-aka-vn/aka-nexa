@@ -1,4 +1,5 @@
 import { Module, type OnApplicationShutdown } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HealthIndicatorService, TerminusModule } from '@nestjs/terminus';
 
 import {
@@ -12,6 +13,7 @@ import {
   MetricsModule,
   MongoModule,
   MongoService,
+  REDIS_QUEUE,
   ProviderBoundaryGuardRunner,
   QueueModule,
   redisCacheProvider,
@@ -25,6 +27,8 @@ import {
 import {
   AppDefinitionRepository,
   AuditRepository,
+  AuditRetentionService,
+  AppPurgeService,
   ConnectorRateLimiter,
   ConnectorRegistry,
   NotificationsModule,
@@ -53,6 +57,8 @@ import {
   TransferAutoCancelProcessor,
   transferAutoCancelWorkersProvider,
 } from './processors/transfer-auto-cancel.processor.js';
+import { AuditRetentionProcessor } from './processors/audit-retention.processor.js';
+import { PurgeSweepProcessor } from './processors/purge-sweep.processor.js';
 import {
   NotificationProcessor,
 } from './processors/notification.processor.js';
@@ -94,6 +100,8 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     reconciliationWorkersProvider,
     TransferAutoCancelProcessor,
     transferAutoCancelWorkersProvider,
+    AuditRetentionProcessor,
+    PurgeSweepProcessor,
     NotificationProcessor,
     TeamsDeliveryService,
     {
@@ -115,6 +123,30 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
       useFactory: (mongo: MongoService): AppDefinitionRepository =>
         new AppDefinitionRepository(mongo),
       inject: [MongoService],
+    },
+    {
+      provide: AuditRepository,
+      useFactory: (mongo: MongoService): AuditRepository =>
+        new AuditRepository(mongo),
+      inject: [MongoService],
+    },
+    {
+      provide: AuditRetentionService,
+      useFactory: (
+        audit: AuditRepository,
+        redis: import('ioredis').Redis,
+        config: import('@nestjs/config').ConfigService,
+      ): AuditRetentionService => new AuditRetentionService(audit, redis, config),
+      inject: [AuditRepository, REDIS_QUEUE, ConfigService],
+    },
+    {
+      provide: AppPurgeService,
+      useFactory: (
+        mongo: MongoService,
+        audit: AuditRepository,
+        config: import('@nestjs/config').ConfigService,
+      ): AppPurgeService => new AppPurgeService(mongo, audit, config),
+      inject: [MongoService, AuditRepository, ConfigService],
     },
     {
       provide: TransferRequestRepository,
@@ -144,7 +176,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor, AuditRetentionProcessor, PurgeSweepProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
@@ -152,7 +184,9 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
         reconciliation: ReconciliationProcessor,
         transferAutoCancel: TransferAutoCancelProcessor,
         notification: NotificationProcessor,
-      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification],
+        auditRetention: AuditRetentionProcessor,
+        purgeSweep: PurgeSweepProcessor,
+      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification, auditRetention, purgeSweep],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
@@ -179,3 +213,4 @@ export class AppModule implements OnApplicationShutdown {
     await shutdownOtel();
   }
 }
+import './worker.module.js';

@@ -124,7 +124,8 @@ export type SubmissionStatusLabel =
   | 'sent'
   | 'confirmed'
   | 'partial'
-  | 'failed';
+  | 'failed'
+  | 'unknown';
 
 /**
  * `connector.outcome`'s taxonomy labels: the frozen contract's
@@ -145,7 +146,8 @@ export type ConnectorCallOutcomeLabel =
   | 'succeeded'
   | 'rejected'
   | 'failed_transient'
-  | 'failed_permanent';
+  | 'failed_permanent'
+  | 'unknown';
 
 /**
  * The recording seam for the two business counters whose labels carry meaning
@@ -201,7 +203,15 @@ export function createBusinessMetricsRecorder(): BusinessMetricsRecorder {
       readonly appId: string;
       readonly status: SubmissionStatusLabel;
     }): void {
-      registerBusinessMetrics().submissionStatus.add(1, { app_id: appId, status });
+      const allowedStatuses = new Set<SubmissionStatusLabel>([
+        'queued',
+        'sent',
+        'confirmed',
+        'partial',
+        'failed',
+      ]);
+      const safeStatus = allowedStatuses.has(status) ? status : 'unknown';
+      registerBusinessMetrics().submissionStatus.add(1, { app_id: appId || 'unknown', status: safeStatus as SubmissionStatusLabel });
     },
     recordConnectorOutcome({
       appId,
@@ -212,10 +222,24 @@ export function createBusinessMetricsRecorder(): BusinessMetricsRecorder {
       readonly outcome: ConnectorCallOutcomeLabel;
       readonly taxonomyCode: ConnectorTaxonomyLabel;
     }): void {
+      const allowedOutcomes = new Set<ConnectorCallOutcomeLabel>([
+        'succeeded',
+        'rejected',
+        'failed_transient',
+        'failed_permanent',
+      ]);
+      const allowedTaxonomy = new Set<ConnectorTaxonomyLabel>([
+        'credential_rejected',
+        'endpoint_unreachable',
+        'failed_permanent',
+        'mapping_error',
+        'unknown',
+        'none',
+      ]);
       registerBusinessMetrics().connectorOutcome.add(1, {
-        app_id: appId,
-        outcome,
-        taxonomy_code: taxonomyCode,
+        app_id: appId || 'unknown',
+        outcome: (allowedOutcomes.has(outcome) ? outcome : 'unknown') as ConnectorCallOutcomeLabel,
+        taxonomy_code: (allowedTaxonomy.has(taxonomyCode) ? taxonomyCode : 'unknown') as ConnectorTaxonomyLabel,
       });
     },
   });
