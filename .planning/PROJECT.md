@@ -36,9 +36,14 @@ AI assistant) are deferred past v1.
 
 ---
 
-**Next Milestone Goals:** v2 will add Zalo and Telegram integration, open-ended conversational
-AI decision support, and the remaining 29 v2 requirements identified in the PRD. The v2
-roadmap and requirements will be created via `/gsd-new-milestone`.
+**Next Milestone Goals (v2):** Platform Expansion & Advanced Capabilities — extend the IM gateway
+to **all four target platforms** (add Zalo OA and Telegram to Slack + Teams), add **two-way IM
+sync** (HMAC-signed inbound webhooks routing notifications back to the original submitter), add
+**group-based RBAC** (directory/group sync, extending the frozen AD-7 real-user-only decision),
+and add **open-ended conversational AI** as a permission-first guard over the discrete
+choice+confidence model (amending — not reversing — PRD NG1; free generation stays out of scope,
+but richer multi-turn disambiguation and clarification enter it). The full remaining PRD v2
+requirement set is in scope. Phase numbering continues from v1 (starts at **Phase 10**).
 
 <details>
 <summary>v1 Milestone Details (collapsed)</summary>
