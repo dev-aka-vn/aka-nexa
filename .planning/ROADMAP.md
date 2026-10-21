@@ -464,7 +464,11 @@ did not estimate *durations*. Reusing it would have been dishonest.
 | 6. Self-Service App Builder | 12/12 | Complete    | 2026-10-17 |
 | 7. Multi-Form Apps & Per-Form Triggers | 8/8 | Complete    | 2026-10-18 |
 | 8. Multi-IM Expansion & Two-Way Sync | 9/9 | In Progress|  |
-| 9. Production Readiness | 6/6 | In Progress|  |
+| 9. Production Readiness | 6/6 | Complete    | 2026-10-21|
 
 ---
 *Roadmap created: 2026-10-01 â€” v1, 145/145 requirements mapped across 9 phases*
+
+*Milestone v1.0 shipped: 2026-10-21 — all 9 phases complete, PR #7 mergeable*
+*Archive: .planning/milestones/v1.0-ROADMAP.md and .planning/milestones/v1.0-REQUIREMENTS.md*
+*Next: Fresh REQUIREMENTS.md for v2 via /gsd-new-milestone*

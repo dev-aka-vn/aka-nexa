@@ -19,6 +19,53 @@ The product is deliberately **not** a chatbot. The chatbot is the entry point; t
 form-plus-integration pair is the product, and the App Builder is what makes the platform
 self-sustaining.
 
+## Current State
+
+**Shipped Version:** v1.0  
+**Milestone:** Complete (2026-10-21)  
+**Phase:** 9 of 9 — Production Readiness  
+**PR:** #7 (28 commits, mergeable)  
+**Verification:** `nyquist_compliant: true`, 59 tests pass, `npm run build` exit 0  
+**Security:** 54 threat mitigations across 7 STRIDE categories  
+**Requirements:** All v1 requirements archived to `.planning/milestones/v1.0-REQUIREMENTS.md`  
+**Roadmap:** Archived to `.planning/milestones/v1.0-ROADMAP.md`  
+
+The v1 milestone delivered Slack × (internal routing + Redmine connector) + self-service
+App Builder + Microsoft Teams expansion. v2 requirements (29 additional IM platforms, open-ended
+AI assistant) are deferred past v1.
+
+---
+
+**Next Milestone Goals:** v2 will add Zalo and Telegram integration, open-ended conversational
+AI decision support, and the remaining 29 v2 requirements identified in the PRD. The v2
+roadmap and requirements will be created via `/gsd-new-milestone`.
+
+<details>
+<summary>v1 Milestone Details (collapsed)</summary>
+
+**Phases:** 1–9 (9 phases, 72 plans)  
+**Completed:** 100% (all phases with all plans executed)  
+**Key accomplishments:**
+- Durable audit store in MongoDB with erasure CLI and field allowlist (Phase 9)
+- ActorErasureService with mapping row deletion and redaction (Phase 9)
+- Metric registry + 5 runbooks + 8 alert rules + promtool CI gate (Phase 9)
+- Three-tier throttler + k6 load test + measured Redis cost (Phase 9)
+- WINDOW 7 key rotation with kid-resolved keyring (Phase 9)
+- Self-service App Builder with @formio/js 5.6.1 drag-and-drop builder (Phase 6)
+- Microsoft Teams integration via Microsoft 365 Agents SDK (Phase 8)
+- JEV decision model + RBAC filtering (Phase 3)
+- OpenTelemetry manual instrumentation (no @nestjs/observe) (Phase 1)
+- TypeScript 6.0.3 hard-pinned with lockfile (Phase 1)
+- Node.js 24 LTS runtime pin (.nvmrc) (Phase 1)
+
+**Technical debt deferred to v2:**
+- Zalo OA integration (no official Node SDK; hand-rolled client via undici)
+- Telegram bot API (grammy depends on un-instrumented node-fetch)
+- Open-ended conversational AI assistant (PRD NG1)
+- 29 additional IM platforms beyond Slack + Teams + Zalo
+
+</details>
+
 ## Requirements
 
 ### Validated
