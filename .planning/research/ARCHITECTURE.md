@@ -1,27 +1,30 @@
-# Architecture Research
+# Architecture Research — v2 (Platform Expansion & Advanced Capabilities)
 
 **Domain:** Chat-driven enterprise workflow gateway — IM adapters → permission-first routing → signed one-time links → FormIO.js forms → hybrid data routing (MongoDB / connector / both)
-**Milestone context:** Greenfield. No existing code. `PRD.md` v2.0 §7 is the authoritative baseline; `.planning/PROJECT.md` carries the adopted amendments.
-**Researched:** 2026-10-01
-**Confidence:** HIGH on component boundaries, the webhook ingest contract, the hybrid transactional boundary, the read-path verification sequence, and all Redis/BullMQ operational constraints (all verified against official documentation). MEDIUM on the JEV fallback latency budget and on the exact Redis Cluster failover blast radius for this workload.
+**Milestone context:** **v1 shipped 2026-10-21** (9 phases, 72 plans). v2 starts at **Phase 10** and adds: Zalo OA + Telegram adapters, two-way IM sync, group/directory sync RBAC, and a permission-first open-ended AI guard.
+**Scope of this document:** **the v2 delta only.** The v1 architecture is shipped, running, and documented in `.planning/milestones/v1.0-ROADMAP.md` and the v1 research set. This document does not re-derive it — it states only what v2 adds, what v2 modifies, and what v2 must *not* touch.
+**Researched:** 2026-10-21
+**Confidence:** **HIGH** on component boundaries, the contract delta, the idempotency design, the group-revocation model, and the AI-guard placement — every claim below was read out of the shipped source, not inferred from the PRD. **MEDIUM** on the Zalo webhook signature semantics and on the Telegram group-membership limitation (both platform-side facts that need a spike; see §11).
 
 ---
 
-## Verdict — the seven findings that change the PRD
+## Verdict — the nine findings that shape v2
 
-This document does not restate PRD §7. It stress-tests it. Seven conclusions, in the order they matter:
+| # | Finding | Consequence for the roadmap |
+|---|---------|------------------------------|
+| **1** | **The contract already knows about Zalo and Telegram.** `ImPlatformSchema = z.enum(['slack','teams','zalo','telegram'])` (`packages/contract/src/events/inbound-event.ts:27`). FR-IM-1's platform list and FR-IM-2/FR-IM-3's normalization requirement are satisfied by **reusing the shipped envelope** — no new event schema, no new outbound schema, no new spec version. | The adapters are **additive, not inventive** (the same conclusion Phase 8 reached for Teams). Budget accordingly. |
+| **2** | **Nothing is ever delivered back to the chat.** `InboundEventProcessor.process()` returns `{kind:'link', appId, url}` (`apps/worker/src/processors/inbound-event.processor.ts:194`) — but BullMQ discards a processor's return value. `TeamsOutboundService` exists (`apps/api/src/adapters/teams/teams.outbound.service.ts:70`) and **has no caller anywhere in the repo**. The only outbound path that works today is `NOTIFICATION_SEND_QUEUE`, and `NotificationProcessor` hardcodes `TeamsDeliveryService` (`apps/worker/src/processors/notification.processor.ts:87`). | **The v2 platform work is blocked on an outbound seam that does not exist.** This is Phase 10 and it precedes the adapters. Shipping Zalo before it produces a bot that receives perfectly and never answers. |
+| **3** | **The clarification session is keyed on a field the envelope cannot carry.** `ClarificationSessionService.sessionKey(realUserId, channelId, threadTs)` (`packages/domain/src/decision/clarification-session.service.ts:73`) takes a `threadTs`; the processor passes `event.channel_id` for **both** arguments as a placeholder (`inbound-event.processor.ts:203`, `:282`). The shipped envelope has no thread field. | FR-IM-8 (threading) needs `thread_id` / `reply_to_message_id` on the envelopes. The v1 code is already reaching for them. This is a **contract minor amendment**, not a redesign. |
+| **4** | **RBAC is a stub.** `RbacService.hasPermission` returns `true` for `'leave:request'` unconditionally and `getRoles` returns `['employee']` (`packages/domain/src/authz/rbac.service.ts`). The real authorization is an inline closure in `apps/worker/src/app.module.ts:53-65` that reads `def.role_assignments` as a `Record<string, unknown>`. The RBAC cache is an in-process `Map` (`rbac-cache.service.ts`), and the identity mapping repository is an in-process array (`packages/domain/src/identity/identity-mapping.repository.ts:11`). | **v1 shipped a product where every user can use every app, and where a worker restart forgets every identity mapping.** This is a v1 correctness defect, not a v2 feature — and group RBAC is *impossible* on top of a stub. Fix it **before** the group feature. |
+| **5** | **The dedupe precedent is Mongo, not Redis and not BullMQ.** `TeamsEventRepository` (`packages/domain/src/adapters/teams/inbound/data-access/teams-event.repository.ts`) owns a `MongoClient` with 500 ms fail-closed timeouts (D-39) and a **unique index on `platform_event_id`**; the v1 ROADMAP records the reason: BullMQ `jobId` dedup lapses on `removeOnComplete`. | v2's dedupe is the **same mechanism, generalised**. Redis `GETDEL` is the fast path, not the guarantee. |
+| **6** | **The receiver has a message-loss window.** The order is insert-dedupe-row → upsert-conversation-ref → `queue.add` (`teams-activity.service.ts:68-90`). A crash between the insert and the enqueue leaves the dedupe row saying "seen" and the event **never queued** — and because the platform got a 2xx, it will not retry. Slack retries 3×; Telegram retries on non-2xx; Zalo's behaviour is undocumented. | v2 must close this with a **pending → dispatched** state on the dedupe row plus a scheduler-driven reconciler. This is cheap, and it is the difference between "at-least-once" and "best-effort". |
+| **7** | **Conversation references are keyed without the platform.** `ConversationReferenceRepository.key(channelId, chatUserId)` = `${channelId}::${chatUserId}` (`packages/domain/src/notifications/data-access/conversation-reference.repository.ts:32`). A Telegram `chat_id` of `123` and a Zalo `conversation_id` of `123` and a Slack channel `C123` can collide. The stored row is also Teams-shaped (`serviceUrl`, `tenantId`). | The key **must** become platform-scoped and the row must carry a platform discriminator before the second platform ships. This is a data migration on a small collection. |
+| **8** | **Telegram bots cannot enumerate group members.** The Bot API exposes `getChat`, `getChatAdministrators`, `getChatMemberCount` and `getChatMember` (one user) — there is no `getChatMembers`. Membership is observable only through `new_chat_members` / `chat_member` events, i.e. only for users who interact with the bot. | **Telegram group→role sync is not implementable with the Bot API.** Zalo *can* list members (`GET /v3.0/oa/group/listmember`) but only with the "quản lý thông tin nhóm" permission and a paid GMF package. v2's group feature must be **directory-sourced first**, Zalo second, Telegram **not at all**. See §6.4. |
+| **9** | **The permission-first guarantee already holds, and the AI guard must be built around it, not beside it.** `RoutingOrchestrator.route` builds `permitted` from `authorizedTools` and passes `tools: [...input.authorizedTools]` — never the global catalogue — and filters `app_hints` by `permitted` (`packages/domain/src/decision/routing-orchestrator.ts:50-59`). `canOpenNow` is the fresh re-check at the execution boundary (`:20`). | **FR-J-6 is already implemented.** The v2 AI guard is a **decorator on a provider**, not a new pipeline stage. It must not become a place where the tool set is widened. |
 
-| # | Finding | Verdict |
-|---|---------|---------|
-| 1 | **BullMQ `jobId` deduplication does not survive `removeOnComplete`.** Official docs: *"Jobs that are removed from the queue (either manually, or when using settings such as `removeOnComplete`/`removeOnFailed`) will **not** be considered as duplicates."* So a BullMQ `jobId` cannot be the durable write-once record FR-D-12 requires. | **The durable idempotency guarantee must be a MongoDB unique index**, not Redis and not BullMQ. GETDEL stays as the fast-path race closer; it is not the guarantee. |
-| 2 | **BullMQ requires `maxmemory-policy=noeviction`,** and its docs carry this as a `DANGER`. The PRD's Redis runbook says *"Redis OOM → evict expired keys"* and its alert fires at 80% memory. `maxmemory-policy` is instance-wide, so the cache and the queue **cannot** share an eviction policy. | **Amendment:** two Redis deployments. `noeviction` for queue + tokens, evicting policy for cache. Non-negotiable, not a preference. |
-| 3 | **BullMQ's internals require atomic operations spanning multiple keys,** which "breaks Redis's rules for cluster configurations." The documented workaround is a `{hash-tag}` queue prefix, which **pins all queue keys for that prefix to one hash slot** — i.e. one cluster node. | Queue throughput does not scale across the cluster. Fine at this scale, but it must be stated: cluster *memory* is the scaling axis, not queue parallelism. |
-| 4 | **Redis Pub/Sub is at-most-once.** FR-I-6 and FR-R-9 both specify "immediate invalidation via pub/sub." A dropped message means a stale permission read. | **Epoch-keyed cache keys replace Pub/Sub as the correctness mechanism.** Pub/Sub becomes a latency optimisation only. One primitive (`perm_version` in the cache key) then serves *both* the RBAC cache and the read-link security check. |
-| 5 | **Redis Cluster replication is asynchronous; acknowledged writes can be lost on failover.** Therefore Redis `GETDEL` can be acknowledged and then un-happen — a consumed one-time link can come back. The PRD's own runbook already anticipates this (*"Check Redis cluster split-brain"*) but specifies no second line of defence. | **A MongoDB `unique` index on `submissions.link_jti` is the actual anti-double-submission guarantee.** Two independent guards, neither load-bearing alone. |
-| 6 | **The fallback chain can overrun the request budget.** PRD §11.4 chains `500 + 1000 + 50 ms` = 1550 ms of decision latency against an NFR-P-5 end-to-end target of 2000 ms, before identity, RBAC, or link generation have run. | **A deadline must be propagated down the chain.** Skip to the next provider if the remaining budget cannot accommodate it; fall straight through to `RuleBasedProvider` when it cannot. |
-| 7 | **Slash commands should bypass the ack window entirely.** Slack acks within 3 s; `response_url` is valid for up to 5 responses within 30 minutes. | Ack empty immediately, deliver the link asynchronously. The 2 s end-to-end budget and the 3 s ack budget stop contending for the same request. |
+### The one non-negotiable
 
-The single most consequential structural amendment: **the PRD's §7.1 linear pipeline is wrong as an execution model.** It puts the rate limiter before identity and the whole pipeline before the response. Both are correct only for a synchronous request. With a pure-ingest receiver, none of that pipeline runs inside the ack window — the pipeline runs in the worker, driven by a queued event. The PRD needs a second diagram that distinguishes *ingest* from *processing*.
+> **The v2 platform work is not "add two adapters".** It is "add an outbound seam, fix a stubbed RBAC, then add the adapters." A Zalo adapter shipped on top of finding #2 produces a bot that reads messages and never replies; a group feature shipped on top of finding #4 produces a group binding that grants everything.
 
 ---
 
@@ -29,775 +32,738 @@ The single most consequential structural amendment: **the PRD's §7.1 linear pip
 
 ### System Overview
 
-Three process entrypoints, one codebase, one DI graph. The diagram below shows **deployment-level** process boundaries and the trust boundaries between them. The component-level decomposition is in the next section.
+The v1 topology is unchanged — three NestJS entrypoints, one DI graph, one DI-enforced boundary model, three BullMQ queues. What changes is **where the new work attaches**.
 
 ```
         ┌──────────────────────────────────────────────────────────────────┐
-  T1    │  INTERNET  (IM platforms · employee browsers · external systems) │
+  T1    │  INTERNET  (Slack · Teams · Zalo OA · Telegram · browsers ·      │
+        │            external systems)                                     │
         └───────────────────────────────┬──────────────────────────────────┘
-                                        │ TLS terminated at LB / ingress
+                                        │ TLS at LB / ingress
   T2    ┌───────────────────────────────▼──────────────────────────────────┐
-        │  INGRESS  nginx / ALB   — IP rate limit, body-size cap, no app  │
+        │  INGRESS  nginx / ALB   — IP rate limit, body-size cap          │
         └───────┬──────────────────────────────────────────┬───────────────┘
-                │ webhook POST (Slack/Teams/Zalo/TG)      │ HTTPS (browsers)
-                │ untrusted                               │ untrusted
-  ┌─────────────▼──────────────┐        ┌──────────────────▼───────────────┐
-  │  PROCESS: api              │        │  STATIC: form-renderer / builder │
-  │  NestFactory.create()       │        │  Vite build → CDN (no secrets,   │
-  │  NestFactory rawBody:true   │        │  no cookies, public JWKS only)   │
-  │                             │        │  ── or ──> same origin as api    │
-  │  ├─ IM adapters (inbound)   │        └──────────────────┬───────────────┘
-  │  ├─ Link API (issue+verify) │                           │ bearer = JWT in URL
-  │  ├─ Submission API          │◄──────────────────────────┘
-  │  ├─ Builder API (SSO)       │
-  │  ├─ /webhooks/inbound (T9)  │
-  │  └─ NO connector HTTP       │
-  │  └─ NO BullMQ workers       │
-  └───┬───────────────┬─────────┘
-      │               │
-      │  pipeline     │  enqueue only
-      │  (in-process) │  never awaits a worker
-  T3  │               │
-  ┌───▼───────────────▼─────────┐        ┌──────────────────────────────┐
-  │  MongoDB 8 replica set (3)  │        │  Redis  — TWO deployments    │
-  │  source of truth for:       │        │  ┌────────────────────────┐  │
-  │   identity, rbac, apps,     │        │  │ cache  (evicting)     │  │
-  │   submissions, audit,       │        │  │ toolset, jev, rate    │  │
-  │   OUTBOX, DELIVERIES        │        │  ├────────────────────────┤  │
-  │   (+ durable unique idx)    │        │  │ queue+tokens          │  │
-  └──────────────▲──────────────┘        │  │ (noeviction)          │  │
-                 │                       │  │ bullmq, ak:tok:*      │  │
-                 │ relay / result        │  └────────────────────────┘  │
-  ┌──────────────┴───────────────────────┴──────────────────────────────┐
-  │  PROCESS: worker                                                   │
-  │  NestFactory.createApplicationContext()  — no HTTP server          │
-  │  ├─ InboundRouter    (consumes im.inbound; runs identity→JEV→link) │
-  │  ├─ ConnectorRunner  (consumes connector.execute)                 │
-  │  ├─ ImDispatcher     (consumes im.outbound;  T4/T5 egress)         │
-  │  ├─ DataRouter       (hybrid coordinator, partial-status)          │
-  │  └─ NO http controllers, NO builders                              │
-  └──────────────────────────┬────────────────────────────────────────┘
-                             │ upsertJobScheduler (idempotent)
-  ┌──────────────────────────▼────────────────────────────────────────┐
-  │  PROCESS: scheduler  — createApplicationContext(), no HTTP         │
-  │  ├─ OutboxRelay        (outbox → connector.execute)                │
-  │  ├─ DeliveryRelay     (delivery_log → im.outbound)                 │
-  │  ├─ JevHealthProbe    (60 s, provider circuit state in Redis)     │
-  │  ├─ ConnectorHealth   (60 s)                                      │
-  │  ├─ KeyRotation       (90 d dual-key, NFR-SEC-9)                  │
-  │  ├─ RetentionPurge    (FR-LC-4/5)                                 │
-  │  └─ OutboundRetry     (im.outbound exhausted → DLQ → re-drive)    │
-  └───────────────────────────────────────────────────────────────────┘
+                │ webhook POST (4 platforms)                │ HTTPS (browsers)
+                │ untrusted                                 │ untrusted
+                ▼                                          ▼
+  ┌──────────────────────────────────┐      ┌──────────────────────────────┐
+  │  PROCESS: api                   │      │  STATIC: form-renderer /     │
+  │  ├─ IM receivers (4)      [NEW]  │      │  builder  (Vite → CDN)       │
+  │  │   slack / teams / zalo / tg  │      │  no secrets, no cookies      │
+  │  │   verify → dedupe → enqueue   │      └──────────────┬───────────────┘
+  │  │   <200 ms ack (D-13)         │                     │ bearer in URL
+  │  ├─ Link / Submission / Builder  │◄────────────────────┘
+  │  └─ NO connector HTTP, NO Worker│
+  └───────────────┬──────────────────┘
+                  │ enqueue only
+  T3              │ 'inbound-events'
+        ┌─────────▼────────────────────────────────────────────────────────┐
+        │  PROCESS: worker                                                 │
+        │  ├─ InboundEventProcessor  (identity → RBAC filter → JEV → link) │
+        │  │        └─ NEW: enqueue OutboundMessage to 'im-outbound'       │
+        │  ├─ OutboundMessageProcessor [NEW] → OutboundDispatcher [NEW]    │
+        │  │        → slack / teams / zalo / telegram delivery clients     │
+        │  ├─ NotificationProcessor (MODIFIED: platform-dispatched)        │
+        │  ├─ GroupSyncProcessor   [NEW]                                   │
+        │  └─ PlatformEventDispatchProcessor [NEW] (pending→dispatched)    │
+        └───────────────┬──────────────────────────────────────────────────┘
+                        │
+  T4    ┌───────────────▼──────────────────────────────────────────────────┐
+        │  PROCESS: scheduler  (BullMQ Job Schedulers — the only writer)  │
+        │  ├─ reconciliation      (v1)                                    │
+        │  ├─ audit-retention / purge-sweep / access-review (v1)          │
+        │  ├─ group-sync          [NEW]  — every N min, per source         │
+        │  └─ platform-event-dispatch [NEW] — re-dispatch pending rows    │
+        └─────────────────────────────────────────────────────────────────┘
 
-  T4  egress: connector HTTP + connector credentials (KMS unwrapped here only)
-  T5  egress: IM platform HTTP (chat.postMessage / response_url)
-  T6  egress: KMS / Vault
-  T9  ingress: external-system webhooks → HMAC-verified receiver (same ingest contract as T2)
+  STORES   MongoDB 8.0.x  (apps · submissions · platform_events · groups ·
+                           group_role_assignments · user_app_epochs ·
+                           identity_mappings · conversation_references)
+           Redis ≥8.2    (clarify sessions · rbac cache · one-time tokens ·
+                           BullMQ queue)
+           KMS           (read-link keys · connector creds · IM platform creds)
 ```
 
-**Why three entrypoints is the right split.** `api` is request-latency-bound and scales on request rate. `worker` is third-party-latency-bound (connector timeouts up to 30 s, NFR-C-11) and scales on connector throughput — running it inside `api` would let 30 s connector calls consume web-server concurrency and blow the 200 ms ack budget. `scheduler` is calendar-bound and must be durable (§7.3's rejection of `@nestjs/schedule` — an in-memory cron that silently doesn't run on one pod is a *security* failure for key rotation, not a bug). **The split is correct. Amend what each entrypoint is allowed to load** — see the boundary matrix below, because without that the split is three copies of one process.
+**Trust boundaries that v2 must not blur**
+
+| Boundary | Rule | v2 consequence |
+|----------|------|----------------|
+| IM platform → receiver | Untrusted input. Verify, then ack <200 ms, then enqueue. **No logic in the receiver.** | Zalo and Telegram have **no challenge handshake** (see §11, S2/S3). Verification is signature/secret-based, and the receiver stays a pure ingest contract. |
+| Receiver → worker | Queue boundary. The only shared contract is the `InboundEvent` envelope. | v2's dedupe ledger is the **write-once record** that survives the at-least-once delivery the queue guarantees. |
+| Worker → decision | The RBAC filter runs **before** the provider. | The AI guard is a **provider decorator**. It never sees an unfiltered tool set. |
+| Decision → read link | `perm_version` epoch check at verification. | Group RBAC folds into the **one existing** `perm_version` claim. D-21 is not touched. |
 
 ### Component Responsibilities
 
-| Component | Owns | Never does |
-|-----------|------|------------|
-| `PlatformModule` | Config (Zod-validated), Mongo client, two Redis clients, BullMQ wiring, KMS crypto, OTel bootstrap, `undici` fetch wrapper | Knows nothing about apps, users, or IM |
-| `KernelModule` | Shared Zod schemas + types: `InboundEvent`, `OutboundMessage`, `AppSpec`, `PermissionSet`, `ToolDescriptor`, `SubmissionStatus`, `LinkClaims` | Any I/O. Pure types only. |
-| `IdentityModule` | `identity_mappings`, `real_users`, OTP onboarding, `identity_epoch` | Touch RBAC or apps |
-| `AuthzModule` | per-app roles/permissions/assignments, `perm_version` (**sole writer**), tool filter, `assertPermissionsAtVersion()` | Issue links or call JEV |
-| `RegistryModule` | app definitions + versions + triggers + lifecycle + publish pipeline, declared-index creation, in-process LRU of published apps | Validate form payloads |
-| `FormsModule` | FormIO schema storage/versioning, server-side prefill, server-side payload validation, Query DSL | Touch Mongo data collections directly |
-| `LinksModule` | Link issuance (create/edit — Redis-backed), read-link signing/verification (view/query/notification), `KeyringService`, one-time token store | Consume tokens, route data |
-| `DecisionModule` | `JevProvider` interface + registry, fallback chain, **shared circuit-breaker state**, deadline propagation, JEV response cache | Know about permissions (receives the already-filtered toolset) |
-| `ConnectorsModule` | connector interface + registry, REST connector, per-connector rate limit, retry/backoff, KMS credential resolution, `dry_run` | Decide *whether* to run; the DataRouter decides that |
-| `SubmissionsModule` | submission processor orchestration, the Mongo transaction, submission status transitions | Enqueue connector jobs (the outbox relay does) |
-| `DataRouterModule` | internal writer, Query DSL execution with auto-injected user filter, hybrid coordinator, field-mapping templates, `outbox` writes | Call connectors directly (only via the queue) |
-| `AdaptersModule` | `im/<platform>/inbound` (receiver) + `im/<platform>/outbound` (client, formatter), platform signature verification, `im.inbound`/`im.outbound` producers | Run the routing pipeline (the InboundRouter does) |
-| `AuditModule` | append-only `audit_log`, PII allowlist applied **before** serialisation | Ever throw into the request path |
-| `BuilderModule` | App-Builder API composition: app CRUD orchestration, publish validation (circular-share detection FR-X-5, index creation FR-D-5), preview sandbox | Write to data collections |
-| `InboundRouter` | the §7.1 pipeline, executed in `worker` from `im.inbound` | Be reachable over HTTP |
-
-### Trust Boundaries
-
-Direction is explicit; every arrow crossing a `T` line is untrusted or credential-bearing.
-
-| # | From → To | What crosses | Rule |
-|---|-----------|--------------|------|
-| T1 | Internet → Ingress | TLS-terminated HTTP | IP rate limit and body-size cap at nginx; **no application logic** |
-| T2 | Ingress → `api` | IM webhook bodies | **Untrusted.** Verified HMAC over `req.rawBody` → Zod-parsed into `InboundEvent` → *then* handed to a queue. No domain code sees an unverified body. |
-| T3 | `api`/`worker` → Mongo / Redis | queries | Trusted infrastructure. But **no domain module may construct a raw client** — only `PlatformModule` exports one. |
-| T4 | `worker` → external systems | connector calls + credentials | Egress. `credential_ref` is unwrapped by `ConnectorsModule` **only**, with a 60 s in-process cache. Never in Redis (honours PRD §15.3 "Redis: no PII stored"). |
-| T5 | `worker` → IM platforms | outbound messages | Egress. Never on the request path — always via `im.outbound`. |
-| T6 | any → KMS/Vault | secret unwrap | `PlatformModule.CryptoService` only. Enforced by the boundaries lint rule. |
-| T7 | Browser (form renderer) → `api` link endpoints | JWT in URL | The JWT is the **entire** credential. No cookies ⇒ CSRF class removed structurally. Issuer applies NFR-SEC-10 (5 failed validations / IP / 10 min) before any crypto work. |
-| T8 | Browser (App Builder) → `api` builder endpoints | SSO session + MFA | Separate origin, `SameSite=Strict` cookie **here only**. |
-| T9 | External systems → `api /webhooks/inbound` | HMAC-signed notifications | Identical ingest contract to T2. Replay guard: timestamp window + nonce. |
-
-**The single rule that keeps this coherent:** every inbound HTTP entry point terminates in `queue.add(...)` or a pure crypto check. No inbound HTTP handler ever reaches Mongo for domain data. That is what makes the 200 ms ack achievable *and* keeps the untrusted-input blast radius at one adapter file per platform.
+| Component | New / Modified | Responsibility | Typical Implementation |
+|-----------|----------------|----------------|------------------------|
+| `apps/api/src/adapters/<platform>/` — receiver | **NEW** (zalo, telegram) · **MODIFIED** (slack) | Verify the platform's signature/secret, normalise to `InboundEvent`, insert the dedupe row, upsert the conversation reference, enqueue, ack <200 ms | Controller → `<Platform>ActivityService` → `PlatformEventRepository.insert()` → `ConversationReferenceRepository.upsert()` → `queue.add(INBOUND_EVENTS_QUEUE, event)` — the shipped Teams shape, generalised |
+| `packages/domain/src/adapters/<platform>/inbound/data-access/` | **MODIFIED** (generalise) | The write-once platform-event ledger. Unique index per platform on the platform's own event id | One `PlatformEventRepository` class, collection name parameterised by platform (`${platform}_events`), unique index on `platform_event_id`, 500 ms fail-closed timeouts |
+| `packages/domain/src/adapters/<platform>/outbound/` | **NEW** (zalo, telegram) · **MOVED** (teams, slack) | The platform's outbound client: build the platform call, enforce the platform's text/rate limits, map the thread/reply reference | A `send(message, context)` method behind a `PlatformDeliveryPort`; transport is `undici` (Zalo, hand-rolled) or `node-telegram-bot-api` (Telegram) |
+| `packages/domain/src/adapters/data-access/platform-credential.repository.ts` | **NEW** | Store the Zalo OA secret / access token and the Telegram bot token as `SecretEnvelope`s | `upsert(ref, headerName, plaintext)` seals via `sealSecret`; `get(ref)` returns the envelope; the reader calls `openSecret` from `packages/platform/src/crypto/**` |
+| `apps/worker/src/adapters/outbound-dispatcher.ts` | **NEW** | Resolve `platform → PlatformDeliveryPort` and route an `OutboundMessage` to it | App-layer composition. It may import both `notifications` and `adapters`; **no domain element may** (R1) |
+| `apps/worker/src/processors/outbound-message.processor.ts` | **NEW** | Consume `im-outbound`; retry with jittered backoff; DLQ on terminal failure | `@Processor(IM_OUTBOUND_QUEUE, { backoffStrategy: notificationJitterBackoff })` — the shipped `NotificationProcessor` shape |
+| `apps/worker/src/processors/notification.processor.ts` | **MODIFIED** | Stop hardcoding `TeamsDeliveryService`; resolve the platform and delegate to the dispatcher | Inject the dispatcher instead of the Teams service |
+| `apps/worker/src/processors/inbound-event.processor.ts` | **MODIFIED** | On `{kind:'link'}` / `{kind:'clarify'}`, **enqueue an `OutboundMessage`** instead of returning it | `queue.add(IM_OUTBOUND_QUEUE, message)` with a stable `message_id` so retries do not duplicate the send |
+| `packages/domain/src/authz/rbac.service.ts` | **MODIFIED (was a stub)** | Evaluate the real effective permission set for `(app, user)` from direct assignments ∪ group-derived assignments | Read `role_assignments` + `group_role_assignments` + `roles_permissions` from the app definition; expand the user's groups; return the permission set |
+| `packages/domain/src/authz/rbac-cache.service.ts` | **MODIFIED** | Move from an in-process `Map` to Redis, keeping the **epoch-keyed** key | `ak:rbac:{app_id}:{real_user_id}:{perm_version}` — the key already exists. A `perm_version` bump creates a *new* key, so the stale entry is never read again: the epoch makes the cache self-invalidating |
+| `packages/domain/src/authz/permission-check.service.ts` | **MODIFIED** | `perm_version` must come from a real store, not the `= 0` default | Read the user's epoch from `user_app_epochs`; pass it to the cache and to the link issuer |
+| `packages/domain/src/identity/identity-mapping.repository.ts` | **MODIFIED (was in-memory)** | Persist identity mappings; keep the Redis cache + immediate invalidation (FR-I-4, FR-I-6) | Mongo-backed repository behind the same interface, with a Redis read-through cache |
+| `packages/domain/src/groups/` | **NEW element** | The group model, membership sync, group→app role bindings, and the revocation bump | `group_memberships`, `group_role_assignings`, `user_app_epochs` collections; a `GroupSyncService` |
+| `packages/domain/src/decision/guarded-provider.ts` | **NEW** | The permission-first open-ended AI guard, as a **decorator** around a hosted provider | Implements `JevProvider`; runs the inbound guard, calls the inner provider, runs the outbound guard, re-validates the choice against `permitted` |
+| `packages/domain/src/decision/clarification-session.service.ts` | **MODIFIED** | Key on the real thread id; raise the turn bound for open-ended disambiguation | `sessionKey(realUserId, channelId, thread_id)` — the signature already takes a `threadTs`; the caller just starts passing the right value |
+| `packages/contract/src/events/inbound-event.ts` | **MODIFIED (minor)** | Add `thread_id?` and `reply_to_message_id?` | Two **optional** fields on a `.strict()` schema — backward compatible; update the strictness spec |
+| `packages/contract/src/events/outbound-message.ts` | **MODIFIED (minor)** | Add `thread_id?` and `reply_to_message_id?` | Same |
+| `packages/platform/src/logging/log-allowlist.ts` | **MODIFIED (additive, one commit)** | Add `app_id`, `perm_version`, `group_id` | Each with a written justification in the same commit — the file's own rule. `event_id` and `channel_id` stay out |
+| `packages/platform/src/queue/queue.constants.ts` | **MODIFIED** | Add `IM_OUTBOUND_QUEUE = 'im-outbound'` and `GROUP_SYNC_QUEUE` / `PLATFORM_EVENT_DISPATCH_QUEUE` | Same frozen-constant discipline as the existing two |
+| `tooling/boundaries.config.mjs` | **MODIFIED** | Add the `groups` element type and its allowed edges | **One** element addition. See §7 for why the outbound seam needs none |
 
 ---
 
 ## Recommended Project Structure
 
-npm workspaces (per `.planning/PROJECT.md`: nx/turbo rejected as unjustified at 4 packages). The boundary lint rule is what makes "modular monolith" enforceable rather than aspirational.
+```
+apps/api/src/adapters/
+├── slack/                          # MODIFIED — replace the {ok:true} stub
+│   ├── slack.controller.ts         #   NEW: events + url_verification challenge
+│   ├── slack-signature.service.ts  #   NEW: v0: HMAC-SHA256 over ts+body
+│   └── slack-activity.service.ts   #   NEW: normalise + dedupe + enqueue
+├── teams/                          # v1 — reference implementation, unchanged
+│   ├── teams.controller.ts
+│   ├── teams-auth.guard.ts
+│   ├── teams-activity.service.ts
+│   └── teams.outbound.service.ts   # REMOVED — moves to packages/domain/.../outbound
+├── zalo/                           # NEW
+│   ├── zalo.controller.ts           #   POST /zalo/events, no challenge handshake
+│   ├── zalo-signature.service.ts   #   X-ZEvent-Signature: sha256(appId+body+ts+secret)
+│   ├── zalo-activity.service.ts    #   normalise (incl. quote_msg_id) + dedupe + enqueue
+│   └── zalo.module.ts
+└── telegram/                       # NEW
+    ├── telegram.controller.ts       #   POST /telegram/events, no challenge handshake
+    ├── telegram-secret.service.ts   #   X-Telegram-Bot-Api-Secret-Token, constant-time
+    ├── telegram-activity.service.ts #   normalise (incl. message_thread_id/reply_to) + dedupe
+    └── telegram.module.ts
 
-```
-akane/
-├── apps/
-│   ├── api/                     # NestFactory.create(), rawBody:true, listens :3000
-│   ├── worker/                  # NestFactory.createApplicationContext() — no HTTP
-│   ├── scheduler/               # NestFactory.createApplicationContext() — no HTTP
-│   ├── form-renderer/           # Vite + React 19 + @formio/js 5 (read/write/view/query)
-│   └── app-builder/             # Vite + React 19 + @formio/js 5 builder
-├── packages/
-│   ├── platform/                # config, mongo, redis(×2 profiles), queue, crypto, otel, http
-│   ├── kernel/                  # shared zod schemas + types. ZERO I/O, ZERO deps.
-│   ├── domain/                  # the 12 domain modules (below)
-│   └── contract/                # JevProvider iface, Connector iface, InboundEvent/OutboundMessage
-└── tooling/
-    ├── boundaries.config.mjs    # eslint-plugin-boundaries policies
-    └── tsconfig.base.json
-```
+packages/domain/src/adapters/
+├── <platform>/inbound/data-access/
+│   └── platform-event.repository.ts # MODIFIED — generalised from teams-event.repository.ts
+├── <platform>/outbound/
+│   ├── <platform>-delivery.port.ts  # NEW — the port every platform implements
+│   ├── zalo-client.ts                # NEW — hand-rolled ~200 lines over undici
+│   ├── zalo-delivery.ts              # NEW — quota (8/48h), 2 000-char limit, quote reply
+│   ├── telegram-delivery.ts          # NEW — node-telegram-bot-api 2.1.0
+│   ├── teams-delivery.ts             # MOVED from apps/api/src/adapters/teams/
+│   └── slack-delivery.ts             # NEW
+├── data-access/
+│   └── platform-credential.repository.ts  # NEW — SecretEnvelope-backed IM credentials
+└── adapter.registry.ts              # NEW — platform → inbound/outbound descriptor
 
-```
-packages/domain/src/
-├── identity/     ├── authz/       ├── registry/   ├── forms/
-├── links/        ├── decision/    ├── connectors/ ├── submissions/
-├── datarouter/   ├── adapters/    ├── audit/      └── builder/
-│                     ├── im/slack/{inbound,outbound}/
-│                     ├── im/teams/{inbound,outbound}/
-│                     ├── im/zalo/{inbound,outbound}/
-│                     └── im/telegram/{inbound,outbound}/
-└── pipeline/     # InboundRouter — composes the modules above, lives in worker only
+packages/domain/src/groups/          # NEW ELEMENT TYPE — requires a boundaries.config.mjs edit
+├── data-access/
+│   ├── group-membership.repository.ts
+│   ├── group-role-assignment.repository.ts
+│   └── user-app-epoch.repository.ts
+├── group-sync.service.ts            # diff membership, bump epochs
+├── group-binding.service.ts         # group → per-app role resolution
+└── directory-source.port.ts         # the pluggable upstream (AD/LDAP, IM group API)
+
+packages/domain/src/decision/
+├── guarded-provider.ts              # NEW — the AI guard as a JevProvider decorator
+├── prompt-guard.service.ts          # NEW — inbound/outbound guard rules
+├── routing-orchestrator.ts          # UNCHANGED — FR-J-6 already holds
+├── provider-registry.ts             # MODIFIED — capability filter already supports multi_turn
+└── clarification-session.service.ts # MODIFIED — real thread key, raised turn bound
+
+apps/worker/src/adapters/
+├── outbound-dispatcher.ts           # NEW — platform → delivery port (app layer only)
+├── zalo/zalo-delivery.service.ts    # NEW — app-layer wiring
+├── telegram/telegram-delivery.service.ts
+└── slack/slack-delivery.service.ts
+
+apps/worker/src/processors/
+├── outbound-message.processor.ts    # NEW — consumes 'im-outbound'
+├── group-sync.processor.ts          # NEW — consumes the group-sync queue
+└── platform-event-dispatch.processor.ts  # NEW — re-dispatches pending rows
+
+apps/scheduler/src/
+├── group-sync.registration.ts       # NEW — Job Scheduler, every N minutes
+└── platform-event-dispatch.registration.ts  # NEW — Job Scheduler, every M minutes
 ```
 
 ### Structure Rationale
 
-- **`kernel/` has no `dependencies` field at all.** If it needs a library, that's the signal the type belongs somewhere else. This is the cheapest possible cycle-breaker and it makes the boundary graph trivially acyclic at the base.
-- **`adapters/<platform>/{inbound,outbound}/` is split per direction**, not per platform, because `api` needs only `inbound` and `worker` needs only `outbound`. A platform-shaped folder would force both entrypoints to load both halves.
-- **`pipeline/` is its own module**, separate from the modules it calls. It is the only place allowed to import `identity + authz + decision + registry + links` simultaneously. Putting the orchestration inside `authz` (where the PRD's §7.1 implies it) would make the largest module the one with the widest fan-in — the exact shape that makes "extract a service later" impossible.
-- **`builder/` is a composition module, not a domain module.** It owns no collections; it orchestrates `registry` + `forms` + `authz` + `connectors` and adds publish-time validation. This keeps the App Builder a thin, replaceable skin over APIs that already exist — which is what makes it safe to build late.
-
-### Boundary rules — what talks to what
-
-Enforced by `eslint-plugin-boundaries` (v5.3.1, MIT, 253k weekly downloads, actively published). v5 uses a single `boundaries/dependencies` rule with `default: "disallow"` and an allow-list of policies — the modern form of the rule; do not copy the older `boundaries/element-types` examples you'll find in search results.
-
-**Element types** (`boundaries/elements`):
-
-| Type | Pattern | Notes |
-|------|---------|-------|
-| `kernel` | `packages/kernel/src/**` | |
-| `platform` | `packages/platform/src/**` | |
-| `identity` `authz` `registry` `forms` `links` `decision` `connectors` `submissions` `datarouter` `audit` | `packages/domain/src/<type>/**` | |
-| `adapters` | `packages/domain/src/adapters/**` | |
-| `pipeline` | `packages/domain/src/pipeline/**` | |
-| `builder` | `packages/domain/src/builder/**` | |
-| `entrypoint` | `apps/{api,worker,scheduler}/src/main.ts` | composition roots |
-| `entrypoint` | `apps/*/src/app.module.ts` | |
-
-**Allowed edges** (`default: "disallow"` — everything not listed is an error):
-
-```
-kernel      → (nothing)
-platform    → kernel
-identity    → platform, kernel
-authz       → platform, kernel, identity          (authz needs to know who the user is; NOT vice-versa)
-registry    → platform, kernel, authz             (publish-time permission sanity), forms
-forms       → platform, kernel
-links       → platform, kernel, registry, authz   (issuing a link requires knowing the form + permission)
-decision    → platform, kernel
-connectors  → platform, kernel
-submissions → platform, kernel, identity, authz, forms, links, registry, audit
-datarouter  → platform, kernel, registry, connectors(config only), audit
-adapters    → platform, kernel, contract          # inbound + outbound only. NOTHING else.
-pipeline    → platform, kernel, identity, authz, registry, forms, links, decision, adapters, audit
-builder     → platform, kernel, registry, forms, authz, connectors, audit
-entrypoint  → (everything)
-*           → NOT entrypoint                     # composition roots are leaves
-```
-
-**The three rules that do the real work** (these are the ones worth writing as `boundaries/files` category policies, because they are not expressible as element-type edges):
-
-| Rule | Enforces | Why |
-|------|----------|-----|
-| **R1 — entrypoint exclusivity** | Only `apps/api/src/app.module.ts` may import `**/adapters/**/inbound/**` and `**/http/**`. Only `apps/worker/src/app.module.ts` may import `**/bullmq/workers/**` and `**/adapters/**/outbound/**`. Only `apps/scheduler/src/app.module.ts` may import `**/scheduler/**`. | Makes the three-way split a real boundary. Without it, `api` can `import { Worker } from 'bullmq'` and the ack budget dies silently. |
-| **R2 — secret containment** | Only `packages/platform/src/crypto/**` and `packages/domain/src/connectors/**` may import `@opengsd/…kms`, `jose` signing helpers, or `AES-256-GCM` primitives. | NFR-SEC-3 and PROJECT's "no plaintext env secrets" become lint errors rather than review comments. |
-| **R3 — no direct Mongo outside data-access files** | `mongodb` driver imports allowed only in `packages/platform/src/mongo/**` and `packages/domain/src/**/data-access/**`. | Forces repositories. Stops `collection.insertOne()` from appearing in a service, which is how transaction-scoped `session` threading gets skipped. |
-
-**Enforcement is only half the story.** Add a boot-time assertion as well: each entrypoint declares its allowed provider set, and `main.ts` walks `ModuleRef` providers in an `OnApplicationBootstrap` hook and fails fast if a provider from a forbidden module is instantiated. NestJS resolves providers lazily by default (`strict: false` semantics), so an import that a module never uses may never instantiate — the lint rule catches that statically; the runtime check catches dynamic `ModuleRef.get(..., {strict:false})` escapes. Belt and braces, ~40 lines, and it turns a subtle production-only failure into a startup crash.
-
-### What each entrypoint loads
-
-| Module | `api` | `worker` | `scheduler` |
-|--------|:-----:|:-------:|:----------:|
-| `platform` (all) | ✅ | ✅ | ✅ |
-| `kernel` | ✅ | ✅ | ✅ |
-| `identity` `authz` `registry` `forms` `links` | ✅ | ✅ | ✅ |
-| `decision` | ✅ (providers) | ✅ | ✅ (health probes) |
-| `adapters/*/inbound` + HTTP controllers | ✅ | ❌ | ❌ |
-| `adapters/*/outbound` | ❌ | ✅ | ✅ |
-| `pipeline` (InboundRouter) | ❌ | ✅ | ❌ |
-| `connectors` HTTP client | ❌ | ✅ | ✅ (health) |
-| `submissions` `datarouter` | ✅ (HTTP path only) | ✅ | ✅ (relay only) |
-| `bullmq/workers/*` | ❌ | ✅ | ❌ |
-| `scheduler/jobs/*` | ❌ | ❌ | ✅ |
-| `builder` controllers | ✅ | ❌ | ❌ |
-
-Two details that matter and are easy to get wrong:
-
-- **All three entrypoints call `app.enableShutdownHooks()`.** Without it, `onModuleDestroy` never fires on SIGTERM and a rolling deploy (NFR-A-6) kills in-flight submissions mid-transaction. `createApplicationContext()` fires `onModuleInit`/`onApplicationBootstrap` for you (verified: NestJS lifecycle docs), so `worker` and `scheduler` get their init hooks — but not their shutdown hooks without the explicit call.
-- **OTel initialises before any instrumented import.** The SDK bootstrap must be the first statement in `main.ts`, imported via `require`/dynamic import *before* `AppModule` is even imported. Importing `AppModule` statically at the top of the file is the single most common way to lose NFR-O-1 end-to-end traces, and it fails silently.
+- **`packages/domain/src/adapters/<platform>/outbound/`** — the `outbound-adapter` file category (`packages/domain/src/adapters/**/outbound/**`) already exists in `tooling/boundaries.config.mjs` and R1 already restricts it to `apps/worker`. **It currently matches nothing**, because the Teams delivery service was placed in `apps/api/src/adapters/teams/` — an app directory, which no category covers. Putting the outbound clients in the category that was designed for them means (a) R1 finally enforces that only the worker can send, and (b) the api stops shipping a delivery service it never calls.
+- **The delivery port takes the conversation reference as a parameter** — because the `adapters` element may import only `platform, kernel, contract`, and the conversation reference lives in `notifications`. The app-layer dispatcher resolves the reference and passes it in. This keeps `notifications → adapters` out of the graph.
+- **`packages/domain/src/groups/` as its own element type** — the `domain` root is deliberately *not* an element type, so a new subdirectory is an **explicit config change** rather than a silent inheritance. Group sync touches identity, authz, audit and Mongo; giving it its own element makes the edges reviewable.
+- **The credential repository lives in `packages/domain/src/adapters/data-access/`** — the `data-access` category pattern is `packages/domain/src/**/data-access/**`, so this path is already covered by R3 (Mongo allowed) and needs no config change. It sits in `adapters` rather than `notifications` because a credential is a platform concern, not a notification concern.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Epoch-keyed cache keys (replaces Pub/Sub invalidation)
+### Pattern 1: The platform adapter is a **pair of plug-ins**, not a module
 
-**What:** Put a monotonically increasing version *in the cache key*, so a version bump makes every prior entry unreachable in one atomic step. No `DEL`, no scan, no event, no race.
+**What:** Every platform contributes exactly two things: an **inbound normaliser** (app layer, `apps/api/src/adapters/<p>/`) and an **outbound delivery port** (domain layer, `packages/domain/src/adapters/<p>/outbound/`). The platform is registered once, in `packages/domain/src/adapters/adapter.registry.ts`, and everything else is platform-neutral.
 
-**When to use:** Whenever a cache entry encodes a permission-bearing fact. Here: identity mapping and RBAC resolution.
+**When to use:** Always, for a platform that has no official SDK (Zalo) as well as one that does (Telegram). The registry is what makes FR-IM-1 a configuration fact rather than a code fact.
 
-**Trade-offs:** Old keys become garbage until TTL expiry (bounded, and free). A version read that misses falls back to the source of truth. In exchange you get *unconditional* correctness — there is no window in which a dropped message serves a revoked permission.
+**Trade-offs:**
+- *Pro:* a new platform touches one registry entry and one directory pair. The worker, the decision layer, and the notification path never learn a platform's name.
+- *Pro:* the two directions have genuinely different trust shapes — inbound is unverified-then-verified, outbound is authenticated-then-rate-limited — and the split makes that asymmetry structural.
+- *Con:* the registry is a place where a platform can be half-registered. Mitigation: the registry's constructor asserts that every `ImPlatform` value has exactly one inbound descriptor and one outbound port, and **throws at boot** otherwise. A missing platform must be a startup failure, not a runtime 500.
 
-**Why it replaces Pub/Sub:** Redis Pub/Sub is at-most-once. redis.io states plainly it must be paired with a durable mechanism; a subscriber reconnecting after a blip silently misses every message published during the gap. FR-I-6 and FR-R-9 both say "immediate invalidation," but the only way to make that true is to make stale reads *structurally impossible*, not to make them unlikely.
-
+**Example:**
 ```typescript
-// ONE primitive serves both the cache AND the 90-day read-link check (FR-L-7, NFR-SEC-4).
-
-// Write path — the SOLE place perm_version is ever incremented.
-async bumpPermissionVersion(appId: string, realUserId: string): Promise<number> {
-  const { value } = await this.userPerms.updateOne(
-    { app_id: appId, real_user_id: realUserId },
-    { $inc: { perm_version: 1 } },          // sparse: absent doc ⇒ perm_version 0
-    { upsert: true, returnDocument: 'after' },
-  );
-  await this.cache.set(`ak:pv:${appId}:${realUserId}`, value, { ttl: 300 });
-  await this.pubsub.publish('perm.changed', { appId, realUserId }); // OPTIMISATION ONLY
-  return value;                              // callers that cache a link must use this value
+// packages/domain/src/adapters/adapter.registry.ts
+export interface InboundAdapterDescriptor {
+  readonly platform: ImPlatform;
+  /** The platform's own event id — the dedupe key. */
+  readonly eventIdOf: (payload: unknown) => string;
+  /** The collection holding this platform's write-once event ledger. */
+  readonly ledgerCollection: string;
 }
 
-// Hot read — one GET, no Mongo, unconditionally fresh.
-async resolveToolset(appId: string, realUserId: string): Promise<PermissionSet> {
-  const pv = await this.cache.get(`ak:pv:${appId}:${realUserId}`) ?? '0';
-  const key = `ak:rbac:${appId}:${realUserId}:${pv}`;   // ← version is IN the key
-  const hit = await this.cache.get(key);
-  if (hit) return deserialize(hit);
-  const fresh = await this.repo.load(appId, realUserId); // Mongo fallback
-  await this.cache.set(key, serialize(fresh), { ttl: 300 });
-  return fresh;
+export interface OutboundDeliveryPort {
+  readonly platform: ImPlatform;
+  send(message: OutboundMessage, context: DeliveryContext): Promise<DeliveryResult>;
 }
 
-// Read-link access — compare against the CURRENT version, not a cached one.
-async assertPermissionsAtVersion(u: string, app: string, perm: string, expectedPv: number) {
-  const actual = await this.currentVersion(app, u);   // ak:pv → Mongo fallback
-  if (actual !== expectedPv) throw new StaleLink(actual, expectedPv);
-  const set = await this.resolveToolset(app, u);      // keyed by `actual`, so it's current
-  if (!set.has(perm)) throw new PermissionDenied(perm);
+export class AdapterRegistry {
+  constructor(
+    private readonly inbound: readonly InboundAdapterDescriptor[],
+    private readonly outbound: readonly OutboundDeliveryPort[],
+  ) {
+    const every = ImPlatformSchema.options;               // ['slack','teams','zalo','telegram']
+    for (const p of every) {
+      if (this.inbound.filter((d) => d.platform === p).length !== 1) {
+        throw new Error(`ADAPTER_REGISTRY_INBOUND: ${p} must have exactly one inbound descriptor`);
+      }
+      if (this.outbound.filter((d) => d.platform === p).length !== 1) {
+        throw new Error(`ADAPTER_REGISTRY_OUTBOUND: ${p} must have exactly one delivery port`);
+      }
+    }
+  }
 }
 ```
 
-**Consequence for latency (this is what buys NFR-P-1 and NFR-P-2).** Identity and RBAC each become **one Redis GET on the hit path**, and correctness no longer depends on cache TTL at all — the 5-minute TTL is a memory bound, not a staleness bound. A revoked permission takes effect at the next `perm_version` bump, not up to 5 minutes later. The system is *more* correct than the PRD specifies and *faster* than the PRD requires.
+### Pattern 2: The platform-event ledger is the **write-once record**, with a pending → dispatched state
 
-**Same pattern for identity** — `ak:ident:{identity_epoch}:{im}:{chat_user_id}` → `{ real_user_id }`, epoch bumped by any mapping create/update/deactivate (FR-I-6). Deactivation is just an epoch bump, so it propagates instantly without a scan of that user's keys.
+**What:** One MongoDB collection per platform, with a **unique index on the platform's own event id** and a `dispatch_state` field. The receiver inserts the row (`pending`), enqueues, then flips the row to `dispatched`. A scheduler-driven reconciler re-dispatches rows still `pending` after a grace period.
 
----
+**When to use:** Any platform that delivers **at-least-once** and retries on a non-2xx. All three of Slack (3 retries), Telegram (retries on non-2xx) and Zalo (undocumented) qualify.
 
-### Pattern 2: Pure-ingest receiver (the 200 ms ack contract)
+**Trade-offs:**
+- *Pro:* the unique index is the **durable** idempotency guarantee. It survives `removeOnComplete`, Redis failover, and process death — which is exactly why v1 chose it over BullMQ `jobId`.
+- *Pro:* closing the crash window costs one indexed update and one reconciler.
+- *Con:* the reconciler can double-enqueue (the crash happened *after* the enqueue). That is acceptable **only if the consumer is idempotent** — so the consumer must check the ledger row's state before processing. At-least-once delivery + an idempotent consumer = effectively-once processing.
+- *Con:* the ledger grows forever. It needs a retention sweep (the shipped `audit-retention` / `purge-sweep` Job Schedulers are the pattern) aligned to each platform's retry horizon: **keep 30 days** — comfortably past Telegram's 24 h update retention and Slack's 3× retry window, and short enough to bound growth.
 
-**What:** The HTTP receiver verifies a signature and enqueues. It performs zero domain I/O. Ack immediately, compute in the consumer.
+**Dedupe key per platform (verified):**
 
-**When to use:** Any inbound that a third party retries. This is exactly the Slack 3-second/3-retry and Teams 429/502-with-jitter situation PROJECT.md already identifies.
+| Platform | Dedupe key | Source | Caveat |
+|----------|-----------|--------|--------|
+| Slack | `event_id` (the envelope's `event_id`) | Slack event envelope | Already an opaque string |
+| Teams | `activity.id` | Activity `id` | **Shipped** — `TeamsEventRepository` |
+| Zalo | `message.msg_id` | `message.msg_id` in the OA webhook payload (18-hex-char string) | **Message-level**, not event-level. A Zalo `event_name` can cover a multi-field message; key on `msg_id` |
+| Telegram | `update_id` | The `Update` envelope | ⚠️ **Telegram re-randomises `update_id` after a week of inactivity.** A 6-month-old ledger row can therefore block a brand-new update. Mitigation: key on **`update_id` + `message.message_id`** (both are needed to be unique in practice), and/or expire the telegram ledger on the same 30-day sweep |
 
-**Trade-offs:** The receiver cannot reject "meaningless" traffic cheaply — every valid-signature request costs one queue write. That is a deliberate exchange: a cheap write beats a lost submission, and per-user rate limiting (FR-I-10's 10 req/min) moves into the consumer where `real_user_id` is known. Abuse is handled at the ingress by IP rate limiting, which needs no application state.
-
-**The receiver's responsibilities, exhaustively:**
-
-1. Reject oversized bodies at nginx. **No** application logic here.
-2. Verify the platform signature over **`req.rawBody`** — raw bytes, not re-serialised JSON. NestJS: `NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })`, typed via `RawBodyRequest<Request>`. Verified constraint: this works **only if the built-in body parser is enabled** — do not pass `bodyParser: false`. Default parsers cover both `json` and `urlencoded`, which is what Slack slash commands send.
-3. Replay guard: timestamp window (5 min) + nonce. **If Redis is unreachable, fail open here** and let the enqueue's `jobId` idempotency plus the consumer handle it. A receiver that blocks on Redis is a receiver that loses submissions.
-4. Parse and Zod-validate into `InboundEvent`. **This is the only place an unverified byte string becomes a typed value.**
-5. `queue.add('im.inbound', event, { jobId: <platform event id>, attempts: 5, backoff, removeOnComplete: { age: 86400, count: 100000 }, removeOnFail: { age: 604800 } })`.
-6. Return `200` with an empty body.
-
-**Everything else is forbidden in the receiver.** No identity resolution. No RBAC. No Mongo. No JEV. No message formatting. The PRD's §7.1 puts `[Rate Limiter]` immediately after `[IM Adapter Layer]` — that is wrong for an async receiver and must move into the consumer, after identity resolution, keyed on `real_user_id`.
-
-**Why `jobId` is a valid idempotency primitive *here*, when it is not one for connector calls.** The docs are explicit that dedup lapses once a job is removed. For inbound webhooks that is acceptable **because the retention window is chosen from the platform's own retry horizon**: Slack retries 3 times over minutes; Teams retries with jitter. A 24-hour `removeOnComplete` retention is 2–3 orders of magnitude more than any platform will retry, and after that window the request is dead regardless of whether we still remember it. Contrast the connector case, where a stalled job can be reprocessed days later (§ Pattern 3) — there the retention window is *not* a bound on anything, so it cannot be the guarantee.
-
-**Slash-command variant.** Slack's 3-second ack and its `response_url` (usable up to 5 times within 30 minutes) make the design obvious: **ack empty immediately; deliver the link via `response_url` or `chat.postMessage` from the worker.** The routing pipeline takes up to 2 s (NFR-P-5) and would otherwise consume most of the 3-second budget while holding the connection — and any platform-side retry would duplicate the whole pipeline run. Moving delivery off the request makes the 2 s and 3 s budgets non-interfering. Verify at implementation time whether the delivery should prefer `response_url` (ephemeral, single-recipient, 30-min window) over `chat.postMessage` (durable, threadable) per message class; the PRD's FR-IM-8 threading requirement points at `chat.postMessage`.
-
-**Replay path — three distinct mechanisms, not one:**
-
-| Replay source | Mechanism |
-|---|---|
-| Slack/Teams retry the same event | Same `jobId` → BullMQ ignores the add → `200`. Zero downstream effect. |
-| Operator re-drive after a DLQ hit | Admin endpoint re-adds with `jobId: replay:{n}:{original}` — deliberately *not* deduped — against the retained job payload (`removeOnFail: { age: 7d }` keeps it). |
-| Full redelivery from scratch | Platform-side replay (Slack event replay / manual resend). Treated as a brand-new event, new `jobId`. Correct behaviour: it *is* a new user action. |
-
-**Non-retryable vs retryable failures in the consumer** must be distinguished explicitly, or retries amplify permanent errors: malformed payload / unknown IM user / revoked signature → throw `UnrecoverableError` → straight to DLQ, zero retries. Mongo timeout / Redis blip / plugin outage → throw → backoff retry.
-
----
-
-### Pattern 3: Transactional outbox (the hybrid consistency boundary)
-
-**What:** Never write to MongoDB and Redis/BullMQ "at the same time." Write the intent to MongoDB inside the same transaction as the data, then relay it. Redis is the transport; MongoDB is the record of truth.
-
-**When to use:** Whenever a synchronous write must be paired with an asynchronous side effect. This is precisely hybrid mode (FR-D-4) and precisely the case the PRD specifies as "internal synchronous + external async via BullMQ" without saying what happens in between.
-
-**Trade-offs:** One extra collection and one extra read per routing attempt; a relay loop to build and operate. In exchange, a crash between the commit and the enqueue loses nothing — the outbox row survives, and the relay republishes.
-
-**Why not just `queue.add()` after the commit:** the window between `COMMIT` and `queue.add` returning is exactly the crash window. A crash there leaves a submission confirmed to the user whose external side effect will never fire, silently. The PRD's FR-A-3 ("connector failures MUST NOT block internal writes") is satisfied by the outbox; the outbox is *also* what makes that guarantee true under process death rather than only under connector failure.
-
-**The relay needs MongoDB change streams** — the PRD's §7.4 already lists change streams as a MongoDB capability, and they require a replica set, which NFR-A-4 mandates. So the prerequisite is already satisfied by the committed topology. Fallback for environments without change streams: a polling relay on `state: 'pending'` with a `findOneAndUpdate` claim — implement both, select by config.
-
-```
-API (synchronous, inside ONE Mongo transaction)      RELAY (scheduler)      WORKER
-─────────────────────────────────────────────         ─────────────────      ──────
-insert submissions { status:'pending_external' }
-insert <app collection> doc  (internal write)
-insert outbox {
-    submission_id, kind:'connector_call',
-    connector_id, operation, field_mapping,
-    state:'pending' }
-insert audit_log { submission.created }
-COMMIT (writeConcern: majority) ──────────────▶  change stream / poll
-  │                                                 claim row (atomic)
-  │                                                 queue.add('connector.execute',
-  │                                                   { jobId: `ext-${submission_id}` })
-  │                                                   mark outbox.state='enqueued'
-  │                                                                       ▼
-  │                                                            (retry w/ backoff, DLQ)
-  │                                                                       │
-  │                                                                    external call
-  │                                                              ┌────────┴────────┐
-  │                                                        success                permanent fail
-  │                                                    update status:'completed'  → DLQ
-  │                                                    + external_ref.system_id   status stays
-  │                                                                       'pending_external'
-  ▼
-user is already told "saved"; status is an implementation detail
-```
-
-**Status lifecycle, stated unambiguously.** `pending_external` → `completed` | `partial` | `failed`.
-- **Internal mode** — `completed` written in the same transaction. Never enters `pending_external`.
-- **External mode** — identical transaction minus the app-collection insert. The outbox row *is* the delivery record.
-- **Hybrid mode** — the internal write is what makes the submission confirmable (FR-D-4). External failure moves it to `partial`, **never** back to `failed`, because the user's data is durably stored. `failed` means *nothing* was stored — which only happens when the transaction itself aborted.
-- **At-least-once → exactly-once.** The connector receives `Idempotency-Key: submission_id` (FR-C-5, FR-D-12) on every attempt. Write-once semantics hold at the *destination* even though delivery is at-least-once. This is the standard resolution and it is the only one available when the external system honours an idempotency key.
-
-**What a crash between the two leaves behind — the complete table:**
-
-| Crash point | Left behind | User-visible | Recovery |
-|---|---|---|---|
-| Before Mongo `COMMIT` | Nothing. Transaction aborts; no submission, no data, no outbox. | Yes — a 5xx. Retry is safe; nothing was written. | None needed. |
-| After `COMMIT`, before `queue.add` | Submission + data committed. No outbox row (it's in the same transaction — so this is unreachable *by construction*). | No | None needed — this is the entire point |
-| After `COMMIT`, before the relay claims the outbox row | Everything committed. Outbox row `pending`. | No | Relay republishes within one poll interval (or on the next scheduler boot — see Pattern 5). |
-| Relay claimed the row, then died | Row may be stuck `enqueued` with no job. | No | Stale-claim sweeper resets rows whose `enqueued_at` exceeds a threshold back to `pending`. |
-| Worker crashes mid-connector-call | Job `active`, lock expires → BullMQ **stalled-job** detection reprocesses it. | No | The external system may have received the call. Idempotency key + connector-side dedup makes reprocessing safe. |
-| Redis loses the queue entirely (failover) | BullMQ state gone. Mongo untouched. | No | Outbox and `submissions` rows in Mongo are intact; relay rebuilds the queue. **This is the load-bearing property of the outbox.** |
-
-**The row that surprises people:** if the Mongo transaction *fails* after the token was consumed, the user has burned a one-time link for nothing. FR-L-9's "request a new one" path covers this — but the failure message must be actionable ("your link was used but we could not save your request; reply `/leave request` again"), not a bare 500.
-
----
-
-### Pattern 4: Aggregate the tool set, don't fan out
-
-**What:** FR-R-9 specifies RBAC resolution cached **per user per app**. A user with roles in 10 apps therefore costs 10 cache lookups on every inbound message — and the PRD's scale ceiling is 200 apps. Fan-out of 10–50 Redis GETs is the single largest avoidable cost on the hot path, and it lands directly on NFR-P-2.
-
-**When to use:** Whenever a per-entity cache must be assembled into a whole before the next stage consumes it.
-
-**Trade-offs:** One more cache layer with its own invalidation trigger. In exchange the hot path becomes **one** `GET`, and adding apps does not change per-message latency.
-
-```
-ak:toolset:{user_epoch}:{real_user_id}   →  ToolDescriptor[]
-     ▲                             ▲
-     │                             └── rebuilt when per-app perm_version changed
-     └── a single per-USER monotonic counter,
-         bumped when ANY of that user's app memberships change
-```
-
-Invalidate by bumping `user_epoch`. A permission change in one app bumps one `perm_version` *and* the one `user_epoch`; the aggregate key becomes unreachable, the next request rebuilds it from the (still-correct) per-app keys. **One bump, two caches, no scan, no stale window.** This is the same epoch-keying primitive as Pattern 1 applied one level up — one idea, three uses (RBAC cache, read-link check, toolset cache).
-
-The JEV response cache (FR-J-4, keyed `hash(text + sorted(tool_ids) + locale)`) is then correct *by construction* under this change, because a tool set that changed produces a different `sorted(tool_ids)` and therefore a different key. The PRD's cache key is already sound; this note records **why** it stays sound when the tool set is rebuilt.
-
----
-
-### Pattern 5: Durable scheduler registration
-
-**What:** Every BullMQ Job Scheduler is registered with `upsertJobScheduler()` on **every boot of every replica**, not once at deploy.
-
-**When to use:** Whenever durable scheduling is chosen over in-memory cron — which `.planning/PROJECT.md` has already decided (rejecting `@nestjs/schedule` for durable work).
-
-**Trade-offs:** N replicas × M schedulers = N×M idempotent registrations at boot. `upsert` is documented as the right primitive for exactly this ("ensures the scheduler is updated or created without duplications"), so the cost is a few Redis round trips per boot. The alternative is a schedule that silently stops existing after a Redis failover — a key rotation that doesn't run is a **security** failure (NFR-SEC-9), which is precisely why PROJECT.md rejected `@nestjs/schedule`.
-
+**Example:**
 ```typescript
-// src/scheduler/registrations.ts — called from apps/scheduler/src/main.ts
-export async function registerAllSchedules(queue: Queue): Promise<void> {
-  await queue.upsertJobScheduler('connector-health', { every: 60_000 }, HEALTH_TEMPLATE);
-  await queue.upsertJobScheduler('jev-health',       { every: 60_000 }, JEV_TEMPLATE);
-  await queue.upsertJobScheduler('outbox-relay',      { every: 2_000 },  RELAY_TEMPLATE);
-  await queue.upsertJobScheduler('jwt-key-rotation',  { every: 86_400_000 }, ROTATE_TEMPLATE);
-  await queue.upsertJobScheduler('retention-purge',   { pattern: '17 3 * * *', tz: 'UTC' }, PURGE_TEMPLATE);
+// The receiver's ordering — the only ordering that is safe.
+const inserted = await this.ledger.insert(platformEventId, rawPayload, 'pending');
+if (inserted === 'duplicate') {
+  // Already seen. 200 OK, no enqueue. The platform must not retry.
+  return { status: 200, outcome: 'duplicate' };
+}
+await this.conversationRefs.upsert(platformScopedKey, reference);
+await this.queue.add(INBOUND_EVENTS_QUEUE, event);
+await this.ledger.markDispatched(platformEventId);   // ← if this line never runs, the reconciler retries
+```
+
+### Pattern 3: Permission epochs, **not** permission caches, are the correctness mechanism
+
+**What:** A user's effective permission on an app is a function of a **monotonic integer** stored per `(real_user_id, app_id)`. Every cache key embeds the epoch. A permission change **increments** the epoch, which makes every previously-cached entry unreachable and every outstanding read link (which embeds its issuance-time epoch) fail its check.
+
+**When to use:** Always — this is the v1 model's `perm_version` (PRD §6.7, FR-R-8, FR-L-7, NFR-SEC-4), and it is the mechanism that makes group revocation expressible without touching D-21.
+
+**Trade-offs:**
+- *Pro:* the epoch is the **only** invalidation primitive. Redis Pub/Sub (PRD FR-I-6's original design) is at-most-once and is therefore an optimisation, not a guarantee. The v1 research already reached this conclusion; v2 inherits it.
+- *Pro:* revocation is a single `updateMany`, not a fan-out of per-user cache deletes.
+- *Con:* a bulk epoch bump writes one document per affected `(user, app)` pair. For a 5 000-member group bound to 3 apps, that is 15 000 `$inc` updates. **Bulk `updateMany` makes it 3 queries**, but the write volume is real. Mitigation: the sync worker computes the *symmetric difference* (members added ∪ members removed) and bumps only those.
+- *Con:* a read link issued at epoch *n* dies the moment *any* permission-affecting change occurs for that user on that app. That is the intended conservative behaviour ("mismatch → deny"), but it means a group churn rate directly determines link lifetime.
+
+**The group epoch problem, and its resolution:**
+
+Group membership is many-to-many and changes in bulk, so a naive "bump every member's epoch" is O(members × apps). The tempting optimisation is a **sum of epochs** — `perm_version = user_app_epoch + Σ group_epoch(G)` — computed rather than stored. **It is wrong**, and the reason matters:
+
+> If a user *leaves* group `G` (epoch 3) and *joins* group `H` (also epoch 3), the sum is unchanged. The read link issued before the change still validates, and a permission that was revoked through `G` stays live. The sum is monotone in each term but **not injective over the states it summarises**.
+
+**The resolution is a stored, per-`(user, app)` epoch, bumped in bulk.** The group epoch does not enter the read path at all; it only exists to let the sync worker tell "did anything change for this member?" cheaply.
+
+```
+group_memberships   { group_id, source, platform?, real_user_id, member_hash, synced_at }
+group_role_assignings { app_id, group_id, role, permissions? }
+user_app_epochs     { real_user_id, app_id, perm_version }     ← unique index (real_user_id, app_id)
+```
+
+On a sync tick:
+1. Fetch the source's current membership.
+2. Diff against `group_memberships` → `added` ∪ `removed`.
+3. For each app bound to the group: `updateMany({ app_id, real_user_id: { $in: changed } }, { $inc: { perm_version: 1 } })`, plus an upsert for members with no epoch row yet.
+4. The epoch bump invalidates the Redis cache (new key) and every outstanding read link for that `(user, app)` — **with no change to the D-21 claim set**.
+
+### Pattern 4: The AI guard is a **provider decorator**, not a pipeline stage
+
+**What:** `GuardedProvider` implements `JevProvider` and wraps a hosted provider. It runs the inbound guard on the composed request, calls the inner provider, runs the outbound guard on the response, and **re-validates the chosen tool against the permitted set** before returning. Because it is a `JevProvider`, the fallback chain, the health probe, the capability filter, the per-attempt budget, and the conformance suite all apply unchanged.
+
+**When to use:** For the open-ended assistant, and for any future model call that touches user text.
+
+**Trade-offs:**
+- *Pro:* the guard cannot widen the tool set, because it never sees a tool set — `RoutingOrchestrator` has already replaced `tools` with `authorizedTools` before the provider is called. The guard's job is only to refuse bad text and bad output.
+- *Pro:* the guard degrades like any provider. If the guard itself fails, `RoutingOrchestrator` catches the throw and **continues to the next provider** (`routing-orchestrator.ts:90-97`) — a guard failure becomes a degraded routing, never an unauthorised link.
+- *Pro:* the fallback chain terminates in `RuleBasedProvider`, which is the terminal link (`provider-registry.ts:64`). A hosted-provider outage, a guard refusal, and a model timeout all land in the same place: the local, deterministic, permission-respecting answer.
+- *Con:* a decorator cannot add capabilities the inner provider lacks. That is why `ProviderRegistry.chain(requiredCapabilities)` exists — the guard-wrapped provider must advertise **`multi_turn`** (`JevCapability` already includes it at `packages/contract/src/jev/jev-provider.ts:34`), and the chain is filtered on it.
+
+**Where NG1 is contained.** PRD NG1 excludes "a general-purpose conversational AI assistant". v2 **amends** it, and the containment mechanism is the outbound vocabulary, not a policy document:
+
+> The guard may only produce an `OutboundMessage` whose `action` is one of `reply | form_link | confirmation | error | status` (`OutboundActionSchema`). It may not emit free-form generated content as a new action, and it may not cause a link to be issued without a passing `canOpenNow` check at the execution boundary. **The decision layer decides *which tool*; the guard decides *whether this conversation may proceed*.** It never decides *what to say*.
+
+**Example:**
+```typescript
+// packages/domain/src/decision/guarded-provider.ts
+export class GuardedProvider implements JevProvider {
+  readonly name: string;
+  readonly spec_version: string;
+  capabilities: JevCapability[];
+
+  constructor(
+    private readonly inner: JevProvider,
+    private readonly guard: PromptGuardService,
+    /** The set of tool ids the caller is allowed to choose from. */
+    private readonly permitted: ReadonlySet<string>,
+  ) {
+    this.name = `guarded:${inner.name}`;
+    this.spec_version = inner.spec_version;
+    this.capabilities = inner.capabilities;
+  }
+
+  async decide(req: JevRequest): Promise<JevResponse> {
+    const verdict = await this.guard.inspect(req);
+    if (!verdict.allowed) throw new GuardRefusal(verdict.reason);
+
+    const res = await this.inner.decide(req);
+
+    // Defence in depth: even if the inner provider answers with a tool the
+    // caller never authorised, the choice is dropped here — not at the link
+    // issuer, where it would already be too late to matter.
+    if (res.choice && !this.permitted.has(res.choice.tool_id)) {
+      throw new GuardRefusal('tool_not_permitted');
+    }
+    return res;
+  }
+
+  async healthCheck(): Promise<HealthStatus> { return this.inner.healthCheck(); }
 }
 ```
 
-Four v6-specific constraints the implementation must respect, all verified against the docs:
-- **`tz: 'UTC'` in scheduler options.** The legacy `utc` option was **removed**. A retention job that runs at local time will drift across regions and violate data-residency expectations.
-- **Custom `jobId` is impossible for scheduler-produced jobs** — BullMQ assigns a special ID to guarantee the repeat rate. Design job payloads accordingly; do not attempt to control the ID.
-- **A busy queue silently reduces the effective interval.** "The scheduler will only generate new jobs when the last job begins processing." At 50 events/s the outbox relay at 2 s may be stretched — size the relay's batch limit against measured queue depth, not against the nominal interval.
-- **`Queue.resume()` is now async** and must be awaited.
+### Pattern 5: Scheduled sync writes; the worker performs them
 
-**Job Schedulers also replace the PRD's `@nestjs/schedule`-flavoured retention and health loops.** FR-C-9 (connector health every 60 s) and FR-J-10 (JEV health every 60 s) are durable jobs here, not in-memory intervals.
+**What:** A scheduled job **never performs the sync itself**. `apps/scheduler` registers a BullMQ **Job Scheduler** (`upsertJobScheduler` + `resumeJobScheduler`, per `packages/platform/src/queue/job-scheduler.ts` and the shipped `apps/scheduler/src/reconciliation.registration.ts` pattern) that enqueues a job; `apps/worker` consumes it and does the work.
 
----
+**When to use:** Any periodic task that touches Mongo, a directory, or an external API. This is not a stylistic preference — it is R1: the `scheduler-job` file category may be imported only by `apps/scheduler`, and the `bullmq-worker` category only by `apps/worker`.
 
-### Pattern 6: DI is the contract seam — and its limits
-
-**What:** AD-2 ("JEV-compatible spec as a swappable seam") is achieved by NestJS DI: `JevProvider` is an injection token, providers self-register, and `DecisionModule` selects by config.
-
-**When to use:** For every pluggable boundary — JEV providers, connectors, IM adapters, data-routing strategies.
-
-**Trade-offs:** DI gives compile-time-ish safety and a clean seam. It does **not** give you runtime provider health, which is what FR-J-10 actually requires. Those are different concerns and need different mechanisms.
-
-```typescript
-export const JEV_PROVIDER = Symbol('JEV_PROVIDER');
-
-@Module({
-  providers: [
-    { provide: JEV_PROVIDER, useClass: RuleBasedProvider },   // offline default
-    { provide: JEV_PROVIDER, useClass: OpenJevProvider },
-    { provide: JEV_PROVIDER, useClass: OpenAiCompatibleProvider },
-    CompositeProvider,                                        // FR-J-3 fallback chain
-  ],
-  exports: [JEV_PROVIDER],
-})
-export class DecisionModule {}
-```
-
-**Three gaps in the PRD's §11 that the implementation must close:**
-
-1. **The provider registry needs runtime health state.** FR-J-10 says unhealthy providers are skipped. In-memory circuit-breaker state (PR-6.3 `failure_threshold: 5`) is **per replica**, so with 3 API replicas the effective threshold is 15, and the chain may hit a known-dead provider 3× before tripping. **Put the circuit-breaker state in Redis** (a hash keyed by provider name, `INCR` + TTL), so all replicas share one view. This is a small change and it is the difference between §11.4 working and not working.
-2. **`RuleBasedProvider` is not optional — it is load-bearing.** §11.4 gives it a 50 ms budget and it is the terminal fallback. If it is unavailable (dependency not installed, regex misconfigured), the *entire* system has no routing path. Give it its own contract test and a startup assertion that it is registered and functional. It is also the reason `RuleBasedProvider` runs in-process while `OpenJevProvider` is HTTP.
-3. **The conformance suite (§17.3, 50 intents, ≥85% accuracy) is a contract test, not a unit test.** Run it against every registered provider in CI. It is the only thing that makes AD-2's "provider swap without core changes" claim verifiable rather than aspirational — a provider can pass the type signature and still return malformed `alternatives`.
+**Trade-offs:**
+- *Pro:* `upsertJobScheduler` is idempotent and converges — every replica may call it at boot, concurrently, with no coordination. That is what makes a rolling deploy safe (the v1 research flagged "only the first replica registers" as the failure mode).
+- *Pro:* the heavy work runs where the Mongo client, the credential access and the retry machinery already live.
+- *Con:* a sync that takes longer than its interval will overlap with the next tick. The v1 `reconciliation` Job Scheduler already carries this shape; the group sync needs an explicit overlap guard (a Redis lock keyed on the source id, or a BullMQ job id that the scheduler cannot overlap).
 
 ---
 
 ## Data Flow
 
-### Flow 1 — IM message → link in chat (the NFR-P-5 path, ≤ 2 s p95)
-
-Direction is left-to-right; each hop names its store and whether it blocks the user.
+### Inbound — four platforms, one shape
 
 ```
-Slack / Teams / Zalo / Telegram
-      │  HTTPS POST  ────────────────────────────────────────  UNTRUSTED
-      ▼
-[IM adapter · inbound]                       api process
-      │  ① verify HMAC over req.rawBody            ~0.1 ms   pure crypto
-      │  ② Zod-validate → InboundEvent             ~0.3 ms   pure
-      │  ③ rate-limit by IP                          —       at ingress, not here
-      │  ④ queue.add('im.inbound', …, jobId)       ~1 ms     1 Redis round trip
-      ▼  ⑤ HTTP 200 (≤ 200 ms target; measured ~5 ms)
-════════════════════════════ process boundary ════════════════════════════
-[InboundRouter]                               worker process
-      │  ⑥ GETDEL-style nonce + enqueue dedup → skip duplicate   ~1 ms   Redis
-      │  ⑦ identity: ak:ident:{epoch}:{im}:{chat_user_id}         ~1 ms   Redis  ← NFR-P-1 <10 ms
-      │     └─ miss → Mongo query → SET epoch-key                 ~15 ms   Mongo (cold)
-      │     └─ unmapped → onboarding prompt → im.outbound → return
-      │  ⑧ aggregate toolset: ak:toolset:{user_epoch}:{uid}      ~1 ms   Redis  ← NFR-P-2 <30 ms
-      │     └─ miss → per-app ak:rbac:* → rebuild → SET           ~20 ms   Mongo (cold)
-      │  ⑨ JEV cache: ak:jev:{sha256(text+tools+locale)}           ~1 ms   Redis
-      │     └─ miss → decide(text, tools) with DEADLINE           ≤500 ms  HTTP
-      │        └─ chain: openjev → openai → rule-based, budget-aware
-      │     └─ confidence < app threshold → clarification via im.outbound → return
-      │  ⑩ resolve app+form (in-process LRU, version-pinned)      ~0 ms   memory
-      │  ⑪ FRESH permission re-check at link issuance             ~1 ms   Redis   ← AD-1 2nd point
-      │  ⑫ sign link (EdDSA/ES256, kid from keyring)             ~2 ms   jose
-      │     └─ create/edit → also SET ak:tok:{jti} w/ TTL        ~1 ms   Redis
-      │  ⑬ queue.add('im.outbound', rendered link)                ~1 ms   Redis
-      ▼
-[ImDispatcher] → chat.postMessage / response_url                ~300 ms  HTTP (T5 egress)
-      ▼
-user sees the link
+Slack  POST /slack/events        Teams  POST /teams/events
+        │ url_verification              │ urlVerification
+        │ v0: HMAC-SHA256                │ JWT via authorizeJWT()
+        ▼                               ▼
+Zalo   POST /zalo/events        Telegram POST /telegram/events
+        │ X-ZEvent-Signature            │ X-Telegram-Bot-Api-Secret-Token
+        │ sha256(appId+body+ts+secret)   │ (shared secret, constant-time)
+        │ NO challenge handshake         │ NO challenge handshake
+        └───────────────┬────────────────┘
+                        ▼
+        ┌───────────────────────────────────────────────┐
+        │  normalise → InboundEvent { platform, channel_id,│
+        │    chat_user_id, text, action, thread_id?,      │
+        │    reply_to_message_id?, queue, attempt, ... }  │
+        └───────────────────┬───────────────────────────┘
+                            ▼
+        ┌───────────────────────────────────────────────┐
+        │  PlatformEventRepository.insert(eventId)       │
+        │    unique index → 'inserted' | 'duplicate'     │
+        │    'duplicate' → 200 OK, NO enqueue            │
+        └───────────────────┬───────────────────────────┘
+                            ▼
+        ┌───────────────────────────────────────────────┐
+        │  ConversationReferenceRepository.upsert(       │
+        │    key = `${platform}:${channel_id}::${user}`)  │  ← platform-scoped
+        └───────────────────┬───────────────────────────┘
+                            ▼
+        ┌───────────────────────────────────────────────┐
+        │  queue.add('inbound-events', event)           │
+        │  markDispatched(eventId)                      │
+        │  ── 200 OK to the platform (budget < 200 ms)   │
+        └───────────────────────────────────────────────┘
 ```
 
-**Latency budget against NFR-P-5 (2000 ms p95):**
+**The thread/reply mapping per platform** — the reason for the two new envelope fields:
 
-| Segment | p50 | p95 (cold cache) | Store |
-|---|---:|---:|---|
-| ①–④ receiver | 3 ms | 8 ms | Redis |
-| queue handoff | 1 ms | 5 ms | Redis |
-| ⑦ identity | 1 ms | 15 ms | Redis / Mongo |
-| ⑧ toolset | 1 ms | 25 ms | Redis / Mongo |
-| ⑨ JEV (cached) | 1 ms | 1 ms | Redis |
-| ⑨ JEV (miss) | 180 ms | 500 ms | HTTP |
-| ⑩–⑫ app load + sign + token | 4 ms | 10 ms | memory + Redis |
-| ⑬ enqueue | 1 ms | 3 ms | Redis |
-| **Total to link delivered** | **~192 ms** | **~567 ms** | |
-| **Headroom vs 2000 ms** | **10×** | **3.5×** | |
+| Platform | Inbound thread reference | Inbound reply reference | Outbound thread reference | Outbound reply reference |
+|----------|-------------------------|--------------------------|---------------------------|--------------------------|
+| Slack | `event.thread_ts` (or `message.thread_ts`) | `message.ts` | `thread_ts` on the message | `thread_ts` |
+| Teams | `conversation.id` + `replyToId` | `activity.id` | `conversation.id` | `replyToId` on the activity |
+| Zalo | *(none — Zalo has no threads)* | `message.quote_msg_id` | *(none)* | `message.quote_message_id` |
+| Telegram | `message.message_thread_id` (forum topic) | `message.reply_to_message.message_id` | `message_thread_id` | `reply_parameters: { message_id, chat_id }` |
 
-This clears NFR-P-5 with genuine margin *provided the deadline in ⑨ is enforced*. Without it the fallback chain alone can consume 1550 ms (§11.4: 500 + 1000 + 50) and the budget collapses. **The deadline is the difference between a 3.5× margin and a coin flip.**
+`thread_id` and `reply_to_message_id` are **opaque platform ids**. Like `event_id` and `channel_id`, they are **not** on the D-43 log allowlist and must never be logged — the `inbound-event.ts` header comment's discipline extends to them.
 
-### Flow 2 — the two hottest paths, specified
-
-The project's stated rationale for a modular monolith over microservices is that "a network hop plus a distributed transaction on the two hottest paths is not worth it at 1,000 concurrent users." **That claim is correct, but the stated reason is the weaker one.** The load-bearing reason is transactional co-location, not latency:
-
-> A microservice split would put the RBAC resolver behind a network call — real, but 1–2 ms, and cacheable, so not decisive. The *decisive* cost is that splitting the permission store from the link issuer turns "check permission and mint a token" from two in-process steps into a distributed transaction. In a modular monolith both live in the same failure domain and the whole operation is two Redis GETs on one connection.
-
-**Path A — permission re-read (every inbound message, every link access).**
+### Outbound — the seam that does not exist yet
 
 ```
-api/worker  →  AuthzModule.assertPermissionsAtVersion(user, app, perm, expectedPv)
-                  │
-                  ├─ GET ak:pv:{app}:{user}            1 round trip   (Redis, cluster)
-                  ├─ current !== expected → 403 STALE_LINK (read link) / re-route (routing)
-                  └─ current === expected
-                       └─ GET ak:rbac:{app}:{user}:{current}          (Redis, cluster)
-                          └─ miss → 1 Mongo find on user_app_permissions, indexed
-                             → SET with TTL 300
+InboundEventProcessor (worker)
+   │ outcome.kind === 'link' | 'clarify' | 'otp_*'
+   ▼
+build OutboundMessage {
+   message_id:  <stable UUID, reused across retries>,
+   platform:    event.platform,
+   channel_id:  event.channel_id,
+   chat_user_id:event.chat_user_id,
+   thread_id?:  event.thread_id,
+   reply_to_message_id?: event.reply_to_message_id,
+   text:        <worker-owned copy, localised>,
+   action:      'form_link' | 'reply' | 'confirmation' | 'error' | 'status',
+   app_id?, form_id?, queue: 'im-outbound', attempt: 0
+}
+   ▼
+queue.add('im-outbound', message)      ← the producer the v1 code lacks
+   ▼
+OutboundMessageProcessor (worker)
+   │ attempts: 3, backoff: notificationJitterBackoff
+   ▼
+OutboundDispatcher (app layer)
+   │ resolve platform → PlatformDeliveryPort
+   ▼
+┌──────────────┬──────────────┬───────────────┬──────────────┐
+│ Slack        │ Teams        │ Zalo          │ Telegram     │
+│ chat.postMessage │ continueConversation │ POST /v2.0/oa/message │ sendMessage │
+│ {thread_ts}  │ {replyToId}  │ {quote_message_id} │ {message_thread_id,│
+│              │              │ quota 8/48h   │  reply_parameters}│
+│              │              │ ≤2 000 chars  │ 30/s global, 1/s chat│
+└──────────────┴──────────────┴───────────────┴──────────────┘
+   ▼
+retry → DLQ → audit.append('im.outbound.failed') → user-visible failure notice
 ```
 
-What it must do to hit **NFR-P-2 (<30 ms cached)**:
-- **Two Redis GETs maximum on the hit path, pipelined into one `MULTI`** if the version is not already in the aggregate toolset entry. Note `GETDEL`-class Lua is unnecessary here — plain `GET` is correct because the version is *in the key*.
-- **Never join against other collections.** `authz` reads exactly one collection, `user_app_permissions`. Role definitions, users, and apps are resolved by the caller's own module. A `$lookup` here is how a 30 ms budget becomes 400 ms.
-- **One index, always present:** `{ app_id: 1, real_user_id: 1 }` unique. Declared at migration time, not at first assignment — a missing index on the permission path is an outage, not a slowdown.
-- **Never `SCAN` for invalidation.** Pattern 1 exists precisely to make this impossible.
-- **Budget a Redis-connection pool large enough that a 50 msg/s burst does not queue.** ioredis multiplexes over one connection; 2 connections (commands + pub/sub) per process is ample at this scale.
-- **On Redis failure, fall through to Mongo and accept the latency spike.** Do not fail the request. A degraded path that answers in 60 ms beats a 503 at 5 ms.
+**The `message_id` stability rule.** `OutboundMessageSchema.message_id` is documented as "platform-assigned, unique per send attempt chain" — but the platform assigns it *after* the send. The producer therefore generates it, and **the same value must travel with every retry**. The queue job's data *is* the `OutboundMessage`; the processor must not regenerate the id per attempt. A regenerated id is a duplicated message in the user's chat.
 
-What it must **not** do: resolve permissions from the JWT claims, trust a cached tool set without its version, or read a second store to assemble the answer.
-
-**Path B — one-time token consume (every form submission).**
+### Group sync and revocation
 
 ```
-browser ──POST /s/:token──▶ api
-      ① jwtVerify(token) + exp + typ=='create'|'edit'         ~2 ms   jose (public key)
-      ② resolve app + form version PINNED at link creation     ~0 ms   memory LRU
-      ③ GETDEL ak:tok:{jti}                                   ~1 ms   Redis, atomic
-         └─ null → 409 ALREADY_SUBMITTED or 410 EXPIRED (distinguish via JWT exp)
-      ④ validate payload against the pinned FormIO schema     ~5 ms   pure
-      ⑤ assertPermissionsAtVersion(user, app, required_perm, claim.perm_version)
-      ─────────── MONGO TRANSACTION (writeConcern majority) ───────────
-      ⑥ insert submissions   { submission_id, status, jti, … }
-      ⑦ insert <app collection> doc   ← the synchronous internal write
-      ⑧ insert outbox row (external+hybrid only)
-      ⑨ insert audit_log
-      ─────────── COMMIT ───────────
-      ⑩ queue.add('im.outbound', confirmation)               ~1 ms   Redis
-      ▼
-      201 { submission_id, status, internal_ref }
+apps/scheduler  ── Job Scheduler: group-sync, every N minutes
+        │ enqueue { source_id }
+        ▼
+apps/worker  ── GroupSyncProcessor
+        │
+        ├─▶ fetch current membership from the source
+        │     (directory connector | Zalo listmember | manual import)
+        ├─▶ diff against group_memberships → added ∪ removed
+        ├─▶ for each app bound to the group:
+        │     updateMany({app_id, real_user_id: {$in: changed}},
+        │                {$inc: {perm_version: 1}}, {upsert:true})
+        ├─▶ RbacCacheService: nothing to delete —
+        │     the epoch is in the cache key, so the old entry is unreachable
+        └─▶ audit.append('group.membership.changed', {group_id, count})
+                     │
+                     ▼
+        Next request: PermissionCheckService.check(app, user, perm, epoch)
+          → Redis key ak:rbac:{app}:{user}:{epoch}  → miss
+          → RbacService: direct assignments ∪ group-derived assignments
+          → set at the new epoch
+                     │
+                     ▼
+        Outstanding read links (D-21 `perm_version` claim):
+          issued at epoch 7, current epoch 8 → MISMATCH → 403
+          (the claim set is unchanged; the epoch moved)
 ```
 
-What it must do to be safe:
+### The AI guard
 
-| Requirement | Mechanism | Why it is sufficient |
-|---|---|---|
-| **Atomic consumption** (NFR-SEC-1, FR-L-1) | `GETDEL` on `ak:tok:{jti}` — single key, single round trip, atomic in Redis. | A double-click loses the race deterministically; the loser gets 409. No Lua script is needed because the value carries no logic — verification already happened in ① and ⑤. |
-| **Write-once across restarts** (FR-D-12) | **Unique index on `submissions.link_jti`.** | Redis is a cache tier and can lose an acknowledged `GETDEL` on failover. Mongo cannot. This is the guarantee; `GETDEL` is the fast path. |
-| **Two independent guards** | `GETDEL` (network/UX level) + `jti` unique index (durability level) | Neither alone suffices: `GETDEL` alone fails open on failover; the index alone allows wasted concurrent work but is never wrong. |
-| **Edit links are loadable many times** (FR-L-2) | Split `GET` (peek) from `GETDEL` (consume). Peek validates without destroying. | The PRD's "consumed on submit, loadable before" needs two verbs on one key. Implement both explicitly; do not let `edit` accidentally reuse the `create` path. |
-| **No token in Redis outlives its TTL** | 30 min (create) / 4 h (edit), configurable per app (FR-L-6). | Bounded Redis memory; no cleanup job needed because TTL is the eviction. |
+```
+InboundEventProcessor
+   │  authorized = loader.listAuthorized(realUserId)   ← RBAC filter FIRST
+   ▼
+RoutingOrchestrator.route({
+   authorizedTools: authorized.map(a => a.tool),        ← the ONLY tool set
+   threshold, canOpenNow, deadlineEpochMs
+})
+   │  permitted = new Set(authorizedTools.map(t => t.id))
+   │  request.tools = [...authorizedTools]              ← never the catalogue
+   ▼
+ProviderRegistry.chain(['multi_turn'])
+   ▼
+GuardedProvider (the AI guard)
+   ├─ guard.inspect(request)        → refuse? throw GuardRefusal → next provider
+   ├─ inner.decide(request)
+   └─ choice.tool_id ∈ permitted?   → no? throw GuardRefusal → next provider
+   ▼
+JevResponse → RoutingOrchestrator re-checks confidence, threshold, deadline,
+              and `canOpenNow` (the fresh permission check at the execution
+              boundary) → {kind:'link'} → link issued → OutboundMessage
+```
 
-**A note the PRD does not make:** `GETDEL` requires Redis ≥ 6.2.0 (verified against redis.io command metadata). The committed stack is Redis 8.2, so this is satisfied with four major versions of headroom — but it means **no Redis 5 compatibility path exists**, and the App Builder's "test connection" screen must not advertise one.
-
-### Flow 3 — read-link verification sequence (AD-11 / FR-L-3, FR-L-4, FR-L-7, NFR-SEC-4)
-
-A `View`/`Query` link is a stateless, asymmetrically-signed JWT up to 90 days old. **Every check below is server-side and mandatory.** The renderer may pre-validate in the browser for UX; that is never a security control.
-
-**Where each check lives:**
-
-| # | Check | Lives in | Failure |
-|---|---|---|---|
-| 0 | **Brute-force throttle** — 5 failed validations per IP per 10 min → block | Edge guard, before routing | `429` |
-| 1 | **Header shape & algorithm allowlist** — exactly 3 segments; `alg ∈ {EdDSA, ES256}`; reject `none` and every HMAC algorithm | `LinksModule` — before any key lookup | `401` |
-| 2 | **`kid` present and resolvable** against the live keyring (NFR-SEC-9 dual-key window) | `KeyringService` | `401` |
-| 3 | **Signature** — `jose.jwtVerify` | `LinksModule` | `401` |
-| 4 | **Registered claims** — `exp > now`; `nbf`; `iat` not in the future (clock-skew tolerance, 60 s); `iss` == this deployment; `aud` == the renderer origin; `typ ∈ {view, query, notification}` | `LinksModule` | `401` / `410` |
-| 5 | **Payload schema (Zod)** — only opaque IDs permitted: `real_user_id`, `app_id`, `form_id`, `target_id`, `perm_version`, `jti`, `typ`. **Any PII field → reject** (NFR-SEC-2, PROJECT constraint) | `LinksModule` | `400` |
-| 6 | **Identity still active** — `real_users.status == 'active'`. A deactivated employee must lose access immediately, *independent of `perm_version`* | `IdentityModule` via a narrow `StatusPort` interface | `403` |
-| 7 | **App lifecycle permits the action** — `published`/`deprecated` allow reads; `archived` allows reads only (FR-LC-3); `draft`/`purged` deny | `RegistryModule` | `410` |
-| 8 | **`perm_version` comparison** — claim value vs `ak:pv:{app}:{user}` (Mongo fallback) | `AuthzModule` — `assertPermissionsAtVersion` | `403` + "ask in <IM> for a fresh link" |
-| 9 | **Fresh permission re-check** — the form's `required_permission` against the *current* permission set, not the claim | `AuthzModule` | `403` |
-| 10 | **Data scope** — `view`: load exactly `target_id` and assert ownership or `view_all`. `query`: execute through the Query DSL with `real_user_id` auto-injected unless `view_all` (FR-D-7). **Raw Mongo is never reachable from this path** (FR-D-6) | `DataRouterModule` | `403` / empty result |
-| 11 | **Access audit** — append `{jti, real_user_id, action, ip, user_agent, ts}` (FR-L-8). Append-only, must never fail the request | `AuditModule` | — (swallow + alert) |
-| 12 | **Response** — the FormIO schema + data, or the query result set. Renderer switches to read-only mode | `FormsModule` + `DataRouterModule` | — |
-
-**Ordering rationale.** Throttle first (cheapest, blocks enumeration). Algorithm allowlist second, **before** the key lookup — this is the classic JWT-confusion defence: accepting `HS256` and then verifying with a *public* key lets an attacker sign arbitrary tokens with a key the server published. Signature before claims (never trust unverified input). Claims before Zod (reject malformed before schema work). Identity-status *before* `perm_version` because deactivation must work even if a bug prevented the version bump. `perm_version` before the full permission resolution because it is one GET versus a larger read, and a stale link should fail on the cheapest available signal.
-
-**What this sequence buys.** The claim is treated as a *hint about the past*, never as present-tense authority. Checks 6–9 are the reason AD-11 is safe: the token proves only that the user was permitted when it was minted. Between minting and use, every one of four independent facts can change — identity deactivated, role revoked, app unpublished, permission narrowed — and each has a check. That is a genuine defence-in-depth argument rather than an appeal to token expiry.
-
-**The gap the PRD leaves, and the fix.** `perm_version` is only as good as its coverage. Every mutation that changes effective permissions **must** bump it. The PRD names role assignment and permission changes (FR-R-8) but not the rest. The complete set:
-
-| Mutation | Bumps `perm_version`? |
-|---|---|
-| Role assignment added/removed | ✅ FR-R-8 |
-| Role's permission set edited | ✅ (not named in the PRD) |
-| Role deleted | ✅ (not named in the PRD) |
-| **User deactivated** (FR-I-7) | ✅ **(not named in the PRD)** — backstopped by check 6 |
-| **App unpublished / archived / purged** | ✅ **(not named in the PRD)** — backstopped by check 7 |
-| **App's `required_permission` changed on a form** | ✅ **(not named in the PRD)** |
-| Ownership transfer (FR-R-6) | ✅ (not named in the PRD) |
-
-**Make this structural, not procedural.** One function — `AuthzModule.invalidateAll(appId, realUserId)` — is the *only* permitted writer of `perm_version`. Every mutation in the table routes through it. Add a test that enumerates every write path touching `user_app_permissions` and asserts the bump. A missed bump is a 90-day security hole; a code-review convention is not a sufficient control.
-
-### Flow 4 — state and cache topology
-
-Every piece of state in the system, with its invalidation mechanism. **Trust the table, not the prose.**
-
-| State | Store | Key / location | TTL | Invalidation | On Redis loss |
-|---|---|---|---|---|---|
-| Identity mapping | Redis cache | `ak:ident:{identity_epoch}:{im}:{chat_user_id}` → `{real_user_id}` | 1 h (FR-I-4) | **Epoch bump** — old keys unreachable, no scan | Falls back to Mongo. Safe. |
-| Identity epoch | Mongo (source) + Redis mirror | `identity_mappings_meta.identity_epoch`; `ak:meta:identity_epoch` | none | `$inc` on create/update/deactivate | Read Mongo once, repopulate. Self-heals. |
-| RBAC resolution | Redis cache | `ak:rbac:{app_id}:{real_user_id}:{perm_version}` → `PermissionSet` | 5 min (FR-R-9) | **`perm_version` bump** — the version is *in the key* | Falls back to Mongo. Safe. |
-| `perm_version` | Mongo (source) + Redis mirror | `user_app_permissions.perm_version`; `ak:pv:{app}:{user}` | none | Sole writer: `invalidateAll()` | Read Mongo. Safe. |
-| Aggregate toolset | Redis cache | `ak:toolset:{user_epoch}:{real_user_id}` → `ToolDescriptor[]` | 5 min | `user_epoch` bump on any membership change | Falls back to per-app keys. Safe. |
-| JEV response | Redis cache | `ak:jev:{sha256(text ⊕ sorted(tool_ids) ⊕ locale)}` | 5 min (FR-J-4) | **None needed.** A changed tool set changes the key, so a stale response is unreachable by construction. | Calls the provider. Safe. |
-| One-time token (create/edit) | Redis | `ak:tok:{jti}` → `{real_user_id, app_id, form_id, submitted:false}` | 30 min / 4 h | `GETDEL` on consume | **Fails closed** — the link stops working. User re-requests. Safe. |
-| Edit-link peek state | Redis | same key, `GET` without delete | 4 h | consumed by `GETDEL` on submit | Fails closed. Safe. |
-| Durable anti-double-submit | **MongoDB** | `unique index { link_jti: 1 }` on `submissions` | permanent | never | N/A — survives by design |
-| Submission status | MongoDB | `submissions.status` | 3 y (FR-AU-3) | state machine only | N/A |
-| Outbox | **MongoDB** | `outbox` collection | until `state='done'` + 7 d | relay claims atomically | **N/A — this is why the relay recovers** |
-| Connector delivery record | **MongoDB** | `deliveries` `{connector_id, submission_id, …}` | 3 y | never | N/A |
-| Delivery log (IM) | **MongoDB** | `delivery_log` `{submission_id, seq, state}` | 3 y | relay re-drives `pending` | N/A |
-| Inbound queue | BullMQ (Redis) | `im.inbound`, `jobId` = platform event id | 24 h completed / 7 d failed | n/a | Platform retries; after 3 retries the event is lost → **alert on `im.inbound` DLQ depth** |
-| Outbound queue | BullMQ (Redis) + `delivery_log` | `im.outbound` | 24 h / 7 d | `delivery_log` relay | Relay republishes from Mongo. Safe. |
-| Connector queue | BullMQ (Redis) + `outbox` | `connector.execute`, `jobId` = `ext-{submission_id}` | 24 h / 7 d | `outbox` relay | Outbox row intact → republished. Safe. |
-| Rate-limit counters | Redis | `ak:rl:{scope}:{id}:{window}` | window + 10% | TTL only | **Fails open** — counters reset. Brief over-admission is acceptable; a hard failure would be worse. |
-| JEV circuit-breaker state | Redis | `ak:cb:{provider}` hash | 30 s | TTL | Counters reset; chain re-probes. Safe. |
-| OTP attempts | Redis | `ak:otp:{real_user_id}` | 10 min (FR-I-8) | TTL | Fails closed (onboarding retries). Safe. |
-| JWT keyring | KMS (source) + Redis + in-process | `ak:jwks`, refetched on unknown `kid` | 5 min | rotation job | Fetch from KMS. Safe. |
-| App definitions | In-process LRU | by `(app_id, version)` | LRU | publish bumps version | Rebuild on demand. Safe. |
-| Form schemas | In-process LRU | by `(form_id, version)` | LRU | version bump | Rebuild on demand. Safe. |
-
-**What breaks under a Redis Cluster failover — the honest list.** Four distinct failure classes, because they have different severities and the system's response should differ for each:
-
-| Failure | Behaviour | System response | Severity |
-|---|---|---|---|
-| **In-flight commands fail** during the failover window | ioredis retries; commands that exhaust retries reject | Fall through to Mongo on read paths. **Latency spikes** on identity/RBAC/JEV-cache — NFR-P-1 goes from 1 ms to ~50 ms. Alert, do not crash. | Degraded, recoverable |
-| **Acknowledged writes are lost** (async replication — *"acknowledged writes can still be lost during a failover"*) | A consumed token can come back; a rate-limit increment can vanish; OTP attempt counters rewind | **Token: fails open** → double submission possible → **backstopped by the Mongo `jti` unique index** (Pattern: this is precisely why it exists). Rate limit: fails open, brief over-admission. OTP: brute-force window reopens, bounded by 10 min TTL. | Security-relevant, mitigated |
-| **BullMQ job state lost** | Enqueued and delayed jobs vanish; schedulers vanish; stalled-job detection may mis-fire and reprocess | Outbox and `delivery_log` rows are in Mongo and survive → relays rebuild the queue. Reprocessing is safe because connector calls carry `Idempotency-Key: submission_id`. | Self-healing |
-| **`maxmemory` exhausted with `noeviction`** | Writes **fail**; BullMQ stalls; submissions cannot be routed | This is the *dangerous* one, and it is why the queue Redis is a separate deployment with headroom. Alert at 80% (NFR-O-4) is the mitigation. | **High — this is why cache and queue must not share an instance** |
-
-**The architectural conclusion that falls out of this table:** every state that *must not* be lost (idempotency, outbox, delivery log, submissions, audit) lives in MongoDB. Redis holds only what is either reconstructible, bounded by TTL, or *backed by a MongoDB record*. That is a clean invariant, it is what makes the AD-9 "stateless services" claim true in practice rather than aspirationally, and it is not how the PRD currently frames Redis.
-
-### Flow 5 — the release of a BullMQ-against-Redis-Cluster constraint
-
-BullMQ's internals require atomic operations spanning multiple keys, which "breaks Redis's rules for cluster configurations." The documented fix is a **hash-tag queue prefix** (`prefix: '{akane}'`), which places all keys for that prefix in one hash slot — **one cluster node**.
-
-Consequences to record explicitly in the deployment runbook:
-
-- **Queue throughput does not shard across the cluster.** All BullMQ keys live on one node. That node is a throughput and memory ceiling. Acceptable at NFR-S-2 (50 events/s); a documented limit, not an accident.
-- **Give each queue family a distinct prefix** so they distribute: `{akane-q}` for queues, and let application cache keys hash freely (they are single-key `GET`/`GETDEL`, which need no co-location).
-- **Never use ioredis `keyPrefix`** — it is incompatible with BullMQ, which has its own prefixing. Use BullMQ's `prefix` option. Two prefixing layers silently corrupting each other is a genuinely nasty bug to debug.
-- **BullMQ requires `maxmemory-policy=noeviction`** (docs: `DANGER`). Combined with the PRD's runbook entry *"Redis OOM → evict expired keys"* and its 80%-memory alert, this is a direct contradiction. **Recommendation: two Redis deployments** — `cache` with an evicting policy, `queue+tokens` with `noeviction` and 3× memory headroom. Logical databases on one instance do **not** solve it: `maxmemory-policy` is instance-wide.
-- **`maxRetriesPerRequest`** must be `null` for worker connections (BullMQ throws otherwise) and a **finite** value (1–3) for request-path producers, so an HTTP handler fails fast rather than hanging when Redis is down. This is the one place where "share the Redis connection everywhere" must be abandoned: **two connection profiles, not one.**
+**The guard sits between the RBAC filter and the model, and it does not widen anything.** If the guard is removed, the platform still refuses unauthorised apps. If the RBAC filter is removed, the guard cannot compensate — which is why the guard must never be given a tool set to filter.
 
 ---
 
-## Build Order — the combinatorial surface is the real threat
+## New vs Modified Components — explicit
 
-### The problem with a layer-by-layer build
+### New
 
-The system presents **4 IM platforms × 3 routing modes × 6 link types × 5 app lifecycle states = 360 nominal combinations**, before counting per-platform webhook quirks, per-link-type token lifecycles, and the connector field-mapping language. A layer-by-layer build (adapters → identity → RBAC → JEV → forms → links → routing → UI) produces no demonstrable capability until the last layer lands, and the first integration test — "ask in Slack, get a link, submit, confirm" — arrives at the very end. Every architectural assumption stays unvalidated until it is simultaneously discovered and load-bearing.
+| Component | Location | Boundary impact |
+|-----------|----------|-----------------|
+| Zalo receiver (controller, signature service, activity service, module) | `apps/api/src/adapters/zalo/` | None — `app-api` may import everything |
+| Telegram receiver (controller, secret service, activity service, module) | `apps/api/src/adapters/telegram/` | None |
+| Slack receiver (replaces the `{ok:true}` stub) | `apps/api/src/adapters/slack/` | None |
+| Zalo outbound client + delivery port | `packages/domain/src/adapters/zalo/outbound/` | Uses the existing `outbound-adapter` category (worker-only, R1) |
+| Telegram outbound client + delivery port | `packages/domain/src/adapters/telegram/outbound/` | Same |
+| Slack outbound client + delivery port | `packages/domain/src/adapters/slack/outbound/` | Same |
+| Platform credential repository (SecretEnvelope-backed) | `packages/domain/src/adapters/data-access/` | Covered by the existing `data-access` category (R3) |
+| `AdapterRegistry` (platform → descriptors) | `packages/domain/src/adapters/` | Within the `adapters` element |
+| `IM_OUTBOUND_QUEUE`, `GROUP_SYNC_QUEUE`, `PLATFORM_EVENT_DISPATCH_QUEUE` | `packages/platform/src/queue/queue.constants.ts` | None |
+| `OutboundMessageProcessor` | `apps/worker/src/processors/` | `bullmq-worker` category — worker-only (R1) |
+| `OutboundDispatcher` | `apps/worker/src/adapters/` | App layer — may import `notifications` and `adapters` |
+| `PlatformEventDispatchProcessor` | `apps/worker/src/processors/` | Same |
+| `GroupSyncProcessor` | `apps/worker/src/processors/` | Same |
+| `group-sync` + `platform-event-dispatch` registrations | `apps/scheduler/src/` | `scheduler-job` category — scheduler-only (R1) |
+| `groups` element (model, sync service, binding service, directory port) | `packages/domain/src/groups/` | **Requires a `tooling/boundaries.config.mjs` edit** |
+| `GuardedProvider` + `PromptGuardService` | `packages/domain/src/decision/` | Within the `decision` element (`platform, kernel, contract`) — no new edge |
+| `PlatformEventRepository` (generalised) | `packages/domain/src/adapters/<p>/inbound/data-access/` | `data-access` category (R3) |
 
-**Three mitigations, in order of value.**
+### Modified
 
-**1. Cut the input surface before you cut the output surface.** FR-J-11 already licenses this: slash commands bypass JEV entirely. Build the pipeline against `/leave request` first. It is deterministic, needs no provider, no confidence threshold, and no model latency — which makes it the *only* sensible thing to use as the first integration test. It also produces the harness the JEV path later plugs into, so the work is not throwaway.
+| Component | Change | Risk |
+|-----------|--------|------|
+| `packages/contract/src/events/inbound-event.ts` | **Add `thread_id?` and `reply_to_message_id?`** (optional). Update the strictness spec. | Low — optional fields are backward compatible. The strictness test must be updated or the build fails. |
+| `packages/contract/src/events/outbound-message.ts` | **Add the same two optional fields.** | Low — same. |
+| `packages/platform/src/logging/log-allowlist.ts` | **Add `app_id`, `perm_version`, `group_id`.** Each with a written justification in the same commit. | Medium — this is the D-43 friction by design. Note: `inbound-event.ts`'s header comment already claims `app_id` is "drawn from the frozen log-field vocabulary" — **it is not on the list**. The comment is wrong; fix it or add the field. |
+| `packages/domain/src/authz/rbac.service.ts` | Replace the hardcoded grant with a real evaluation over direct ∪ group assignments. | **High** — this is the v1 security stub. Every downstream guarantee depends on it. |
+| `packages/domain/src/authz/rbac-cache.service.ts` | In-process `Map` → Redis, same epoch-keyed key. | Medium — a shared cache is required for cross-replica consistency. |
+| `packages/domain/src/authz/permission-check.service.ts` | `perm_version` from a real store, not `= 0`. | **High** — with `perm_version = 0` everywhere, the read-link epoch check is vacuous. |
+| `packages/domain/src/identity/identity-mapping.repository.ts` | In-memory array → Mongo-backed (+ Redis cache per FR-I-4/FR-I-6). | **High** — a worker restart currently forgets every mapping. |
+| `apps/worker/src/app.module.ts` | Replace the inline `authorize` closure (lines 53-65) with a call to the real RBAC service. | High — the closure is a second, divergent authorization implementation. |
+| `apps/worker/src/processors/inbound-event.processor.ts` | Enqueue an `OutboundMessage` on every outcome; pass the real `thread_id` to the clarification session. | Medium — the behaviour change users will notice first. |
+| `apps/worker/src/processors/notification.processor.ts` | Inject the dispatcher instead of `TeamsDeliveryService`. | Low — mechanical. |
+| `apps/worker/src/app.module.ts` | Register the new processors in `WORKER_CONSUMERS` (the readiness list). | Low — but the readiness indicator is how "the worker is listening" is proven. |
+| `packages/domain/src/decision/clarification-session.service.ts` | Real thread key; raise the turn bound from 2 for open-ended disambiguation. | Low — the signature already takes a `threadTs`. |
+| `packages/domain/src/notifications/data-access/conversation-reference.repository.ts` | Platform-scoped key (`${platform}:${channel_id}::${chat_user_id}`) + a `platform` discriminator on the row; make the row shape platform-neutral. | Medium — a data migration on a small collection, and the key change is **breaking** for existing rows. |
+| `apps/api/src/adapters/teams/teams.module.ts` | Stop exporting `TeamsOutboundService`. | Low — it has no caller. |
+| `tooling/boundaries.config.mjs` | Add `groups` to `DOMAIN_ELEMENT_TYPES` and `ALLOWED_EDGES`. | Low — one element, reviewed. |
 
-**2. Make the test matrix a property of the code, not of the schedule.** The 360 combinations should collapse through shared abstractions *before* anyone counts them:
-- All 6 link types reduce to **two** token mechanics: *one-shot* (create, edit — Redis + `GETDEL`) and *stateless-read* (view, query, notification — signed JWT + fresh permission check). Two implementations, not six.
-- All 4 IM platforms reduce to **one** inbound controller shape (`verify → validate → enqueue`) and **one** outbound shape (`render → send`). Verified signature mechanics differ per platform; the surrounding contract does not.
-- All 5 lifecycle states are **one state machine** consulted at four points (trigger registration, link issuance, read access, submission). Not five code paths.
+### Removed
 
-That is roughly **360 → 2 × 4 × 5 = 40** real cases, of which maybe 12 are genuinely distinct. The `InboundEvent`/`OutboundMessage` contract (FR-IM-2/3) is what makes this collapse possible — it is the single highest-leverage abstraction in the PRD and it should be built first, not alongside the first adapter.
+| Component | Why |
+|-----------|-----|
+| `apps/api/src/adapters/teams/teams.outbound.service.ts` | Superseded by `packages/domain/src/adapters/teams/outbound/`. It duplicates the worker's copy and has no caller. |
 
-**3. Ship the narrowest vertical slice that a real user could actually use.**
+---
 
-### Recommended phasing
+## Frozen-Contract Impact — D-21, D-23, D-43
 
-| Slice | Contents | Demonstrable capability | Why here |
-|---|---|---|---|
-| **S0 — Foundations** | Repo, 3 entrypoint skeletons, `platform/`, `kernel/`, boundary lint config, OTel, health endpoints, testcontainers | `GET /health/ready` on all three processes; CI fails on a boundary violation | The lint rule has to exist before the first module, or it will be retrofitted across 200 files. Cheap now, expensive later. |
-| **S1 — The vertical slice** ★ | `adapters/slack/inbound`, `pipeline/`, `identity` (CSV pre-provision only), `authz`, `registry` (one app, `published`, seeded), `forms` (one FormIO schema, pinned version), `links` (create only), `submissions` (internal mode only), form-renderer, `adapters/slack/outbound`, `audit` | **A user types `/leave request` in Slack, receives a link, fills the form, submits, gets a confirmation with a `submission_id`.** | The smallest thing that proves the core value proposition end-to-end. Internal-only routing removes the entire connector/BullMQ/outbox surface from the first proof. Deterministic (no JEV) removes the model from the critical path. |
-| **S2 — Natural-language routing** | `decision/` — `RuleBasedProvider` first (offline, in-process, 50 ms), JEV interface + HTTP adapter, fallback chain, deadline propagation, circuit state in Redis, cache | Type *"I want to request leave"* instead of using a slash command | The provider seam cannot be validated without a real provider, but `RuleBasedProvider` must ship first: it is the terminal fallback and its absence means the system has no routing path at all. |
-| **S3 — Read path** | Read-link signing + verification, `perm_version` enforcement, Query DSL with auto-injected user filter, renderer view/query mode | A 90-day view/query link that dies the moment permission is revoked | **The highest-risk, highest-value work.** Security model, dual token mechanics, Query DSL scoping. Doing it while the codebase is small and the domain is fresh is right; doing it after the Builder means designing it in a hurry. |
-| **S4 — Integration & async** ★ | `connectors/` (REST), `datarouter/`, **transactional outbox**, BullMQ workers + DLQ, external + hybrid modes, `partial` status, `Idempotency-Key`, edit links | Hybrid submission: internal write confirms instantly, external sync lands asynchronously, failures surface as `partial` | Depends on S1's submission record and S3's permission checks. Must not precede S1. |
-| **S5 — App Builder UI** | `builder/`, form builder, RBAC management, routing config UI, submission viewer, publish validation | A non-developer builds and publishes a working app without an engineering ticket | **This is the self-sustaining mechanism — it is the product.** But it is a CRUD skin over APIs that are already stable by S4, so it is the *lowest*-risk slice despite being the highest-value one. Building it early means designing UI against APIs that are still moving. |
-| **S6 — Multi-IM + observability** | Teams, Zalo, Telegram adapters, full OTel suite, dashboards, alerts, runbooks, inbound webhooks (two-way sync), load test at 1,000 users | An employee on Teams/Zalo/Telegram gets the identical experience | Adapter is now a *known* shape — S1 defined the contract. Adding platforms is additive. |
-| **S7 — Post-MVP** | Cross-app collection sharing, group RBAC, i18n, AI-assisted builder, single-step approvals | — | Explicitly out of scope per PROJECT.md. |
+> This is the section the roadmap planner should read before scheduling a phase that touches a contract.
 
-★ **S1 and S4 are the two slices that must not be reordered.** S1 proves the value proposition; S4 is the hardest correctness surface in the system. The PRD's §20 puts hybrid in Phase 2 and read links in Phase 4; this plan keeps hybrid where it is but moves the **read path from Phase 4 to S3** — it shares the `perm_version` primitive with the cache (Pattern 1) and the permission path, so it is cheaper to build adjacent to them than to return to later.
+### D-21 — the frozen read-link claim set: **MUST NOT BE TOUCHED**
 
-**One scope correction for S1.** The PRD's Phase 1 includes OTP onboarding. For the vertical slice, **CSV pre-provisioning alone is enough** (FR-I-2 permits it as a first-class path). Lazy OTP onboarding adds a Redis state machine, a brute-force policy, and a lockout flow to the first slice — none of which the demonstrable capability needs. Ship CSV in S1, OTP in S5 alongside the admin surfaces where it belongs.
+**File:** `packages/contract/src/links/read-link-claims.ts` · **Guard:** `read-link-claims.frozen.spec.ts` (a mechanical key-set assertion — a comment cannot stop a schema edit; a frozen test can).
+
+**v2's group RBAC does not need a new claim, and must not add one.** The claim set already carries exactly the right primitive:
+
+```typescript
+/**
+ * The ACL-07 per-user-per-app permission epoch, captured at issuance.
+ * …
+ */
+perm_version: versionNumber,
+```
+
+Group-derived permission is folded into that **single integer** by bumping the stored per-`(user, app)` epoch (Pattern 3). The read link's embedded epoch becomes stale on any membership change, and the existing "mismatch → 403" check (FR-L-7, NFR-SEC-4) does the rest.
+
+**Explicitly forbidden for v2:**
+- Adding `group_ids`, `group_versions`, `group_epoch` or any other claim to `ReadLinkClaimsSchema`.
+- Adding a claim to distinguish a group-derived grant from a direct one.
+- Changing `ReadLinkActionSchema` (the six D-21 actions) — v2 adds no new link kind.
+- Changing `READ_LINK_TARGET_RULES` or `MAX_READ_LINK_TTL_SECONDS`.
+
+**The v1 research's own line applies verbatim:** *"Never edit `read-link-claims.ts` or `read-link-claims.frozen.spec.ts` to add a claim — that invalidates every outstanding link."* v2 must not even add an **optional** claim: an optional claim is still a key-set change, and the frozen test asserts the exact key set.
+
+### D-23 — the frozen JEV v1 wire spec: **MUST NOT BE TOUCHED**
+
+**Files:** `packages/contract/src/jev/v1/*` · **Guard:** `jev-v1.frozen.spec.ts`.
+
+The v2 AI guard is a **provider decorator** (Pattern 4). It implements the `JevProvider` seam (`packages/contract/src/jev/jev-provider.ts`) and passes the frozen `JevRequest` / `JevResponse` straight through. The request the inner provider sees is byte-identical to the request `RoutingOrchestrator` built.
+
+**Explicitly forbidden for v2:**
+- Adding a `guard` field, a `conversation_history` field, or any other key to `JevRequest` / `JevResponse`.
+- Changing `JevCapability` — **`'multi_turn'` already exists** (`jev-provider.ts:34`) and is exactly the capability the open-ended provider must advertise. `ProviderRegistry.chain(requiredCapabilities)` already filters on it.
+- Bypassing `RoutingOrchestrator` for guard traffic. The guard runs *inside* a provider call, so it inherits the deadline, the attempt cap, the health probe, the confidence gate, the competing-alternative check and the `canOpenNow` re-check **for free**. A guard that calls a model outside the orchestrator inherits none of them.
+- Changing `RULE_BASED_PROVIDER_NAME` or the rule-based terminal link. The guard's failure path *is* the terminal link.
+
+**What may change (and is enough):** `packages/domain/src/decision/*` — the provider registry's *composition* (which providers are in the chain, and with what attestation), not its contract. The `ProviderRegistry` constructor already drops an unattested hosted provider with a loud boot log (`provider-registry.ts:72-78`) — that is the mechanism that keeps a guard-wrapped hosted provider out of a deployment that cannot attest it.
+
+### D-43 — the log field allowlist: **TOUCHED, additively, in exactly one commit**
+
+**File:** `packages/platform/src/logging/log-allowlist.ts`. The file's own rule: *"Adding a field requires a written justification in the same commit; that friction is the control."*
+
+**v2 needs three new allowlisted fields:**
+
+| Field | Why | Justification shape |
+|-------|-----|--------------------|
+| `app_id` | Group RBAC denials, guard refusals, and per-app routing metrics are all app-scoped. `inbound-event.ts` already claims `app_id` is "drawn from the frozen log-field vocabulary" — **that claim is false; the field is not on the list.** | An opaque app id. Never a name. Fixes an existing doc/code drift. |
+| `perm_version` | Revocation audit: "user U's epoch on app A moved 7 → 8" is the only way to explain why a read link 403'd. | An opaque monotonic integer. No PII. |
+| `group_id` | Group-membership sync and revocation are group-scoped. | An opaque group id. **Never a group name** — a group name is human-identifying, exactly like a display name. |
+
+**Explicitly forbidden:**
+- `event_id`, `channel_id`, `thread_id`, `reply_to_message_id` — platform ids that correlate with a conversation. `event_id` and `channel_id` are already excluded; the two new fields join them.
+- Any user-authored text, name, email, phone, or handle.
+- Any group *name*, app *name*, or role *display name*.
+
+**The allowlist stays an allowlist.** A deny-list addition is not an option: a computed key (`record[userInput]`) defeats a deny-list by construction, which is the reason the file's header gives for the inverted design.
+
+### The event envelopes — a **versioned contract amendment**, not a frozen contract
+
+The envelopes are **not** D-21 or D-23. They are ordinary versioned contracts that happen to be `.strict()`:
+
+| Property | D-21 (read-link claims) | D-23 (JEV v1) | The event envelopes |
+|----------|------------------------|---------------|----------------------|
+| Declared frozen | Yes | Yes | **No** — but `.strict()` with strictness-rejection tests |
+| Has a frozen key-set test | Yes (`read-link-claims.frozen.spec.ts`) | Yes (`jev-v1.frozen.spec.ts`) | Yes — `events.spec.ts` asserts unknown keys are rejected |
+| Can it gain an optional field? | **No** — the key set is asserted exactly | **No** — same | **Yes** — an optional field is backward compatible for producers and consumers |
+
+**The v2 amendment:**
+
+```typescript
+export const InboundEventSchema = z
+  .object({
+    event_id: opaqueId,
+    platform: ImPlatformSchema,
+    channel_id: opaqueId,
+    chat_user_id: opaqueId,
+    text: z.string(),
+    action: InboundActionSchema,
+    app_id: opaqueId.optional(),
+    form_id: opaqueId.optional(),
+    queue: z.string().min(1),
+    attempt: z.number().int().nonnegative(),
+    occurred_at: z.string().datetime(),
+
+    // ── v2 addition: threading (FR-IM-8) ─────────────────────────────
+    /**
+     * The platform's thread or topic id, when the platform has one.
+     * Slack `thread_ts` · Teams `replyToId` · Telegram `message_thread_id`
+     * · Zalo — absent (Zalo has no threads; use `reply_to_message_id`).
+     *
+     * Opaque platform id. NOT on the log-field allowlist, like
+     * `event_id` and `channel_id` — never serialised into a log record.
+     */
+    thread_id: opaqueId.optional(),
+    /** The platform message id this message replies to, when it is a reply. */
+    reply_to_message_id: opaqueId.optional(),
+  })
+  .strict();
+```
+
+**Why this is safe and why it still needs discipline:**
+- *Safe:* both fields are **optional**. A v1 producer that omits them still parses; a v2 consumer that meets a v1 event sees `undefined`. No version bump is required, and no sibling `v2/` directory is needed.
+- *Disciplined:* the `.strict()` schemas have tests that assert unknown keys are **rejected**. Adding a field therefore requires updating `events.spec.ts` in the same change — which is the mechanical guard that stops an accidental field from sliding in. The change must be recorded in the contract's changelog with the reason (FR-IM-8 + the clarification session's thread key), and the `inbound-event.ts` header comment must be extended to say that `thread_id` and `reply_to_message_id` are not loggable.
+
+**Do not confuse this with D-21.** The read-link claim set is a *different* contract, it *is* frozen, and the two new fields have nothing to do with it. Nothing in v2's threading work touches a link.
 
 ---
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
+| Scale | Architecture adjustments |
 |-------|------------------------|
-| **0–1k users** (NFR-S-1 — the target) | Modular monolith as designed. 3 entrypoints. Single Mongo replica set, single Redis cache + single Redis queue. **No change.** |
-| **1k–10k users** | First split candidates, in order: (1) `worker` scales independently on connector throughput — already a separate process; (2) Mongo per-app collections get a read-replica for Builder queries; (3) Redis cache grows past one node's memory → add a cache node. |
-| **10k–100k users** | `decision/` becomes the bottleneck (JEV is a third-party network call). Extract it behind its existing interface — no domain refactor. Mongo per-app collections (up to 200 × 20 = 4,000) start needing index discipline and possibly sharding. |
+| **0–1k users** (the current v1 deployment) | One `api` + one `worker` + one `scheduler` replica. The in-process RBAC cache would *almost* work — but it is a correctness bug the moment a second replica exists, so it moves to Redis in the same phase as the real RBAC service, not later. Group sync runs on a 15-minute Job Scheduler; the bulk `updateMany` epoch bump is a handful of queries. |
+| **1k–100k users** | The platform-event ledger becomes the largest collection. 30-day retention keeps it bounded (Slack + Teams + Zalo + Telegram at ~10 events/user/day ≈ 300k rows/month at 1k daily actives — comfortable). The group sync's epoch bump is the first thing to profile: a 5 000-member group churning 5 %/day is 250 members × N bound apps per day — bulk `updateMany` handles it, but the write volume must be measured, not assumed. The outbound queue becomes the throughput axis: Telegram's 1 msg/s per chat and Zalo's 8-replies-per-48h quota are **per-conversation platform limits**, not system limits, so the queue absorbs the burst and the platform is the bottleneck. |
+| **100k+ users** | The `{akane-q}` BullMQ prefix pins every queue key to **one Redis Cluster slot** — queue throughput does not shard. The scaling axis is cluster *memory*, not queue parallelism. `upsertJobScheduler` makes a per-source group sync safe on every replica, but a sync whose duration approaches its interval needs a distributed lock. The RBAC cache becomes the hot path: `ak:rbac:{app}:{user}:{perm_version}` on a shared Redis is fine at this scale; the epoch key means a revocation does **not** need a fan-out delete. |
 
-### Scaling Priorities
+### Scaling priorities
 
-1. **First bottleneck: Redis round trips on the hot path, not CPU.** At 50 events/s (NFR-S-2), CPU is nowhere near a limit. What matters is *serialized* round trips. Pattern 1 (one GET per check) + Pattern 4 (one GET for the aggregate toolset) collapse the routing path to ~4 Redis GETs. Add a `MULTI`/pipeline where two are on the same path. **Measure round-trip count, not CPU.** A regression that adds one Redis call to the permission path is a 30 ms budget breach and a 100% CPU increase would look like nothing.
-2. **Second bottleneck: JEV latency.** NFR-P-3 is 500 ms of a 2,000 ms budget (NFR-P-5). The cache (FR-J-4) handles repeats; the first call does not. The deadline mechanism is what keeps the *fallback chain* from becoming the problem — a chain of 500 + 1000 + 50 ms can consume the entire end-to-end budget on its own, and every provider after a timeout must be attempted within the *remaining* budget or skipped to `RuleBasedProvider`.
-3. **Third: Mongo query shapes on the permission path.** A `$lookup` or an unindexed `{app_id, real_user_id}` turns 2 ms into 400 ms under load. The unique index is not optional and should be asserted in a startup migration check.
-
-**What is deliberately *not* optimized:** microservices for identity/RBAC/links (a network hop for 1–2 ms at 1,000 users), read replicas for the write path, caching app definitions in Redis (they are already in-process LRU and change rarely), or a distributed cache tier (Redis *is* the distributed cache tier).
+1. **First bottleneck: the RBAC cache and the epoch store.** Every routing decision makes one `PermissionCheckService.check` call, which is one Redis GET on a hit and one Mongo read on a miss. The epoch-in-the-key design means a revocation costs one bulk `$inc` and **zero** cache deletes. This is the design that scales; the alternative (delete every affected cache entry) does not.
+2. **Second bottleneck: the platform-event ledger's write amplification.** Every inbound event is one Mongo insert plus one update. At high volume the insert is the cost; the unique index is what makes it correct, so the index cannot be dropped. Batch the `markDispatched` update into the same round-trip as the insert where possible, or make the reconciler's window generous enough that the extra write is not on the hot path.
+3. **Third bottleneck: per-platform outbound quotas.** Zalo's 8 replies per 48 hours per user and Telegram's 1 message per second per chat are *hard platform limits*. A retry storm against a rate-limited platform makes things worse, not better. The jittered backoff (already implemented for `notification-send`) plus a DLQ is the whole mitigation; do not add a second delivery path that bypasses it.
 
 ---
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Pub/Sub as the invalidation mechanism
+### Anti-Pattern 1: Adding a platform without adding its outbound side
 
-**What people do:** Publish a `permission.changed` event on role change; subscribers delete their cache entries.
+**What people do:** Add `apps/api/src/adapters/zalo/` — controller, signature check, normalisation, enqueue — and declare the platform done, because the inbound path is the interesting half.
 
-**Why it's wrong:** Redis Pub/Sub is at-most-once. A subscriber that is reconnecting — during a failover, a pod restart, a network blip — silently misses every message published in the gap. The user keeps a permission they lost, for up to the full TTL, with nothing in the logs. FR-R-9's "immediate invalidation on change" is a best-effort promise dressed as a guarantee.
+**Why it's wrong:** The v1 code already has this shape. `InboundEventProcessor` returns `{kind:'link', url}` and **nothing delivers it** (`inbound-event.processor.ts:194`). `TeamsOutboundService` sits in the api with **no caller** (`apps/api/src/adapters/teams/teams.outbound.service.ts:70`). A Zalo bot built the same way receives messages perfectly and answers nothing. FR-IM-3 (normalised `OutboundMessage`) is a separate requirement from FR-IM-2 and it is currently unmet for every platform.
 
-**Do this instead:** Pattern 1 — put the version in the cache key. Staleness becomes structurally impossible rather than statistically unlikely. Keep pub/sub only for warming caches after a version bump, where a lost message costs latency and nothing else.
+**Do this instead:** Ship the outbound seam **first** (Phase 10): the `im-outbound` queue, the `OutboundMessageProcessor`, the platform-dispatched `OutboundDispatcher`, and the `InboundEventProcessor` enqueueing its own replies. Then every adapter is a two-sided change by construction, because the dispatcher already knows the shape.
 
-### Anti-Pattern 2: Trusting BullMQ `jobId` as a durable idempotency key
+### Anti-Pattern 2: Using Redis for platform-event dedupe
 
-**What people do:** Set `jobId: submission_id` and rely on BullMQ to enforce write-once (FR-D-12).
+**What people do:** `SETNX ak:evt:{platform}:{id}` in the receiver, or a BullMQ `jobId`, and treat the "already seen" answer as the idempotency guarantee.
 
-**Why it's wrong:** Verified against the docs — *"Jobs that are removed from the queue (either manually, or when using settings such as `removeOnComplete`/`removeOnFailed`) will **not** be considered as duplicates."* The moment retention cleanup runs, the same `jobId` can be added again. For inbound webhooks that is fine (the retention window bounds the platform's retry horizon); for connector calls it is not, because a stalled job can be reprocessed days later. **A queue is a transport, not a ledger.**
+**Why it's wrong:** Two independent reasons, both established in v1. (a) **BullMQ `jobId` dedup lapses on `removeOnComplete`** — the official docs say removed jobs "will not be considered as duplicates", so the guarantee evaporates with the retention policy. (b) **Redis Cluster replication is asynchronous**; an acknowledged write can be lost on failover, so a consumed token can come back. The same property that makes `GETDEL` a fast path rather than a guarantee applies here.
 
-**Do this instead:** Pattern 3 — a MongoDB unique index. `{connector_id: 1, submission_id: 1}` on `deliveries` plus `{link_jti: 1}` on `submissions`. Use `jobId` for convenience and for the inbound-dedup case where the bound genuinely holds; use the database for the guarantee.
+**Do this instead:** A **MongoDB unique index on the platform's own event id**, in a collection per platform, with the fail-closed 500 ms timeouts the shipped `TeamsEventRepository` already uses. Redis may sit in front as a fast path; it may not be the record.
 
-### Anti-Pattern 3: Doing work inside the webhook receiver
+### Anti-Pattern 3: Filtering the tool set *inside* the AI guard
 
-**What people do:** Verify the signature, resolve the user, check permissions, call JEV, then `200`. It works in staging and fails in production when the ack budget runs out and the platform retries — re-running the entire pipeline per attempt.
+**What people do:** Add the guard as a stage in the pipeline, hand it the global tool catalogue, and let it decide which tools the user may see.
 
-**Why it's wrong:** Slack gives 3 seconds and 3 retries; Teams retries with 429/502 jitter. Every retry duplicates identity resolution, RBAC aggregation, and a **billable JEV call**. At 50 events/s with a 2 s pipeline, the failure mode is a self-inflicted thundering herd.
+**Why it's wrong:** It relocates the permission boundary into a component that talks to a language model. The guarantee FR-J-6 states — *"JEV MUST receive only the filtered tool set for the requesting user, never the global tool list"* — is already implemented in the right place: `RoutingOrchestrator` builds `permitted` from `authorizedTools` and passes `tools: [...input.authorizedTools]` (`routing-orchestrator.ts:50-59`). A guard that filters is a guard that *can fail to filter*, and the failure mode is an unauthorised tool reaching the model — and from there, a link.
 
-**Do this instead:** Pattern 2. The receiver verifies and enqueues, full stop. Target 200 ms; measure ~5 ms.
+**Do this instead:** The guard is a **provider decorator** that never sees an unfiltered tool set. Its job is to refuse bad *text* and bad *output*; the tool set is already correct before it is called. If the guard must enforce a tool constraint, it enforces it by **re-validating the chosen tool against `permitted`** on the way out — a second gate on an already-filtered set, not a first gate on the catalogue.
 
-### Anti-Pattern 4: Making the form renderer the security boundary for read links
+### Anti-Pattern 4: A sum-of-epochs `perm_version` for group revocation
 
-**What people do:** Ship the public key to the browser, verify the JWT client-side, and serve the data because "the token was valid."
+**What people do:** Compute `perm_version = user_app_epoch + Σ group_epoch(G)` at read time instead of storing one number per `(user, app)`.
 
-**Why it's wrong:** The client-side check proves the token was *signed*, not that the user is *currently* permitted. A 90-day-old link from before a termination would pass. Every "did you get fired?" question becomes a browser-side check an attacker controls.
+**Why it's wrong:** The sum is monotone in each term but **not injective over the states it summarises**. A user who leaves group `G` (epoch 3) and joins group `H` (also epoch 3) produces the same sum. A read link issued before the change still validates, and a permission revoked through `G` stays live — a silent authorisation failure that looks correct in every test that only bumps one group at a time.
 
-**Do this instead:** Asymmetric signing *and* server-side authority. The browser gets the **public** key — safe to publish, which is the whole reason AD-11 specifies asymmetric over HS256 — and uses it only to fail fast on expiry and render an expired-link message. Checks 6–10 of the verification sequence run server-side, every time, regardless of what the browser concluded.
+**Do this instead:** A **stored, monotonic, per-`(user, app)` epoch**, bumped in bulk with `updateMany` when membership changes. The group epoch is a sync-worker optimisation only; it never enters the read path. And the epoch-in-the-cache-key means revocation needs no cache fan-out at all.
 
-### Anti-Pattern 5: A single Redis instance with an evicting policy
+### Anti-Pattern 5: A directory sync performed by the scheduler
 
-**What people do:** One Redis cluster for cache, tokens, and BullMQ, with `allkeys-lru` so memory pressure self-heals — and the PRD's own runbook says *"Redis OOM → evict expired keys."*
+**What people do:** Put the group-sync job body in `apps/scheduler/src/`, because the scheduler is the thing that "runs periodically".
 
-**Why it's wrong:** BullMQ documents `maxmemory-policy=noeviction` as a `DANGER`-level requirement. Under an evicting policy, Redis can silently evict **queue state** — pending jobs, delayed jobs, schedulers. A submission confirmed to the user can lose its connector delivery with no error anywhere except a DLQ-depth alert hours later. "Self-healing" cache eviction becomes silent job loss.
+**Why it's wrong:** R1. The `scheduler-job` file category may be imported only by `apps/scheduler`; the `bullmq-worker` category only by `apps/worker`. A scheduler that talks to Mongo, a directory, and an IM API accumulates the credential surface, the retry machinery and the connection pools in the process that has none of the worker's infrastructure. It also makes the sync's failures invisible to the worker's readiness indicator.
 
-**Do this instead:** Two deployments. `cache` evicting, `queue+tokens` `noeviction` with headroom. At 1,000 users both are small; the separation costs one instance and removes an entire class of silent corruption.
+**Do this instead:** The scheduler **registers a Job Scheduler and enqueues**; the worker **consumes and performs**. The v1 `reconciliation.registration.ts` is the exact pattern: `registerJobScheduler(queue, ID, {every: ms}, {name: ID})` + `resumeJobScheduler(queue)`, with the work in `ReconciliationProcessor`.
 
-### Anti-Pattern 6: Letting the three entrypoints drift into the same process
+### Anti-Pattern 6: Reading the IM platform's secret from the environment
 
-**What people do:** Add a `@Cron` in a service that the API imports "just for now," or import a BullMQ `Worker` into an API module because the queue is already configured. All three entrypoints become the same process and the ack budget quietly dies.
+**What people do:** `process.env.ZALO_OA_SECRET` in the receiver, and `process.env.TELEGRAM_BOT_TOKEN` in the sender.
 
-**Why it's wrong:** `@nestjs/schedule` runs **in-memory and per-instance** — a JWT key rotation scheduled on one pod silently does not run on another. That is a **security failure** (NFR-SEC-9), not a bug. PROJECT.md already rejected it for durable work; the boundary rule (R1) exists to stop it creeping back in through a different door.
+**Why it's wrong:** NFR-SEC-3 forbids plaintext env secrets, and the v1 code already carries the smell: `TeamsDeliveryService` calls `loadAuthConfigFromEnv()` (`apps/api/src/adapters/teams/teams.outbound.service.ts:17,29,87`). A v2 adapter that copies that pattern adds a second and third plaintext secret to the process, and the Zalo OA secret is the one that authenticates inbound webhooks — a leaked secret means forged inbound events.
 
-**Do this instead:** Boundary rule R1 plus the boot-time provider audit. `@nestjs/schedule` is permitted only for sub-minute local ticks with no correctness meaning.
+**Do this instead:** The `SecretEnvelope` path the connector credentials already use. `packages/domain/src/connectors/data-access/connector-credentials.repository.ts` stores `{ envelope: SecretEnvelope }`; `sealSecret` / `openSecret` in `packages/platform/src/crypto/envelope.ts` do the work. The `adapters` element may import `platform` (which contains the crypto module), and **R2 is not triggered** — R2 restricts the `jose` / KMS *modules* to the owner categories, and the caller never imports them. The Zalo OA secret and the Telegram bot token get the same treatment as a Redmine API key, at no boundary cost.
+
+### Anti-Pattern 7: One "IM adapter" module per platform, growing without limit
+
+**What people do:** Put the inbound normaliser, the signature service, the outbound client, the credential handling, the rate limiter and the group sync for a platform into one directory, then let the next platform copy it.
+
+**Why it's wrong:** The two directions have different trust shapes (untrusted-and-unverified inbound vs authenticated-and-rate-limited outbound) and different owners (the api vs the worker). One module per platform collapses the `inbound-adapter` / `outbound-adapter` boundary categories that R1 already exists to enforce, and it makes "which process may send a message" a matter of reading the whole file.
+
+**Do this instead:** The **pair of plug-ins** (Pattern 1). Inbound in `apps/api/src/adapters/<p>/`, outbound in `packages/domain/src/adapters/<p>/outbound/`, credentials in `packages/domain/src/adapters/data-access/`, and the platform registered once in `AdapterRegistry`.
 
 ---
 
@@ -805,101 +771,127 @@ That is roughly **360 → 2 × 4 × 5 = 40** real cases, of which maybe 12 are g
 
 ### External Services
 
-| Service | Integration Pattern | Gotchas |
-|---------|---------------------|---------|
-| **Slack** | Inbound: POST controller with `rawBody: true`, HMAC-SHA256 over `v0:{ts}:{body}`, 5-min timestamp window. Outbound: `@slack/web-api` `chat.postMessage`. Slash-command replies via `response_url`. | **3-second ack, 3 retries.** `response_url` valid for up to 5 responses within 30 minutes. Ack empty, compute async. Webhook URL verification (`url_verification` challenge) must be handled without touching Redis. |
-| **Microsoft Teams** | `@microsoft/agents-hosting`; Bot Framework is retired (support ended 2025-12-31) | **429/502 with jitter** — retries must be honoured *and* absorbed by the queue, never propagated to the sender. Activity `id` is the `jobId`. |
-| **Zalo OA** | Hand-rolled ~200-line client over `undici`. No official Node SDK exists. | Zalo publishes PHP-only SDK docs; every npm wrapper self-describes as unofficial. **Highest adapter risk — sequence it last, and keep it behind the same `InboundEvent` contract.** |
-| **Telegram** | `node-telegram-bot-api` 2.x | Explicit `update_id` → natural `jobId`. Per-chat rate limits are stricter than Slack's. |
-| **JEV providers** | HTTP `/decide` + `/health`, behind the `JevProvider` interface | `RuleBasedProvider` runs **in-process** (no HTTP) — a network hop would blow its 50 ms budget and it is the terminal fallback. Circuit state must be shared across replicas (§11.4 currently implies per-instance). |
-| **Connector targets** (Redmine, HR, ERP) | `undici` with per-connector timeout (30 s default), retry, rate limit, health check | `Idempotency-Key: submission_id` on **every** attempt — a stalled job reprocesses the call. Credentials unwrapped from KMS per call with a 60 s in-process cache, **never** persisted to Redis. |
-| **KMS / Vault** | Secret unwrap, AES-256-GCM at rest | Called only from `platform/crypto` and `connectors` (boundary rule R2). JWT signing keys need `kid` keyring + 90-day dual-key rotation (NFR-SEC-9). |
-| **OTel Collector** | OTLP/HTTP traces + metrics + Prometheus scrape | `sdk-node` must initialise **before any instrumented import**, including `AppModule`. Getting this wrong silently loses NFR-O-1's end-to-end trace and nothing fails. |
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| **Zalo OA — inbound webhook** | `POST` to a registered URL. Verify `X-ZEvent-Signature: mac = sha256(appId + rawBody + timestamp + OAsecretKey)`. Then normalise → dedupe → enqueue → 200. | ⚠️ **This is a secret-suffix plain SHA-256, not an HMAC.** It must be computed over the **exact raw bytes** of the body, with `timestamp` taken from the payload. Compare in constant time. **There is no challenge handshake** (unlike Slack's `url_verification` and Teams' `urlVerification`), so FR-IM-6 is only partially satisfied for Zalo — see S2. |
+| **Zalo OA — outbound** | `POST https://openapi.zalo.me/v2.0/oa/message` with header `access_token`. Two reply forms: `recipient: { user_id }` + `message: { text, quote_message_id }`, or `recipient: { message_id }` (the *reply-token* form, quota **8 per 48 h**). Consultation text: `POST /v3.0/oa/message/cs`. Group send: `POST /v3.0/oa/group/message`. | Text limit **2 000 characters** — truncate in the client, not in the contract. The reply-token form is the cheap one but it is **rate-limited per user**, so the client must fall back to the `user_id` + `quote_message_id` form rather than fail. Hand-rolled over `undici` (no official Node SDK). |
+| **Zalo OA — group membership** | `GET /v3.0/oa/group/listmember?group_id&offset&count` | Requires the **"quản lý thông tin nhóm"** permission and a **paid GMF package**. Optional in v2; see §6.4. |
+| **Telegram — inbound webhook** | `POST` to a registered URL. Verify `X-Telegram-Bot-Api-Secret-Token` against the configured `secret_token` (1–256 chars, `A–Z a–z 0–9 _ -`) in constant time. | A **shared secret, not an HMAC**. Telegram retries any non-2xx, so a 5xx on a transient failure is the platform's problem to retry — but only if we have not already recorded the update. The dedupe ledger is what makes the retry safe. |
+| **Telegram — outbound** | `node-telegram-bot-api@2.1.0` → `sendMessage({ chat_id, text, message_thread_id?, reply_parameters? })`. | Rate limits: **~30 msg/s global, 1 msg/s per chat**. `grammy` is rejected (it depends on `node-fetch@^2`, an un-instrumented HTTP path that breaks OTel trace continuity). |
+| **Telegram — group membership** | **Not available.** The Bot API has `getChat`, `getChatAdministrators`, `getChatMemberCount`, `getChatMember` (one user) — **no member enumeration**. | A bot observes only users who interact with it (`new_chat_members`, `chat_member`). Bulk enumeration needs MTProto (a userbot), which is out of scope. **Telegram groups are a documented v2 gap, not a feature.** |
+| **Slack** | `url_verification` challenge + `v0:` HMAC-SHA256 over `timestamp + body`. Outbound via `chat.postMessage({ channel, text, thread_ts })`. | The shipped `slack-webhook.controller.ts` is a `{ok:true}` placeholder — v2 replaces it. |
+| **Microsoft Teams** | JWT via `authorizeJWT()` (the Agents SDK ships **no** JWT middleware). Outbound via `continueConversation` with a stored `ConversationReference`. | v1 — **unchanged**. The conversation-reference store is the pattern the other platforms follow. |
+| **Enterprise directory (new)** | A **connector** — the existing `packages/domain/src/connectors/` framework, with its credential store, retry, DLQ and three-state outbound. | The primary source of group membership in v2, because it is the only source that works on every platform. The connector's adapter is a new `rest-core` consumer, not a new framework. |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
-|---|---|---|
-| `adapters` → `pipeline` | **Queue only** (`im.inbound`) | The hard trust boundary. An `InboundEvent` crosses it; raw platform payloads never do. |
-| `pipeline` → `identity` `authz` `decision` `registry` `links` | Direct, in-process | Same process, one DI container — no serialisation, no network hop. This co-location *is* the AD-9 benefit. |
-| `submissions` → `datarouter` | Direct call **inside** the Mongo transaction | They share a `ClientSession`. Splitting this pair is what would force a distributed transaction. |
-| `datarouter` → `connectors` | **Queue only** (`connector.execute`) | Never a direct HTTP call from the request path. This is what makes `partial` status possible at all. |
-| `datarouter` → BullMQ | **Outbox only** — never `queue.add` directly | Pattern 3. A direct `queue.add` after commit reintroduces the loss window. |
-| `api` → Mongo/Redis | Direct | No service mesh, no internal HTTP. §13.1's "internal API (service-to-service)" describes a *future* extraction boundary, not a current one — nothing inside the monolith calls it over HTTP today. |
-| `worker` → `api` | **None** | The worker never calls the API. If it appears to need to, the logic is in the wrong module — reach for the shared service, not the HTTP endpoint. |
+|----------|---------------|-------|
+| `apps/api` ↔ `apps/worker` | **Queue** — `inbound-events` (in), `im-outbound` (out), `notification-send` (existing), `group-sync`, `platform-event-dispatch` | The only shared contract is the envelope. Both ends must reference the **constant** from `packages/platform/src/queue/queue.constants.ts` — the `'im:inbound'` vs `'inbound-events'` mismatch is a documented v1 incident. |
+| `apps/scheduler` ↔ `apps/worker` | **Queue**, via a BullMQ **Job Scheduler** | The scheduler registers and enqueues; the worker performs. R1 enforces the direction. |
+| `packages/domain/src/adapters/<p>/inbound/**` → `apps/api` | Direct import | `inbound-adapter` category — **api only** (R1). |
+| `packages/domain/src/adapters/<p>/outbound/**` → `apps/worker` | Direct import | `outbound-adapter` category — **worker only** (R1). |
+| `packages/domain/src/adapters/**` → `packages/domain/src/notifications` | ❌ **Not allowed** | `adapters` may import only `platform, kernel, contract`. The delivery port therefore takes the conversation reference **as a parameter**; the app-layer dispatcher resolves it. |
+| `packages/domain/src/notifications` → `packages/domain/src/adapters` | ❌ **Not allowed today** | Adding it would be a new edge — and pointless, because R1 would still block `notifications` from importing an `outbound-adapter` file. The dispatcher belongs in the app layer. |
+| `packages/domain/src/groups` → `identity`, `authz`, `audit` | Direct import | **Requires the new element type** in `tooling/boundaries.config.mjs`. |
+| `packages/domain/src/decision` → `packages/domain/src/groups` | ❌ Not needed | The decision layer asks "what may this user use", which `PublishedAppLoader` already answers through the `authorize` seam. The group's answer is *behind* that seam, not in the decision layer. |
+| `packages/domain/src/authz` → `packages/domain/src/groups` | ⚠️ **The one edge that needs deciding** | If the RBAC service expands group memberships itself, `authz` needs a `groups` edge. The alternative is to keep the expansion inside `groups` and have `authz` depend on a narrow `GroupPermissionResolver` **port** declared in `authz` and implemented in `groups` — which inverts the edge. **Recommend the port**: `authz` stays the security core and `groups` becomes an optional contributor. |
 
 ---
 
-## Verdict on the PRD's §7.3 decisions
+## Suggested Build Order
 
-| # | Decision | Verdict | Amendment required |
-|---|----------|---------|---------------------|
-| AD-1 | Permission-first routing (Identity → RBAC → Tool Filter → JEV) | ✅ **Keep** | Also: the PRD's §7.1 places the rate limiter *before* identity and the whole pipeline *before* the response. Both are only correct for a synchronous request — with a pure-ingest receiver, the pipeline runs in the consumer. **§7.1 needs a second diagram distinguishing ingest from processing.** |
-| AD-2 | JEV-compatible spec as a swappable seam | ✅ **Keep** — the best decision in the PRD | **§11 needs completion, not change.** Add the wire-level framing this document specifies: algorithm allowlist, `iss`/`aud` binding, opaque-ID payload only. Also: circuit-breaker state must be shared across replicas. |
-| AD-3 | FormIO.js as sole form engine | ✅ **Keep** | None. `@formio/js` 5 is MIT and ships the OSS drag-and-drop builder; `formiojs` 4 is in maintenance mode. |
-| AD-4 | MongoDB as a *primary* destination, not a fallback | ✅ **Keep**, and **strengthen the reasoning** | The real load-bearing reason for the monolith is not latency — it is that the Mongo transaction and the token/permission checks live in **one failure domain**. Splitting them is what would force a distributed transaction. Amend PROJECT.md's rationale accordingly. |
-| AD-5 | Shared connector credentials | ✅ **Keep** | None. One more constraint: per-connector rate limiting is *shared across all apps* referencing it (FR-C-4), so it belongs in `connectors`, not in the app config. |
-| AD-6 | Per-app RBAC | ✅ **Keep** | None. Note the scale: 1,000 users × 200 apps is 200k `perm_version` values, but only for *assigned* users — sparse writes, `{app_id, real_user_id, roles, permissions, perm_version}` indexed on `(app_id, real_user_id)`. Comfortably within NFR-S-1. |
-| AD-7 | Real-user-only RBAC in v1 | ✅ **Keep** | None. Groups are v2 and correctly deferred. |
-| AD-8 | Atomic token consumption via Redis | ⚠️ **Keep the mechanism, amend the claim** | `GETDEL` is atomic and correct for the interactive double-submit race (NFR-SEC-1). It is **not** the durability guarantee — an acknowledged `GETDEL` can be lost on Redis Cluster failover (async replication). Add the Mongo `unique index {link_jti: 1}` as the actual guarantee. **Amend NFR-SEC-1's wording**: "atomic consumption" is the race guard; "exactly-once submission" is the index. |
-| AD-9 | Stateless application services | ✅ **Keep** — verified genuinely stateless | None needed. No session, no sticky sessions, no in-process cache that must survive. Per-process LRU (app definitions, form schemas) is a rebuildable cache, not state. This holds. |
-| AD-10 | BullMQ for async external calls | ✅ **Keep**, but **incomplete without the outbox** | BullMQ alone leaves a loss window between the Mongo commit and `queue.add`. Add the transactional outbox (Pattern 3): the queue becomes a transport, Mongo the ledger. Also: BullMQ on Redis Cluster needs a hash-tag `prefix` (`{akane}`) and `noeviction`. |
-| AD-11 | Signed stateless read links (no Redis) | ✅ **Keep** — correct and well-chosen | Verify the verification sequence (Flow 3) is implemented in full, in that order. The 90-day TTL is safe *because* of checks 6–9, not instead of them. Asymmetric signing is right for AD-11's reasons. |
-| AD-12 | NestJS as the framework | ✅ **Keep** | Requires `rawBody: true` on the API entrypoint (and it only works with the default body parser enabled — do not set `bodyParser: false`). `enableShutdownHooks()` on all three entrypoints. OTel must initialise before any instrumented import. |
+> Six phases. The order is driven by **what unblocks what**, not by platform preference. Phases 11 and 13 are independent of each other and can run in parallel.
+
+```
+   Phase 10 ──────────► Phase 11 ──────────► Phase 12 ──────────► Phase 14
+   OUTBOUND SEAM        ZALO OA               TELEGRAM             OPEN-ENDED
+   + THREADING          ADAPTER               ADAPTER              AI GUARD
+   CONTRACT
+        │                   │                    │                    │
+        │                   └────────┬───────────┘                    │
+        │                            │                                │
+        │                            ▼                                │
+        │                    Phase 13 ────────────────┐                │
+        │                    GROUP / DIRECTORY SYNC   │                │
+        │                    + REVOCATION             │                │
+        │                            │                │                │
+        └────────────────────────────┴────────────────┴────────────────┘
+                     (Phase 12 and 13 are parallelisable)
+```
+
+| # | Phase | Why here | Depends on | Unblocks |
+|---|-------|----------|-------------|----------|
+| **10** | **Outbound delivery seam + threading contract** | Nothing is demonstrable without it, and the platform work is worthless without it (finding #2). The threading fields are the contract amendment everything else assumes (finding #3). | — | 11, 12, 14 |
+| **11** | **Real RBAC + persisted identity** | This is a **v1 correctness fix**, not a v2 feature: `RbacService` grants everything, the RBAC cache is per-process, the identity map is per-process (finding #4). Group RBAC is impossible on top of it, and the AI guard's "permission-first" claim is meaningless until it holds. | 10 | 12, 13, 14 |
+| **12** | **Zalo OA adapter** | The **hardest and least documented** platform: no official Node SDK, a secret-suffix signature rather than an HMAC, no challenge handshake, a reply quota, and an undocumented API surface. It should be attempted while the schedule has slack, not last. Spike **S2** gates it. | 10, 11 | 13 (Zalo group source) |
+| **13** | **Group / directory sync + revocation** | Needs the real RBAC (11) to have anything to bind to, and the Zalo group APIs (12) for the IM-sourced variant. The directory connector is the primary source and is independent of Zalo, so the bulk of this phase can proceed while Zalo is in flight. | 11, 12 (for the Zalo source only) | 14 |
+| **14** | **Telegram adapter** | The **easiest** platform: an official SDK, thorough documentation, a well-understood secret-token scheme. Deliberately late so that it lands on a working outbound seam and a real RBAC, and so its schedule is not the one at risk. | 10, 11 | — |
+| **15** | **Open-ended AI guard** | The most speculative work, and it **amends NG1** — it should land on a proven substrate, not carry the risk of the milestone. It also depends on group RBAC (13) to be meaningful: "permission-first" over a stub RBAC is a claim, not a guarantee. | 10, 11, 13 | — |
+
+**Two parallelisable tracks.** Phases **12 (Zalo)** and **13 (groups)** share only the directory connector; the directory-sourced half of 13 does not need Zalo at all. Phase **14 (Telegram)** can run alongside 13. A two-engineer team can compress 12–14 into roughly one phase's duration; a one-engineer team should follow the sequence above.
+
+**What is deliberately *not* in v2's sequence:** a general-purpose assistant (NG1 stays), a Telegram group-membership feature (§6.4 — not implementable), native IM form rendering (out of scope), and a multi-step workflow engine (out of scope).
+
+---
+
+## Open Questions and Spikes
+
+| ID | Question | Blocks | Why reading cannot settle it | Suggested resolution |
+|----|----------|--------|----------------------------|----------------------|
+| **S2** | **Zalo OA webhook signature + API semantics.** Is `sha256(appId + rawBody + timestamp + secret)` byte-exact? What is the exact `data` field? Does Zalo offer any replay protection beyond the timestamp? Is there an undocumented verification handshake? | Phase 12 | No official Node SDK and no official Node documentation. Every implementation reference is community-authored, and the API has no changelog discipline. | **Two-day spike on a real OA account**: register a webhook, capture the exact bytes, verify the signature offline, exercise a reply (both the `user_id`+quote form and the reply-token form), and read the group APIs. Budget contingency in Phase 12. |
+| **S3** | **Telegram secret-token + threading behaviour.** Is the secret-token compare enough for FR-IM-6, given there is no challenge handshake? Does `message_thread_id` behave as expected in a forum supergroup? Does `reply_parameters` need `chat_id` alongside `message_id`? | Phase 14 | Documented, but the *deployment* shapes (forum vs plain group, private vs supergroup) are not exercised by the docs. | **Half-day spike** against a real bot: `setWebhook` with a `secret_token`, post into a forum topic, reply with `reply_parameters`, and observe the delivered message shape. |
+| **S4** | **Telegram group membership — is the gap truly closed?** | The *decision* to exclude Telegram groups from v2 | The Bot API has no member enumeration, but confirming that against a live group (and confirming `chat_member` coverage) costs an hour and prevents a scope error. | **One-hour spike.** Already answered on paper (see §6.4) — this is the empirical confirmation, not an open question. |
+| **S5** | **Which directory source?** Entra ID, LDAP/AD, or a CSV export? | Phase 13 | A product/customer question, not a technical one. It determines the connector type, the sync cadence, and whether group membership is authoritative or advisory. | **Ask in Phase 11 discovery**: "What is your system of record for group membership, and does it expose an API we can poll?" |
+| **S6** | **Does the AI guard need a new `JevCapability`?** | Phase 15 | Probably not — `'multi_turn'` already exists and is the right one. But if the guard needs to advertise that it can *refuse*, or that it is safe for free-text, the capability list may need a new value. | **Resolve in Phase 15 planning**, not before. The chain filter (`ProviderRegistry.chain(requiredCapabilities)`) is already capability-driven, so a new value is a one-line addition to `JevCapability` — **which is not the frozen D-23 wire spec** and is therefore safe, but should still be a deliberate, recorded decision. |
 
 ---
 
 ## Sources
 
-**Primary (authoritative inputs)**
-- `PRD.md` v2.0 §7 (System Architecture), §10 (Data Models), §11 (JEV-Compatible Specification), §12 (User Flows), §13 (API Design Principles), §18.2 (Deployment Topology), §20 (MVP Roadmap), §6.6 (Link Types), §8 (FR-I/R/J/F/L/D/C/N/LC/IM/AU), §9 (NFRs)
-- `.planning/PROJECT.md` — adopted decisions, AD-1…AD-12 amendments, constraints
+**Shipped source read directly (2026-10-21)**
+- `packages/contract/src/events/inbound-event.ts` — `ImPlatformSchema` (line 27), `InboundEventSchema` (43–66), the log-allowlist discipline note (20–25)
+- `packages/contract/src/events/outbound-message.ts` — `OutboundActionSchema` (19–25), `OutboundMessageSchema` (31–50)
+- `packages/contract/src/links/read-link-claims.ts` — the frozen claim set, `perm_version` (98–108), `READ_LINK_TARGET_RULES` (59–67)
+- `packages/contract/src/jev/jev-provider.ts` — `JevCapability` (34), the `JevProvider` seam (45–52), `RULE_BASED_PROVIDER_NAME` (62)
+- `packages/contract/src/jev/v1/` + `jev-v1.frozen.spec.ts` — the frozen D-23 wire spec
+- `packages/contract/src/builder/app-definition.contract.ts` — `SectionNameSchema` (61–74), the "frozen contracts are consumed, never reshaped" note (8–11)
+- `packages/domain/src/decision/routing-orchestrator.ts` — the permitted-set filter (50–59), `canOpenNow` (20), the provider loop (67–120)
+- `packages/domain/src/decision/published-app-loader.ts` — RBAC-before-projection (86–107)
+- `packages/domain/src/decision/provider-registry.ts` — the attestation gate (53–87), `chain(requiredCapabilities)` (95–99)
+- `packages/domain/src/decision/clarification-session.service.ts` — `sessionKey(realUserId, channelId, threadTs)` (73), the bounds (58–66)
+- `packages/domain/src/authz/rbac.service.ts`, `rbac-cache.service.ts`, `permission-check.service.ts` — the stub grant, the in-memory epoch cache, the `perm_version = 0` default
+- `packages/domain/src/authz/builder-ability.ts` — `createBuilderAbility` (119) and the derived-ability model (1–31)
+- `packages/domain/src/identity/identity-mapping.repository.ts` — the in-memory mapping array
+- `packages/domain/src/builder/data-access/app-definition.repository.ts` — `AppDefinitionDocument` (61–88), `SECTION_FIELDS` (97–112)
+- `packages/domain/src/adapters/teams/inbound/data-access/teams-event.repository.ts` — the D-39 fail-closed timeouts, the unique index, `insert → 'inserted' | 'duplicate'`
+- `packages/domain/src/notifications/data-access/conversation-reference.repository.ts` — the platform-less key (32–33)
+- `packages/domain/src/connectors/data-access/connector-credentials.repository.ts` — the `SecretEnvelope` credential pattern
+- `packages/platform/src/crypto/envelope.ts` — `sealSecret` / `openSecret` / `SecretEnvelope`
+- `packages/platform/src/logging/log-allowlist.ts` — the frozen field set and the "written justification" rule
+- `packages/platform/src/queue/queue.constants.ts` — `INBOUND_EVENTS_QUEUE`, `NOTIFICATION_SEND_QUEUE`, `BULLMQ_PREFIX = '{akane-q}'`
+- `packages/platform/src/queue/job-scheduler.ts` — `registerJobScheduler` / `resumeJobScheduler` / `upsertJobScheduler` and the FND-08 convergence argument
+- `apps/api/src/adapters/teams/teams.controller.ts`, `teams-activity.service.ts` — the reference receiver
+- `apps/api/src/adapters/slack/slack-webhook.controller.ts` — the `{ok:true}` stub
+- `apps/api/src/adapters/teams/teams.outbound.service.ts` — the uncalled delivery service, `loadAuthConfigFromEnv()`
+- `apps/api/src/webhooks/external/external-webhook.controller.ts` — the existing nonce + timestamp + HMAC inbound pattern
+- `apps/worker/src/app.module.ts` — the inline `authorize` closure (53–65), the provider wiring (69–104)
+- `apps/worker/src/processors/inbound-event.processor.ts` — the unenqueued `{kind:'link'}` (194), the `channel_id`-as-`threadTs` placeholder (203, 282)
+- `apps/worker/src/processors/notification.processor.ts` — the hardcoded `TeamsDeliveryService` (87–91), `notificationJitterBackoff` (21–33)
+- `apps/worker/src/adapters/teams/teams-delivery.service.ts`, `apps/scheduler/src/reconciliation.registration.ts` — the delivery and scheduler patterns
+- `tooling/boundaries.config.mjs` — `DOMAIN_ELEMENT_TYPES` (38–63), `ALLOWED_EDGES` (139–243), R1 (357–388), R2 (390–417), R3 (419–433), the last-match-wins and `checkAllOrigins` notes
 
-**BullMQ v6 — verified against official docs (HIGH confidence)**
-- `docs/gitbook/guide/jobs/job-ids.md` — custom `jobId` deduplication; **jobs removed via `removeOnComplete`/`removeOnFail` are no longer duplicates**
-- `docs/gitbook/guide/jobs/deduplication.md` — Simple / Throttle / Debounce modes; manual `job.remove()` disables dedup
-- `docs/gitbook/guide/connections.md` — `maxRetriesPerRequest: null` required for workers, finite for request-path producers; **`maxmemory-policy=noeviction` required (DANGER)**; **do not use ioredis `keyPrefix`** (DANGER); `getBackend().client` replaces `Queue#client`; graceful shutdown order
-- `docs/gitbook/patterns/redis-cluster.md` — *"Bull internals require atomic operations that span different keys. This behavior breaks Redis's rules for cluster configurations"* → hash-tag prefix required; separate prefixes to distribute queues
-- `docs/gitbook/guide/job-schedulers.md` — `upsertJobScheduler` idempotency; special job IDs prevent custom `jobId`; **`tz: 'UTC'` (legacy `utc` removed)**; production rate degrades under queue pressure
-- `docs/gitbook/guide/architecture.md` — job lifecycle states
-- `docs/gitbook/patterns/idempotent-jobs.md` — jobs must be atomic and idempotent by design
+**Product requirements**
+- `PRD.md` §6.7 `perm_version` (203–205) · AD-7 (299) · G3 (108) · line 167 · FR-I-4/FR-I-6 (332/334) · FR-R-1…FR-R-12 (344–355) · FR-J-6 (366) · FR-L-7 (402) · FR-IM-1…FR-IM-8 (485–492) · NG1 (121) · "Group-based RBAC — Q2 post-MVP" (1401) · NFR-SEC-4 (542)
+- `.planning/PROJECT.md` — v1 state, the v2 scope, the "29 additional IM platforms" deferral, the technical-debt list
+- `.planning/milestones/v1.0-ROADMAP.md` — Phase 2's recorded reason for the Mongo unique index over a BullMQ `jobId`; Phase 8's "adding a platform is additive rather than inventive"
 
-**NestJS — verified against official docs (HIGH confidence)**
-- `content/faq/raw-body.md` — `rawBody: true`; `RawBodyRequest<Request>`; **works only if the built-in body parser is enabled**; default `json` + `urlencoded` parsers; `useBodyParser('json', { limit })`
-- `content/fundamentals/lifecycle-events.md` — `createApplicationContext()` initialises the app and fires `onModuleInit`/`onApplicationBootstrap`; shutdown hooks require `enableShutdownHooks()`
-
-**MongoDB (HIGH confidence)**
-- `mongodb.com/docs/manual/core/transactions/` — ACID multi-document transactions; **replica set required**; `withTransaction` callback API with automatic retry on `TransientTransactionError` / `UnknownTransactionCommitResult`; single-document writes are already atomic; transactions create collections implicitly
-
-**Redis (HIGH confidence)**
-- `redis.io` replication docs — **asynchronous replication; acknowledged writes can still be lost during failover**
-- `redis.io` pub/sub docs — Redis 7.0 sharded Pub/Sub (`SPUBLISH`/`SSUBSCRIBE`); plain `PUBLISH` propagates across the cluster bus; Pub/Sub is **at-most-once**
-- `redis.io` command reference — `GETDEL` introduced in **6.2.0**
-
-**Slack (HIGH confidence)**
-- `docs.slack.dev` interactivity docs — **ack must be HTTP 200 within 3 seconds**; `response_url` usable **up to 5 times within 30 minutes**; must ack even when sending composed responses; `trigger_id` expires in 3 seconds
-
-**Tooling (HIGH confidence)**
-- `eslint-plugin-boundaries` v5.3.1 (MIT, ~253k weekly downloads, published within the last month) — v5 uses `boundaries/dependencies` with `default: "disallow"` and element/file/module classification; `boundaries/strict` preset enables all rules
-
-**Confidence summary**
-
-| Area | Level | Notes |
-|---|---|---|
-| Component boundaries & DI wiring | HIGH | All BullMQ/NestJS/MongoDB claims verified against official docs |
-| Transactional boundary (hybrid) | HIGH | MongoDB transaction semantics + BullMQ job-id limits both verified |
-| Read-path verification | HIGH | Directly derivable from NFR-SEC-2/4, FR-L-3/7/8 and jose's verified-kid API |
-| Webhook ingest contract | HIGH | Slack ack/`response_url` limits verified; Teams/Zalo limits are MEDIUM (platform docs not re-verified in this pass) |
-| Redis Cluster failure behaviour | MEDIUM-HIGH | Mechanism verified; blast radius at *this* scale is reasoned, not load-tested |
-| JEV fallback latency budget | MEDIUM | Derived arithmetic from the PRD's own §11.4 timeouts; needs a load test to confirm |
-
-**Gaps this research could not close**
-- Zalo OA webhook signature scheme and rate limits — no official Node SDK and PHP-only docs; verify during the Zalo adapter phase, not before.
-- Teams 429 backoff envelope specifics — must be absorbed by the queue regardless, but the exact limits were not re-verified here.
-- Whether the FormIO server-side validation path (`@formio/js` in Node) is performant enough for NFR-P-4 (<800 ms); the SSR path may need a lighter validator. Worth a spike.
-- MongoDB connection-pool sizing under 1,000 concurrent users with the transaction path — reason from the driver's defaults and load-test in S6.
+**Platform documentation**
+- Zalo OA — Official Account API and webhook documentation (`developers.zalo.me`, `docs.zaloplatforms.com`): the `X-ZEvent-Signature` construction, the payload fields (`message.msg_id`, `message.quote_msg_id`, `message.conversation_id`, `user_send_group_*` event names, `oa_id`), the absence of a challenge handshake, the outbound endpoints (`/v2.0/oa/message`, `/v3.0/oa/message/cs`, `/v3.0/oa/group/message`), the reply quota (8 per 48 h), the 2 000-character text limit, the group-member APIs and their "quản lý thông tin nhóm" permission + paid GMF package requirement
+- Telegram Bot API (`core.telegram.org/bots/api`): `Update.update_id` (including the *"if there are no new updates for at least a week, then identifier of the next update will be chosen randomly"* caveat), `setWebhook` + `secret_token`, the `X-Telegram-Bot-Api-Secret-Token` header, `Message.message_thread_id`, `Message.reply_to_message`, `sendMessage`'s `message_thread_id` and `reply_parameters`, the 30 msg/s global and 1 msg/s per-chat limits, and the **absence of any member-enumeration method** (`getChat`, `getChatAdministrators`, `getChatMemberCount`, `getChatMember` only) — cross-checked against the `node-telegram-bot-api` maintainer threads and the Telegram community consensus that bulk enumeration requires MTProto
+- Slack — `docs.slack.dev` Bolt v5 release note and the v4→v5 migration guide (`url_verification`, `v0:` signing, `thread_ts`)
+- Microsoft Learn — Azure Bot Framework → Microsoft 365 Agents SDK migration guidance (`authorizeJWT` is required; the SDK ships no JWT middleware)
 
 ---
-
-*Architecture research for: IM-Driven App Builder & Integration Gateway*
-*Researched: 2026-10-01*
+*Architecture research for: IM gateway v2 — platform expansion, group RBAC, open-ended AI guard*
+*Researched: 2026-10-21*

@@ -1,26 +1,25 @@
-# Feature Landscape — IM-Driven App Builder & Integration Gateway
+# Feature Landscape — v2 Platform Expansion (Zalo OA + Telegram + Two-Way Sync + Group RBAC + AI Guard)
 
-**Domain:** Enterprise chat-front-door / integration gateway (B2B internal tooling)
-**Researched:** 2026-10-01
-**Confidence:** MEDIUM
-**Mode:** Ecosystem (feature landscape), researched *against* the PRD — not derived from it
+**Domain:** Enterprise IM gateway — platform expansion and capability extension of an existing v1 chat front-door
+**Project:** IM-Driven App Builder & Integration Gateway (`aka-nexa`)
+**Milestone:** v2 — Phase numbering continues from v1 (starts at **Phase 10**)
+**Researched:** 2026-10-21
+**Confidence:** MEDIUM-HIGH (HIGH on platform mechanics — all vendor facts below were fetched from first-party docs; MEDIUM on AI-guard design, which is a design synthesis, not a vendor-documented pattern)
+**Mode:** Ecosystem (feature landscape for new v2 features)
 
-**Confidence note:** the research-plan seam routed all 12 questions to `websearch`, whose
-`classify-confidence` tier is **LOW**. Every finding below that is load-bearing for a scope
-decision was re-verified by fetching the vendor's own documentation directly (Slack, TypeSafe
-AI, Form.io, Microsoft Learn, n8n, PagerDuty). Those are marked **[doc-verified]**. Findings
-that rest on search snippets alone are marked **[MEDIUM]** and are never used to justify a
-scope cut.
+**Scope of this document.** v1 shipped Slack + Teams, plain-language JEV routing, signed links, FormIO.js renderer +
+App Builder, per-app RBAC on real users, a connector layer with outbox/BullMQ/DLQ, an audit trail, OTel observability,
+and production-readiness tooling. **This document covers only the four new v2 capability areas** requested by the
+orchestrator: Zalo OA, Telegram, two-way inbound webhooks, group/directory RBAC, and the permission-first open-ended
+AI guard. It does not re-derive v1 features; it grades the *new* surface as table stake / differentiator / anti-feature,
+prices each with complexity, and names the v1 assets each one leans on.
 
-**Scope of this document.** The PRD (v2.0, §8, ~130 FRs) is the authoritative requirement set.
-This file does **not** re-derive it. It does four things the PRD cannot do for itself:
-
-1. Grades every PRD FR cluster for **complexity** (S/M/L/XL) — the PRD assigns priority, not cost.
-2. Classifies each cluster as **table stake / differentiator / anti-feature**, including
-   flagging P0 requirements that are realistically deferrable.
-3. Surfaces features real precedents ship that **the PRD omits** (the expensive kind of omission —
-   the ones you only learn about in production).
-4. Names the **sequencing hazards** that make the PRD's 19–28 week estimate unreachable.
+**Confidence note.** The `research-plan` seam routed all five questions to `context7` + `websearch`.
+`classify-confidence` returns **MEDIUM** for `context7` and **LOW** for `websearch`. Every vendor-mechanics claim below
+was therefore re-fetched from the vendor's own documentation (developers.zalo.me, docs.zaloplatforms.com,
+core.telegram.org, api.slack.dev, learn.microsoft.com) and is marked **[doc-verified]**. Claims resting on
+aggregated search results alone are marked **[MEDIUM]** and are never used to justify a scope decision. Findings
+that could not be verified are listed in §Gaps.
 
 ---
 
@@ -28,444 +27,458 @@ This file does **not** re-derive it. It does four things the PRD cannot do for i
 
 ### Table Stakes (Users Expect These)
 
-#### Tier 1 — in the PRD, and non-negotiable
+Missing any of these means the v2 milestone does not read as "the same product, on more platforms."
 
-| Feature (FRs) | Why Expected | Complexity | Notes |
+#### A. Zalo OA adapter
+
+| Feature | Why Expected | Complexity | Notes |
 |---|---|---|---|
-| Per-platform identity resolution → internal user UUID (`FR-I-1..10`) | Nothing works without knowing *who* is asking. Every downstream permission decision is keyed on it. | **S** | Cheap if done as one adapter-interface method per platform. Expensive if each adapter invents its own user shape. |
-| Permission-filtered tool list **before** any model call (`FR-R-1..3`, AD-1) | A router that can see tools the user cannot use is a security incident, not a UX annoyance. | **M** | The permission re-read is one of the two hottest paths; must be a Redis-cached read, never inline in the webhook receiver. |
-| One-time signed link → rendered form (`FR-L-1..3`) | The entire product promise: "complete a task via chat + one form". Without it there is no product. | **M** | Sign with asymmetric keys so the Form Renderer can verify without holding the signing key (AD-11). |
-| Atomic single-use token consumption (`FR-L-3`, NFR-SEC-1) | Double-submission is the first bug users find. `GETDEL` gives atomicity for free on Redis ≥6.2. | **S** | Do **not** hand-roll get-then-delete. One command, no race. |
-| Form Renderer SPA served from a signed claim (`FR-F-1`) | The link must resolve to something that looks like a form, not a JSON blob. | **M** | Plain `@formio/js`, bundled from npm. No CDN (see Anti-Feature NG13 / licensing notes). |
-| Submission persisted to a per-app dynamic collection (`FR-D-1..3`) | The data is the product. Losing a submission is unrecoverable from the user's point of view. | **M** | Runtime-defined schemas are the reason Mongoose was rejected — see STACK.md. |
-| At least **one external connector** with retry + DLQ (`FR-C-1..12`) | Routing modes are `internal` / `hybrid` / `external`. Shipping only `internal` ships a form tool, not a *gateway*. The stated problem is cross-system. | **M** | One well-built connector (Redmine, per the PRD) beats four half-built ones. |
-| Chat notification on completion **and** failure (`FR-N-1..8`) | A silent gateway is indistinguishable from a dropped message. Users re-ask; that becomes bot noise. | **S** | Success and failure are two different code paths with two different message shapes. |
-| Audit trail keyed by `submission_id` (`FR-AU-1..6`, NFR-O-1) | Enterprise buyers ask for this in procurement, not in usability testing. It is a table stake because it is a *precondition of sale*. | **M** | The trace/audit correlation must be designed in, not retrofitted. |
-| Webhook ack <200 ms, all logic in the consumer (`FR-IM-*`) | Slack's 3-second ack and Teams' 429/502 retry-with-jitter make the receiver a pure ingest contract. | **M** | Non-negotiable for correctness, not just latency: a slow permission lookup inside the receiver is how submissions get lost. |
+| **Zalo OA inbound webhook receiver** — POST endpoint, verify `X-ZEvent-Signature`, normalize to `InboundEvent` | An OA that users can talk to is the entire point of the Zalo adapter. Without a receiver there is no adapter. | **M** | Signature is `sha256(appId + data + timeStamp + OAsecretKey)` over the **raw JSON body string** **[doc-verified]**. This is a *concatenation-hash*, not an HMAC — it is length-extension-prone and must be computed over the exact raw bytes, not a re-serialized object. |
+| **2-second ack, then enqueue** | Zalo requires HTTP 200 for **all** webhook events within a **maximum of 2 seconds**; failure produces an "inactive webhook" notice to the app owner's Zalo account **[doc-verified]** | **S** | This is **stricter than Slack** (3 s) and **looser than the project's own `<200 ms` rule** — the v1 constraint is the binding one. Ack-then-enqueue is unchanged; only the deadline differs. |
+| **Retry-tolerance (5 retries: 30 s, 5 m, 15 m, 30 m, 1 h)** | Zalo retries failed deliveries with a `num_retry` header, and *disables the webhook registration* if the retries are also missed **[doc-verified]** | **M** | `num_retry` is the only retry signal — there is no per-event retry count in the body. The same event arrives **byte-identical**, so the idempotency key must be `message.msg_id`, not a hash of the payload. |
+| **Inbound event coverage — text, image, link, audio, video, sticker, location, business card, file** | Users send all of these from a Zalo chat window; dropping any means silent data loss | **M** | `event_name` values are enumerated and **fixed**: `user_send_text`, `user_send_image`, `user_send_link`, `user_send_audio`, `user_send_video`, `user_send_sticker`, `user_send_location`, `user_send_business_card`, `user_send_file` **[doc-verified]**. Note there is **no `user_send_voice`** — audio and video are separate. |
+| **Text-first routing only; non-text is a typed "unsupported" acknowledgement** | The v1 product is form-driven — it needs text intent, not media understanding | **S** | Map non-text events to `InboundActionSchema`'s existing `'message'` action with an adapter-supplied text stub ("[image]") so the envelope stays `.strict()`-valid, and have the consumer reply with the supported-actions list. Do **not** extend `InboundEvent` with media fields — that is a contract change for a case the product does not serve. |
+| **1:1 consultation-message reply (`Tin Tư vấn`)** | The OA's reply channel to a user who messaged the OA | **M** | **The 7-day rule:** a consultation message may only be sent to a user who has interacted with the OA within the last **7 days** and has not blocked it **[doc-verified]**. The live quota API (`POST /v3.0/oa/quota/message` with `user_id`) returns `last_interaction`, `cs_reply.remain` (free consultation sends), and `promotion.daily_remain` / `monthly_remain` **[doc-verified]**. **The notification path must consult this before sending, not discover the failure afterwards.** |
+| **OA access-token lifecycle (OAuth → access token + refresh token)** | Zalo access tokens expire; a dead token means a dead adapter | **M** | OAuth authorization-code flow, `access_token` header on every `openapi.zalo.me` call, refresh-token exchange **[doc-verified]**. Token refresh must be **KMS-encrypted at rest** and refreshed with a lock so concurrent workers do not race (v1 constraint: secrets KMS-backed, AES-256-GCM). |
+| **Follow / unfollow events** | Follow state gates who can be messaged and is the OA's only user-list primitive | **S** | `event_name: "follow" \| "unfollow"` with `follower.id` and `source` (`oa_profile`, `message_invite`, `social_plugin`) **[doc-verified]**. |
+| **Send API with the correct message class per recipient** | Sending the wrong message class silently fails or bills the wrong quota pool | **M** | Three classes **[doc-verified]**: **Tin Tư vấn** (consultation — 7-day window), **Tin gửi vào Nhóm chat GMF** (group, needs group-management permission), **Tin Broadcast** (followers only). **Transactional template messages (ZBS) are a paid, templated product with its own quota and approval — explicitly out of scope.** |
 
-#### Tier 2 — **absent from the PRD**, but users of this class of product assume they exist
+#### B. Telegram adapter
 
-These are the expensive omissions. Each is a *baseline expectation* in the precedent set, and
-each would be discovered in production rather than in design review.
+| Feature | Why Expected | Complexity | Notes |
+|---|---|---|---|
+| **Telegram inbound webhook receiver + `secret_token` verification** | Webhook mode is the only mode compatible with the project's stateless, horizontally-scaled deployment | **M** | `setWebhook` with `secret_token` (1–256 chars, `A-Z a-z 0-9 _ -`) arrives as header `X-Telegram-Bot-Api-Secret-Token` **[doc-verified]**. `getUpdates` and a webhook are **mutually exclusive** **[doc-verified]** — polling is not a fallback, it is an either/or. |
+| **Slash commands** — `/help`, `/leave`, etc., scoped to the platform | Telegram users expect `/command` and the platform menu button; v1 already has the slash-command concept | **M** | `setMyCommands` supports up to **100 commands per scope** across 7 scopes (`default`, `all_private_chats`, `all_group_chats`, `all_chat_administrators`, `chat`, `chat_administrators`, `chat_member`) **[doc-verified]**. ⚠️ **Telegram's own docs state that updates "may contain commands that don't exist at all in your bot" and carry no scope information — "your backend should always verify that received commands are valid and that the user was authorized to use them regardless of scope"** **[doc-verified]**. **Command registration is a UX affordance, never an authorization boundary.** |
+| **Inline keyboards** for disambiguation choices and clarifications | A clarification that requires typing "2" is materially worse than tapping a button | **M** | `InlineKeyboardMarkup` with `callback_data` capped at **1–64 bytes** **[doc-verified]**. `answerCallbackQuery` shows a toast (text ≤ 200 chars) or `show_alert` modal **[doc-verified]**. |
+| **Message editing** (`editMessageText`) for link replacement and status updates | A form link that expires should be *edited in place*, not re-sent as a second message | **S** | `text` is 1–4096 chars after entity parsing **[doc-verified]**. |
+| **Privacy-mode awareness** | A Telegram bot in privacy mode receives almost nothing in groups — a silent, total failure | **S** | Privacy-enabled bots receive general commands (and only group messages if the bot was the last bot to post in that group); privacy-disabled bots receive all messages except those from other bots **[doc-verified]**. **The adapter must detect and report "bot cannot see group messages" rather than appearing broken.** |
+| **Send-rate discipline** | Telegram enforces per-chat and per-group limits | **S** | **30 messages/second** broadcast-wide (raisable to 1000/s via paid broadcasts); **20 messages/minute in a group** **[doc-verified]**. `node-telegram-bot-api@2.1.0` exposes `retryDelayMs` and `conflictRetryDelayMs` for 429/409 backoff **[doc-verified]** — but the platform's own named throttler tiers (10/user/min, 100/app/min) are *stricter* and must still be enforced independently. |
+| **`message_thread_id` / `reply_parameters` for reply threading** | FR-IM-8 requires responses in the same thread where supported | **S** | `message_thread_id` targets a forum topic (supergroups and bot private chats with forum mode); `reply_parameters` carries a structured reply reference **[doc-verified]**. |
 
-| Feature | Why Expected | Complexity | Precedent | Notes |
-|---|---|---|---|---|
-| **Draft save & resume on long forms** | Any form long enough to need a gateway is long enough that people get interrupted. "Save and Continue Later" is a shipping-default in the form-vendor class. | **M** | Jotform "Save and Continue Later" + Autofill **[MEDIUM]** | **The PRD has no draft FR at all.** The Form Renderer is a stateless SPA behind a one-time token — a one-time token and a resumable draft are *mutually exclusive as designed*. This needs a real decision, not an omission. |
-| **Per-submission status/history view** | "Did my thing go through?" is the #1 support question in any async integration tool. | **M** | Slack Workflow Builder: view workflow activity logs, in-progress/completed + errors **[doc-verified]** | The PRD has an audit log (for admins) but no end-user-readable submission status. Admins and requesters are different audiences. |
-| **Visible failure + retry affordance for the requester** | Silent failure is the #1 trust killer. | **S** | Slack workflow activity logs surface errors to the builder **[doc-verified]** | `FR-N-*` covers notification; confirm it carries *actionable failure state*, not just "something went wrong". |
-| **Dead-letter / failed-submission queue an admin can inspect** | Without it, connector failures are discovered by users, not by the platform. | **M** | BullMQ DLQ (FR-C-*, partial) + n8n "Save failed executions" **[doc-verified]** | `FR-C-8/11/12` (dry_run, timeout, DLQ UI) are all P1 — but a DLQ with no UI is a support ticket generator. |
-| **Categories / tags on apps and forms** | 200 apps with no taxonomy is a folder of noise. | **S** | Slack Workflow Builder templates + gallery + search; n8n tags **[doc-verified]** | Pure metadata, low cost, high day-90 usability. PRD has none. |
-| **A starting template gallery** | Department admins need a worked example; a blank FormIO builder is a blank page. | **M** | Slack templates/gallery, n8n templates, ServiceNow Service Catalog **[doc-verified for Slack/n8n]** | Ten seed templates (expense claim, leave request, asset request, access request) carry more adoption value than ten new features. |
-| **Storage/quota + orphaned-upload cleanup** | Form.io uploads land in storage **immediately, regardless of submit**, and "the file will remain in storage even if the user removes the attached file" **[doc-verified]**. | **S** | Form.io help docs **[doc-verified]** | A direct, documented consequence of the chosen form engine. PRD has no storage lifecycle requirement. |
+#### C. Two-way inbound webhooks (notifications back to the submitter)
+
+| Feature | Why Expected | Complexity | Notes |
+|---|---|---|---|
+| **Signed inbound webhook endpoint** (external system → platform) | FR-N-1/FR-N-2. Without it, "two-way sync" is one-way with extra steps | **M** | HMAC-SHA256 over the raw body, plus **timestamp + nonce replay protection** (FR-N-8). The v1 pattern already exists for IM platforms; the external-webhook variant adds a **per-connector secret** and an **entity-ID → `submission_id` mapping**. |
+| **Notification delivery to the original submitter** | FR-N-3 — the whole point of two-way sync | **M** | The v1 `NotificationAssemblerService` already resolves a `real_user_id` → platform identity mapping and assembles an `OutboundMessage`; the new work is **binding the submitter's platform + conversation + thread identity onto the submission record at submit time** so the notification can be routed back to the right chat, thread, and user. |
+| **Idempotency on redelivery** — dedupe by external event ID | Every IM platform retries; Slack retries **3 times** (~immediately, 1 min, 5 min) with an `x-slack-retry-num` header **[doc-verified]**, Zalo retries **5 times** (30 s/5 m/15 m/30 m/1 h) with `num_retry` **[doc-verified]**, Telegram retries on non-2xx **[doc-verified]** | **M** | **Every platform is at-least-once.** The v1 `InboundEvent` already carries `event_id` and `attempt`; v2 needs a **dedupe store keyed on the platform's native event identity** (`Slack event_id`, `Telegram update_id`, `Zalo msg_id`) so a redelivered webhook produces one notification, not three. This is v1 Pitfall 7 made concrete. |
+| **Reply/thread semantics per platform** | A status update that lands as an unrelated top-level message is a support ticket | **M** | Slack: `chat.postMessage` with `thread_ts` to reply, `reply_broadcast` to also surface in the parent channel **[doc-verified]**. Telegram: `reply_parameters` / `message_thread_id` **[doc-verified]**. Zalo: `quote_msg_id` on the inbound payload marks a reply; there is no thread primitive on a 1:1 OA chat — **the notification is a new message in the OA chat window**. Teams (v1): already threaded. **The per-platform difference is the feature work; a uniform "reply" that silently degrades to a top-level message on Zalo is a defect.** |
+| **Delivery failure visibility** | FR-IM-7 — "Users MUST NOT see silent failures" | **S** | The v1 notification queue already has a 3-attempt retry and a DLQ (FR-N-6). v2 needs the **dead-letter to be observable** (a metric + an admin surface), because a failed back-notification is silent to the submitter. |
+| **Notification deep link back to the submission** | FR-N-3 says "with a deep link" — the signed read link already exists in v1 | **S** | Reuse the v1 signed stateless read link with `perm_version` checked fresh. **Do not invent a notification-specific link type.** |
+
+#### D. Group-based RBAC (directory / group sync)
+
+| Feature | Why Expected | Complexity | Notes |
+|---|---|---|---|
+| **Group → role binding per app** | The v1 model is one-role-per-user per app (FR-R-2). Group binding is what makes an app usable by a department without 50 admin clicks. | **M** | The binding is **app-scoped**: `app_id` + group identity → role. v1's `builder-ability.ts` already models `role-assignments` and `roles-permissions` sections; this adds a **principal-kind** (`user` \| `group`) to the assignment shape, not a new permission model. |
+| **Membership read per platform** | A group binding is worthless without knowing who is in the group | **M** | Slack: `usergroups.list` (scope `usergroups:read`, Tier 2 rate limit) + `conversations.members` (cursor-paginated) **[doc-verified]**. Teams: Graph `GET /teams/{team-id}/members` and `GET /teams/{team-id}/channels/{channel-id}/allMembers` **[doc-verified]**. Telegram: `getChatMember` / `getChatMemberCount` — **only guaranteed to work for other users if the bot is an administrator in the chat** **[doc-verified]**. Zalo: `GET /v3.0/oa/group/conversation` returns messages, and the group-message send API requires the app to hold group-management permission **[doc-verified]**. ⚠️ **Zalo exposes no documented "list all members of a group" API** — this is a real gap (see §Gaps). |
+| **Join / leave event handling** | Event-driven sync is cheaper and fresher than polling | **M** | Slack: `member_joined_channel` / `member_left_channel` / `group_join` / `group_leave` / `user_change` **[doc-verified]**. Telegram: `chat_member` updates carry `old_chat_member` → `new_chat_member` with `member`/`left`/`kicked`/`restricted`/`administrator` states — **but only if the bot is an administrator AND `"chat_member"` is explicitly in `allowed_updates`** (an empty `allowed_updates` list excludes `chat_member`) **[doc-verified]**. Zalo: `user_join_group` / `user_out_group` / `accept_request_join_group` events carry `oa_id`, `group_id`, and a `users[]` array **[doc-verified]**. |
+| **Stale-membership handling** | Every IM platform's membership is eventually-consistent, never authoritative. A user who left the group 3 days ago must not still hold the role. | **M** | Three mechanisms, all required: (1) **event-driven invalidation** on leave/remove; (2) **periodic full reconciliation** per bound group (a BullMQ Job Scheduler, not `@nestjs/schedule` — v1 constraint); (3) **a bounded-staleness rule** — membership older than a configurable window is treated as *unverified* and either re-fetched or dropped. v1 Pitfall 4 (`perm_version` covers 1 of 7 revocation events) already identifies "group membership revoked" as a **missing revocation event** — group RBAC is where that gap is closed. |
+| **Directory sync (SCIM / Entra ID) as an optional upstream** | Group membership sourced from an IM platform is a proxy; the HR directory is the truth | **L** | Slack SCIM v2 exposes `/Users` and `/Groups` with `PATCH`/`DELETE` **[doc-verified]**. Entra ID → Slack provisioning via SCIM is the mainstream pattern **[MEDIUM — corroborated by Slack Help + Entra tutorials, not from a single first-party spec]**. **Scope this as an optional upstream, not a v2 requirement** — it is the largest single cost in this group and the least differentiating. |
+| **Effective-permission resolution with a precedence rule** | A user in two groups mapped to different roles needs one answer | **M** | Define precedence explicitly: **union of group-derived permissions** (a user is granted the union of all their groups' roles for that app), with explicit **user-level assignment taking precedence for conflicts** if any deny model exists. v1's `RbacService` is currently a stub with hardcoded grants; v2 needs the real resolver. |
+| **Audit trail for group-driven grants and revocations** | FR-AU-1/2 — every state-changing action is audited; a group grant *is* a state-changing action | **S** | The v1 append-only audit store records the actor as `real_user_id`. **Group-derived grants need an actor of "system"** (the sync job) plus the group identity — otherwise every synced grant looks like an unauthorized self-grant. |
+
+#### E. Permission-first open-ended AI guard
+
+| Feature | Why Expected | Complexity | Notes |
+|---|---|---|---|
+| **The guard never sees an unauthorized tool** | This is the amendment to PRD **NG1**, and it is the *entire* safety story. The model must not even be able to see that an unauthorized app exists. | **M** | The mechanism already exists in v1: `RoutingOrchestrator` filters `app_hints` against `authorizedTools` and refuses to build a request from the global catalogue (`T-03-01`) **[code-verified in `packages/domain/src/decision/routing-orchestrator.ts`]**. **The v2 AI guard plugs into this same seam — it does not build a parallel path.** |
+| **The guard never invokes anything** | The model *chooses*; the platform *executes* | **S** | The v1 boundary is already correct: `RoutingOrchestrator` returns `{kind:'link', toolId}` or `{kind:'clarify', toolIds}` — a **selection**, and `canOpenNow(toolId)` re-checks permission at the execution boundary **[code-verified]**. A v2 guard that emits a tool *call* would be a regression, not a feature. |
+| **Clarification prompts with bounded multi-turn** | "Which do you mean?" is the difference between a working assistant and a dead end | **M** | **The v1 groundwork is already built**: `ClarificationSessionService` caps at **2 replies** and **3 displayed choices**, keys state on `realUserId:channelId:threadTs` in Redis with a **15-minute TTL**, re-filters displayed choices on every reply so a revoked app disappears mid-conversation, and escalates to authorized examples + slash commands after 2 replies **[code-verified in `packages/domain/src/decision/clarification-session.service.ts`]**. **v2 adds the AI-generated clarification *text* on top of this session machinery — it does not replace it.** |
+| **Disambiguation between high-confidence alternatives** | Two apps scoring 0.91 and 0.89 need a tie-break, not a coin flip | **M** | FR-J-9 already requires presenting disambiguation options when alternatives fall within 10% of the top. **The v2 addition is the *interaction surface***: Telegram inline keyboard, Slack buttons, Zalo numbered list. **Telegram `callback_data` is capped at 1–64 bytes** — a candidate list must be encoded as a short token resolved server-side, never as inline JSON. |
+| **Multi-turn context carried across turns** | "Actually, make it two days" only works if the prior turn survives | **M** | `JevContextSchema.previous_turns` already exists as `Turn[]` with `role: 'user' \| 'assistant'` — **note the closed role set: there is no system turn** **[code-verified in `packages/contract/src/jev/v1/jev-request.ts`]**. `JevState.turn_count` exists and `force_clarification` is the platform's own clarification hook. **The gap is ordering, not schema**: v1 Pitfall 7 establishes that IM platforms deliver out of order, so `previous_turns` can be silently wrong. |
+| **Confidence-gated abstention with a deterministic fallback** | A gateway that guesses is worse than one that asks | **S** | The v1 gate is already correct: `verified !== true` → clarify, below-threshold confidence → clarify, a competing permitted alternative → clarify, `tools.length === 0` → clarify, expired deadline → clarify **[code-verified]**. The `JevResponse.choice.verified` tri-state (`true` / `false` / `null`) separates *abstention* from *low confidence* — **`null` is not "low confidence", it is "the model declined"** **[code-verified]**. |
+| **Every displayed choice is re-authorized at display time** | A revoked app must not stay visible in an open clarification session | **S** | Already enforced by v1's D-48/D-50 rules **[code-verified]**. **v2 must preserve this under group RBAC**, where revocation now has a second trigger (group membership loss) — see the dependency note below. |
 
 ---
 
 ### Differentiators (Competitive Advantage)
 
-The differentiating claim in `PROJECT.md` is: *an employee can complete a cross-system task
-entirely through chat plus a single rendered form, without ever logging into — or learning — the
-downstream system.* These are the features that make that claim true and defensible. Pick a
-few; do not try to differentiate on everything.
+Features that set the product apart. Not expected by users, but valued — and, in this milestone, the reason the
+work is worth doing rather than merely defensible.
 
-| Feature (FRs) | Value Proposition | Complexity | Notes |
+| Feature | Value Proposition | Complexity | Notes |
 |---|---|---|---|
-| **Permission-first routing — filter tools by RBAC, *then* ask the model** (`FR-R-1..3`, `FR-J-1..11`, AD-1) | The model never sees a tool the user cannot invoke. This collapses the decision space to a single, legal Choice question and is the reason the JEV path is cheap enough to run on every message. | **M** | **No precedent does this.** Slack Workflow Builder filters at *connector-step* level (per-user third-party auth), not at the routing layer. n8n/Power Automate have no user-level tool visibility at all. This is the sharpest edge in the design. |
-| **Confidence-gated handoff with an explicit no-model fallback** (`FR-J-*`) | When the decision model is unsure, the product degrades to a deterministic picker instead of guessing. Predictability in an enterprise gateway is worth more than fluency. | **M** | TypeSafe's own design guidance: all questions evaluated **in parallel and in isolation**; "adding questions barely changes the response time"; and queries must be **atomic, composed in code** — "if the question would require extended reasoning or weighs multiple independent factors, decompose it" **[doc-verified]**. AD-1 shrinking the prompt to one Choice question is exactly the sanctioned pattern. |
-| **Chat is the entry point, the form is the interface** — one message in, one rendered form out | Positions the product against "conversational everything" on evidence, not taste. | **S** | Slack's own Block Kit guidance says modals are for "collect structured data… **cut out the conversation** and send all necessary inputs to an LLM" **[doc-verified]**. The industry has already decided structured capture happens outside the chat surface. |
-| **Self-service App Builder for department admins** (`FR-F-2..14`, §14 UI) | Removes the engineering ticket from the loop. Retool and Zoho Creator still require someone technical; ServiceNow's catalog still requires a catalog admin. | **XL** | This is the largest single build in the roadmap and the largest single differentiator. It is also the item the PRD sequences *after* things that depend on it — see Dependency Hazard DH-1. |
-| **Stateless signed read links, verifiable without the signing key** (`FR-L-*`, AD-11, `perm_version`) | A 90-day-lived read link that a static web app can verify with a *public* key. No shared secret in the browser, no session, horizontally scalable. | **M** | Requires asymmetric signing (`jose`, EdDSA/ES256) — HS256 is the wrong primitive here. Also the natural home for the read path the PRD defers to Phase 4. |
-| **Swappable decision-model provider seam** (AD-1) | The decision model is a hosted vendor product; the protocol is a PRD-invented interface. The seam is what keeps that from being a hard dependency. | **S** | Keep it thin (interface + one adapter + one fake). Every extra abstraction here is cost without benefit. |
-| **Delegated ownership — app owner transfer, workflow-manager role** (`FR-R-5/6`, `FR-LC-7`) | Department turnover must not orphan an app or lose its admin. | **S** | Precedent: Slack's delegated **workflow managers** **[doc-verified]**. Small FRs, disproportionate operational value. |
-| **Zero-downtime 90-day dual-key rotation** (NFR-SEC-9) | Signing-key rotation without downtime is a procurement checkbox most small vendors cannot tick. | **M** | Requires `kid` → keyring resolution. This is precisely why `jose` beats `@nestjs/jwt` (no JWKS, no keyring). |
-| **GDPR-aligned erasure + export, PII excluded from logs pre-serialisation** (NFR-SEC-*, PROJECT.md constraints) | Right-to-erasure is a promise that is **broken by construction** if PII reaches the log stream — a field denylist regex always misses. A field allowlist before serialisation is the only version that holds. | **M** | A genuine enterprise differentiator *if* implemented as an allowlist at the logger boundary. If implemented as a scrubber downstream, it is theatre. |
+| **One normalized contract across four platforms with genuinely different delivery semantics** | Slack has threads and buttons, Telegram has inline keyboards and callback queries, Zalo has *neither* — it has a 7-day consultation window, a quota model, and quote-replies. Most gateway products pick one platform's semantics and bolt on the rest. Doing the *translation honestly* — including degrading gracefully where a platform cannot thread — is the differentiator. | **L** | This is only credible because v1 froze `InboundEvent`/`OutboundMessage` as `.strict()` Zod envelopes with an `ImPlatformSchema` that already includes `'zalo'` and `'telegram'` **[code-verified]**. The differentiator is not the adapter code; it is that the **same** product behaves correctly on a platform with no threads and a 2-second ack budget. |
+| **Permission-first AI guard — the model chooses, it never invokes** | Most conversational-AI gateways give the model a tool-calling API and let it decide what to run. That reverses the v1 architecture's central claim (AD-1) and makes "which tools does this user see" a model-discretion question instead of a platform-enforced invariant. A guard where **the platform pre-filters, the model selects from the filtered set, and the platform executes** is a genuinely different posture — and it is one an enterprise security reviewer will recognise as correct. | **M** | **The v1 architecture already earned this claim.** The v2 work is to extend it to open-ended phrasing *without weakening it*. The headline claim is unchanged; only the input space widens from "app names" to "free-text intent". |
+| **Two-way sync that lands in the right thread, with the right submitter's identity** | The failure mode of naive two-way sync is a status update appearing as an orphan top-level message in a channel, sent to a *different* person than the one who filed the request. Getting `thread_ts` / `reply_parameters` / Zalo quote-reply right, and binding submitter identity at submit time, is invisible when it works and infuriating when it doesn't. | **M** | The v1 `NotificationAssemblerService` already resolves identity mappings and assembles `OutboundMessage`s; v2's job is to **bind the conversation context at submit time**, not to rebuild the assembler. |
+| **Group RBAC with revocation that actually revokes** | The tempting version of group RBAC is "map group → role, done". The real version handles **stale membership** (a user who left the group three days ago must lose the role), **group-scoped role precedence**, and **audit attribution that doesn't blame the user for a sync job's grant**. Shipping the naive version means a **security hole that looks like a feature**. | **M** | This is where v1 Pitfall 4 (`perm_version` covers 1 of 7 revocation events) is finally paid off. The differentiator is the *revocation* half, not the *grant* half. |
+| **A Zalo adapter built to Zalo's actual rules rather than a Slack-shaped clone** | Zalo's 7-day consultation window and per-user quota are *the* constraint that determines whether a notification ever lands. A naive adapter sends, fails silently, and ships a product that appears broken in exactly the market it was built for. | **M** | Requires reading the quota API before sending (`POST /v3.0/oa/quota/message` → `last_interaction`, `cs_reply.remain`, `promotion.daily_remain`) **[doc-verified]** and encoding "user outside the 7-day window" as a distinct, *visible* outcome rather than a generic send failure. |
+| **Graceful degradation on Telegram privacy mode** | A bot in a Telegram group with privacy mode on receives almost nothing, and the failure is silent. Detecting it and saying so ("the bot can't see messages in this group — ask an admin to disable privacy mode") is a small feature that prevents a category of "it's broken" support tickets. | **S** | Cheapest differentiator in the set. |
 
 ---
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-This is the most valuable section of this document. Each entry was evaluated against a real
-product's shipped behaviour, not against intuition. "Why problematic" cites the precedent.
+Features that seem good in a feature brainstorm and create real problems. Listed here so the roadmap does not
+accidentally absorb them.
 
-#### Anti-features that must be explicitly ruled OUT of v1
-
-| Feature | Why Requested | Why Problematic | Alternative |
+| Anti-Feature | Why Requested | Why Problematic | Alternative |
 |---|---|---|---|
-| **NG1 — Open-ended conversational AI** ("just ask the assistant to do it") | Highest surface appeal in the entire feature space. It is what every demo of this product category shows. | The decision model is a **structured** model: it returns `choice`, `probabilities`, `confidence` from discrete, atomic questions **[doc-verified]**. Open-ended generation is a different product with a different failure surface — hallucinated tool names, unverified side effects, and no confidence signal to gate on. TypeSafe's own guidance is to decompose multi-factor questions into atomic ones precisely because extended reasoning degrades **[doc-verified]**. | Keep the conversational *surface* (natural-language intent → structured Choice), and make every ambiguous case fall through to a deterministic picker. Ship a confidence gate, not a chat loop. |
-| **NG2 — Group / channel-level RBAC** | "Grant everyone in #it-help the same apps." Sounds like a one-line role. | Role membership in an IM platform is a **second identity system** with its own lifecycle, sync, and revocation semantics. Every hot-path permission check now has two sources of truth that can disagree. The 200-app / 1,000-user scale does not need it. | Single-user RBAC (`FR-R-*`). If a department genuinely needs shared access, model it as a **department claim on the user record**, resolved at read time — not as a parallel role-membership graph. |
-| **NG3 — Native IM forms** (Slack modals / Adaptive Cards as the data-capture surface) | Zero context switch. The user never leaves the chat client. This is the single most requested item in this category. | Slack's own platform limits are severe and hard: an **Input block holds exactly one element** (label max 2000 chars); a modal view stack holds **max 3 views at any one time**; `trigger_id` expires in **3 seconds**; `view_submission` must be acked within 3 s; optimistic concurrency needs the `hash` from `views.update` **[doc-verified]**. A real business form does not fit in one input block, and a 3-view modal cannot express a conditional multi-section form. | **The signed outbound link + web form.** This is what the PRD already does — and it is what Slack itself recommends: modals are for "collect structured data… **cut out the conversation**" **[doc-verified]**. Also what Slack ships for its own long-form case: "if a workflow starts with a link, you need to find and click that link" **[doc-verified]**. |
-| **NG4 — Multi-step approval engine** | "Add an approver before it submits." Universally requested; feels like one more field. | Even a **single-approver** action spans four separate documented areas in Power Automate: manage sequential approvals, create parallel approval workflows, cancel an approval request, create long-running approvals **[doc-verified]**. Approvals exceeding 30 days "store your approvals in Microsoft Dataverse" and require **two flows** **[doc-verified]**. The surface area is already large at step one, before any branching. | Ship **one-time, single-step approval** if anything, and put it post-MVP. Where approval is genuinely required (procurement, access grants), the destination system's approval flow is the right place for it — route there, don't reimplement it. |
-| **NG5 — Real-time collaborative form editing** | Two admins editing the same form is the intuitive expectation once forms are a shared artifact. | Adds CRDT/OT or a lock protocol, presence, conflict resolution, and a merge story for JSON Schema that the form engine owns anyway. `@formio/js` is not designed as a collaborative document model. Zero precedent in this product class treats it as table stakes. | Optimistic concurrency with **version snapshots + explicit rollback** (`FR-F-6`). Publish/change-history over a single-writer model. |
-| **NG6 — Cross-app data sharing in v1** (`FR-X-1..7`, all P1) | It is the literal words "integration **gateway**". Without it, apps are islands. | All seven FRs are marked **P1**, which places a data-governance surface (what may app A read from app B, with whose consent, audited how?) at the same priority as core routing. This is the feature most likely to produce a silent authorization bug, because every cross-app read is a place where the *source* app's RBAC can be forgotten. | Ship internal + external routing first. Cross-app sharing is a **v2 differentiator** with an explicit rule: a cross-app read re-evaluates the *requesting* user's permissions against the *source* app, never the calling app's grant. |
-| **NG7 — Native mobile client** | "Employees are on their phones." | Two apps (Form Renderer, App Builder) already at React 19 + Vite 8 scale. A third surface multiplies QA, review, and release. And the premise is weak: the IM client is already on the phone — the form is a link opened in the same mobile browser session. | Responsive Form Renderer. Nothing else. The IM client is the mobile app; do not compete with it. |
-| **NG8 — Multi-organisation / cross-org collaboration** (Slack Connect analogue) | Enterprise buyers always ask. | PROJECT.md is explicit: **single enterprise deployment in v1, no cross-org isolation work**. Cross-org adds tenant-boundary enforcement to every hot path, which is precisely the class of bug that is unrecoverable once shipped. | Say no explicitly and write it into the Out-of-Scope list. Re-open only if a named customer requirement arrives. |
-
-#### Anti-features to guard against during execution (not in the PRD, likely to be requested mid-build)
-
-| Feature | Why Requested | Why Problematic | Alternative |
-|---|---|---|---|
-| **NG9 — A general workflow engine** (loops, branching DSL, sub-workflows, canvas groups) | The App Builder starts to look like a workflow tool, and the first request is always "add a condition." | This is n8n's entire product. The documented surface at maturity includes sub-workflows, canvas groups, conditional branching, per-execution error workflows, execution-data retention and redaction, and **workflow reviews with version pinning and visual diffs** **[doc-verified]**. Each is weeks of work and none is in the PRD's value proposition. | Routing destinations stay a fixed small enum (`internal` / `external` + connector id). Conditional *display* inside forms is a FormIO concern and stays there. If branching becomes real demand, it is a separate product. |
-| **NG10 — A publish-review gate on the App Builder** *(request is reasonable; the PRD's omission is not)* | Department admins author **production** workflows that write to real downstream systems. Someone should approve before publish. | This is **not** a reason to build it in v1 — it is a reason to acknowledge the PRD has no answer. n8n ships exactly this (submit a *pinned version* for review; statuses Waiting / Changes requested / Approved / Closed; review blocks publishing from editor, API **and MCP server**; publish is attributed to the requester, not the approver) **[doc-verified]**. | v1 mitigation: **named app owner + audit log of every schema change** (`FR-AU-*`). Record the gap in §22–§25 and revisit when non-technical admin authoring actually reaches production use. |
-| **NG11 — Conversational status polling** ("what's happening with my request?") | Users will ask, repeatedly. | PagerDuty publishes "**Too frequent status updates**" as a named incident-response anti-pattern, with 5-minute cadence rejected in favour of 20–30 minutes **[doc-verified]**. Bots that answer every "any update?" create a feedback loop that buries real signal. | Push **one** terminal-state notification per submission (`FR-N-*`). Do not implement an update-query command in v1. If asked for, give a deep link to the status view rather than a chat answer. |
-| **NG12 — Polling the destination system for status** | "Did Redmine accept it?" feels important. | Adds per-connector polling state machines, rate-limit budgeting against third-party APIs, and a class of failure that is invisible when it goes wrong. | Fire-and-confirm at the connector boundary: the submission record carries the connector response. Status *of our own* submission is local state and is free. |
-| **NG13 — Form.io premium components, starting with File upload** (`FR-F-10`, P1) | File upload is a baseline expectation on any real business form. | Licensing, not capability. `formio.js` (the renderer) is **MIT**; the `formio` core engine is **OSL 3.0**; and **Premium** components require a Library License key plus `@formio/premium` — the list includes **File**, Data Source, CAPTCHA, Nested Form, Tagpad, Sketchpad, Review Page, Custom, Data Table **[doc-verified]**. Shipping `FR-F-10` on the premium File component puts the AD-3 "open source" claim at risk. | Either (a) spike whether `@formio/js` alone renders a `file` component unlicensed — **unresolved, needs a spike** — or (b) drop file upload from v1 and route attachments through the destination connector's own API. Option (b) is safer and cheaper. |
-| **NG14 — CDN-hosted Form.io builds** (`cdn.form.io/js/formio.full.min.js`) | Faster to wire up; no build step. | Third-party CDN under SRI pinning is an external availability dependency on the **one component the entire product renders through**, and an SRI-pinning break takes the product down. | Bundle `@formio/js` from npm via Vite. It is already in the stack. |
+| **Open-ended free-form chat / a general assistant** | NG1 was the PRD's explicit non-goal; "add AI" is the easiest thing to put on a roadmap | It contradicts PRD **NG1** and v1's core value ("the form-plus-integration pair is the product"). Free generation produces claims with no verifiable source, which in an enterprise HR/ERP context is a liability. | **The v2 amendment**: a *guard* — the model classifies intent against a **pre-filtered, permission-bounded** tool set and either selects a tool, asks a bounded clarification, or abstains. **No free generation. Ever.** |
+| **Giving the model a tool-calling / function-calling API** | It is the standard pattern every LLM framework advertises; it looks more "powerful" | It **reverses AD-1**. The model becomes the thing that decides which tools are reachable, so "does this user see the HR app" becomes a model-discretion question. It also makes the permission boundary untestable by a unit test. | Model output is a **selection** (`toolId` + `confidence`), validated against the authorized set by the platform. The platform — not the model — issues the link. This is already v1's `RoutingOrchestrator` shape; keep it. |
+| **Auto-executing a form submission from the AI guard** | "Just file it for me" is what users want from an assistant | It bypasses the one-time-link, form-render, and consent model entirely (AD-3, AD-11). It also means a hallucinated field value writes real data into a downstream ERP. | The guard **always** ends in a signed link → the FormIO.js form → the user submits. **The form is the consent surface.** Do not shorten it. |
+| **Native IM form rendering (Block Kit, inline keyboards as forms, Zalo Mini App forms)** | Users hate leaving the chat window; every platform is pushing native form UI | Contradicts **NG3** and AD-3 ("FormIO.js everywhere, one engine"). A second renderer is a second set of validation rules, a second accessibility story, and a second set of bugs. | One renderer, one engine, one set of validation semantics. **Inline keyboards are for *disambiguation choices* (2–3 options), not for form fields.** That distinction is the line. |
+| **Real-time group membership sync with zero staleness** | "The permission should be exactly right at every instant" | IM platforms expose membership **eventually**, not instantaneously, and all four deliver events at-least-once and out of order. Zero staleness is not implementable against Slack/Teams/Telegram/Zalo event streams. | **Bounded staleness** with three mechanisms: event-driven invalidation + periodic full reconciliation + a max-staleness window that triggers a re-fetch. Document the bound; make it observable. |
+| **Broadcasting notifications to an entire IM group** | "The whole team should see this" | Leaks one person's submission status to everyone, breaks FR-N-3's "the original submitter" model, and — on Zalo — burns the OA's per-user quota. | Notify the **submitter**. For group visibility, add an explicit **opt-in per-app subscription** (FR-N-5) that is a separate, audited grant — not an implicit side effect of a group role. |
+| **Using `passport` / `@nestjs/passport` for the new adapters' auth** | It is the NestJS default and appears in most tutorials | v1 already rejected it: `passport@0.7.0` first published 2023-11-27 and it wraps the `jsonwebtoken` that v1 rejected in favour of `jose`. Re-introducing it in v2 would fork the auth story across adapters. | **One auth seam.** Zalo uses OAuth access tokens (KMS-encrypted, refreshed under a lock); Telegram uses the `secret_token` header; Slack/Teams keep what v1 built. All four converge on the same `InboundEvent`/`OutboundMessage` boundary. |
+| **A second `InboundEvent` schema variant per platform** | "Slack events don't fit the Telegram shape" | It destroys the adapter contract that is v1's biggest structural asset, and it means every downstream consumer (RBAC filter, JEV, audit, notification assembler) grows platform branches. | One envelope. Platform-specific payloads are **translated at the adapter boundary** and never leak past it. The v1 `InboundEvent` `.strict()` schema is the enforcement mechanism. |
+| **Long-polling as a Telegram fallback** | "Webhook might fail; polling is more robust" | Telegram's `getUpdates` and a webhook are **mutually exclusive** **[doc-verified]** — setting one disables the other. A polling fallback therefore *breaks* the primary path. | Webhook-only, with the platform's own retry handling (Telegram retries on non-2xx). If the webhook is down, Telegram's retries cover a 5-minute window; beyond that, the deployment is genuinely down and the v1 alerting path fires. |
+| **Long-running work inside the Zalo webhook receiver** | The 2-second window looks generous | It is a *deadline*, not an allowance. Zalo **disables the webhook registration** if the retry window is missed **[doc-verified]** — a single slow handler can deregister the OA entirely. | Ack-then-enqueue, exactly as v1 does for Slack and Teams. The receiver verifies the signature, enqueues, returns 200. **All logic in the consumer.** |
+| **A "Zalo Mini App" as an alternative entry point** | Zalo pushes Mini Apps; it looks like the modern path | A Mini App is a **web app embedded in Zalo** — it is a *second* form surface and a second identity surface, which is exactly what NG3 and AD-3 forbid. It also requires the OA to be linked to the Mini App for notifications to work **[doc-verified]**. | The **OA** is the adapter. The existing FormIO.js renderer stays the single form surface; the OA hands out a signed link to it, exactly as Slack does. |
+| **Free-text AI answering questions about downstream data** | "The assistant could just tell me my leave balance" | The platform is **not** the system of record (NG2). It routes and links; it does not own downstream data. Any answer it gives is either a stale cache or a live read of a system whose schema we do not control. | A link. The AI guard selects the app; the form or read link retrieves the real data from the source of truth. |
 
 ---
-
 ## Feature Dependencies
 
 ```
-                            ┌──────────────────────────┐
-                            │ Identity resolution      │  FR-I-*
-                            │  (per-platform user)     │
-                            └────────────┬─────────────┘
-                                         │ requires
-                            ┌────────────▼─────────────┐
-                            │ RBAC engine + perm_      │  FR-R-*
-                            │ version cache            │
-                            └────────────┬─────────────┘
-                                         │ requires
-        ┌────────────────────────────────┴─────────────────────────────┐
-        │                                                               │
-┌───────▼────────┐   requires    ┌───────────────────┐            ┌─────▼──────┐
-│ Tool filter    │──────────────▶│ Decision routing  │            │ Audit log │
-│ (pre-model)    │               │ (JEV + fallback)  │            │ FR-AU-*   │
-└────────────────┘               └─────┬─────────┬───┘            └─────┬──────┘
-                                       │         │                       │
-                         requires      │         │      requires        │
-                                       │         │                       │
-                              ┌────────▼──┐  ┌───▼────────────┐          │
-                              │ One-time  │  │ App Builder    │          │
-                              │ signed    │  │ (form schema)  │          │
-                              │ link      │  │ FR-F-2..14     │          │
-                              │ FR-L-*    │  └───┬────────┬───┘          │
-                              └────┬──────┘      │        │              │
-                                   │             │        │              │
-                    ┌──────────────┴──┐   ┌──────▼───┐ ┌──▼──────────┐  │
-                    │ Form Renderer   │   │ Version  │ │ Submissions │◀─┘
-                    │ (stateless SPA) │   │ rollback │ │  + status   │
-                    └────────┬────────┘   │ FR-F-6   │ │  view       │
-                             │            └──────────┘ └─────────────┘
-                             │ requires
-                    ┌────────▼─────────┐
-                    │ Object storage  │────▶ [ GAP: no storage/quota
-                    │ (S3 + token EP) │       or orphan-cleanup FR ]
-                    └──────────────────┘
-
-  ┌─────────────────────────── CONFLICTS ────────────────────────────┐
-  │  NG3 native IM forms  ──conflicts──▶  Form Renderer (above)     │
-  │  NG1 open-ended AI     ──conflicts──▶  permission-first filter  │
-  │  NG6 cross-app sharing ──conflicts──▶  single-app RBAC isolation │
-  │  NG4 approval engine   ──conflicts──▶  fire-and-confirm routing  │
-  └──────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────────────────────────────────┐
+                    │  PREREQUISITE: v1 seams already in place     │
+                    │  • InboundEvent / OutboundMessage (.strict)  │
+                    │  • RoutingOrchestrator (filter → select)     │
+                    │  • ClarificationSessionService (2 replies)   │
+                    │  • NotificationAssemblerService              │
+                    │  • perm_version epoch + RBAC cache           │
+                    └─────────────────────────────────────────────┘
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        │                             │                             │
+   [Zalo OA adapter]            [Telegram adapter]          [AI guard]
+        │                             │                             │
+        │  requires                    │  requires                   │  requires
+        │  • webhook ingest            │  • webhook ingest           │  • RBAC filter (v1)
+        │    (verify → enqueue → ack)  │    (secret_token → enqueue)  │  • ClarificationSessionService
+        │  • Zalo access-token         │  • command registry          │  • JEV provider chain
+        │    lifecycle (KMS)           │  • callback_query →         │  • tool-filter seam
+        │  • quota-aware send          │    InboundAction=interaction│  • JevRequest/Response
+        │                             │                             │    (.strict() — D-23)
+        │                             │                             │
+        └──────────┬──────────────────┘                             │
+                   │                                                │
+                   │  both produce                                  │
+                   ▼                                                │
+        [Normalized InboundEvent]                                  │
+                   │                                                │
+                   │  feeds                                         │
+                   ▼                                                │
+        [Identity resolution → RBAC filter] ◄──────────────────────┘
+                   │
+        ┌──────────┴──────────────────────────────┐
+        │                                         │
+   [Two-way sync]                          [Group RBAC]
+        │                                         │
+        │  requires                              │  requires
+        │  • submit-time identity binding        │  • RBAC resolver (real, not stub)
+        │    (platform + conversation + thread)   │  • perm_version epoch
+        │  • HMAC-SHA256 verification            │  • per-platform membership read
+        │  • dedupe by external event ID         │  • reconciliation scheduler
+        │  • thread-aware delivery per platform  │  • audit actor = "system"
+        │                                         │
+        └──────────┬──────────────────────────────┘
+                   │
+                   │  both need
+                   ▼
+        [Submission record carries: submitter real_user_id,
+         platform, conversation_id, thread_id, app_id]
 ```
 
 ### Dependency Notes
 
-- **Identity requires RBAC.** Every permission decision is keyed on a resolved internal user
-  UUID (`map_uuid`). RBAC cannot be evaluated for a platform-native ID that has not been mapped.
-  This is why identity is not parallelisable with the rest of Phase 1.
+- **Every new adapter requires the v1 webhook-ingest seam.** The ack-then-enqueue discipline is not per-adapter; it is
+  a shared `WebhookIngestService.ingest(rawBody, headers)` that verifies, dedupes, enqueues, and returns — with the
+  HTTP controller doing nothing but `res.status(200)`. v1 Pitfall 5 identified the unawaited-`queue.add()` bug as
+  invisible in code review; four more adapters multiply that exposure.
+- **Zalo and Telegram both require the identity-resolution seam to be platform-keyed.** `IdentityMapping` is already
+  keyed `(platform, chat_user_id)` **[code-verified]** — but the v1 `IdentityMappingRepository` and `ProfileRepository`
+  are **in-memory stubs, not MongoDB-backed**. Two more platforms arriving before the persistence layer is real
+  would multiply data loss across four platforms instead of one.
+- **Two-way sync requires the submission record to carry submitter conversation identity.** This is the hard
+  dependency in this milestone. The notification can only go "back to the original submitter" if, at submit time, the
+  platform, conversation, and thread were recorded alongside the submission. **Retrofitting this after the fact is
+  impossible for historical submissions** — so it must land *with* the two-way sync work, and it constrains the
+  submission schema.
+- **Two-way sync depends on the notification assembler, which exists but has not been exercised against a
+  thread-aware, multi-platform target.** v1's `NotificationAssemblerService` resolves a `real_user_id` → platform
+  mapping and produces an `OutboundMessage` — but `OutboundMessage` **has no `thread_id` / `reply_to` field**
+  **[code-verified in `packages/contract/src/events/outbound-message.ts`]**. Threading therefore requires a
+  **contract extension to `OutboundMessage`** (a `reply_to` / `thread_id` field), not just new adapter code.
+  **This is a frozen-contract change and must be an explicit, versioned amendment — D-23-style — not an ad-hoc field.**
+- **Group RBAC depends on the real RBAC resolver, and the v1 resolver is a stub.** `RbacService.hasPermission` today
+  returns `true` for `leave:request` unconditionally and `getRoles` returns a hardcoded `['employee']`
+  **[code-verified in `packages/domain/src/authz/rbac.service.ts`]**. Group RBAC is meaningless on top of a stub.
+  **Building the group sync before the resolver means shipping a security feature that does not compute permissions.**
+- **Group RBAC and the AI guard interact in exactly one place — and it is load-bearing.** The AI guard's candidate set
+  is produced by the RBAC filter. When group membership changes, the candidate set changes **mid-conversation**. v1's
+  `ClarificationSessionService` already re-filters displayed choices on every reply (D-48/D-50) so revoked apps
+  disappear **[code-verified]**. **v2 must preserve this invariant under group-derived revocation**: a user removed
+  from a group must see that app vanish from an open clarification session, not keep a stale button that fails on click.
+- **The AI guard depends on the JEV wire contract staying frozen.** `JevRequestSchema` / `JevResponseSchema` are
+  `.strict()` and versioned by `JEV_SPEC_VERSION = '1.0'`, with a frozen-key-set test **[code-verified]**. Extending
+  the guard must therefore happen through **the existing `state.force_clarification` boolean, `context.previous_turns`,
+  and `response.alternatives` / `response.clarification_prompt`** — not by adding fields to the request.
+  **If a new field is genuinely required, that is a `JEV_SPEC_VERSION` bump and a conformance-suite update, and it
+  should be treated as a deliberate milestone-sized decision, not a v2 side-effect.**
+- **AI guard and multi-turn context depend on ordered delivery.** `JevContextSchema.previous_turns` assumes the
+  previous turn is actually the previous turn. v1 Pitfall 7 establishes that IM platforms deliver **at-least-once and
+  out of order**. **The AI guard's multi-turn feature is only correct if the v2 ingestion layer orders turns per
+  (conversation, user) before building the context.** This is a shared prerequisite with the two-way sync work —
+  both need the same ordering/dedupe machinery.
+- **Zalo depends on a real OA account and a real OA approval.** No amount of code reading substitutes for it. v1's
+  own stack research flagged spike **S2** (Zalo OA client: authenticate, send a message, receive + verify a webhook,
+  against a real OA) as a **two-day spike on a real OA account**. **That spike is a hard prerequisite for the Zalo
+  phase**, and its most important open question is whether Zalo offers a request-signing mechanism strong enough for
+  the platform leg — if it does not, the threat model for that adapter changes (network control + replay window
+  instead of HMAC).
+- **Telegram's inline keyboards depend on the AI guard's disambiguation design — and vice versa.** The 1–64-byte
+  `callback_data` limit **[doc-verified]** means the disambiguation payload must be an **opaque server-side token**,
+  not an inline encoding of the candidate list. **That constraint pushes the disambiguation feature *behind* the
+  AI guard's clarification-session work**, because the session is where the candidate set lives.
+- **Two-way sync's threading behaviour depends on the same `OutboundMessage` contract extension as the AI guard's
+  inline-keyboard replies.** Both are "reply to a specific prior message in a specific conversation". One contract
+  field, one adapter capability matrix, one place to get it right.
 
-- **The tool filter requires RBAC, and the decision model requires the tool filter.** This is the
-  spine of the product. AD-1 (permission-first) is not an optimisation on top of the routing
-  pipeline — it is a **precondition**. TypeSafe's guidance on atomic questions evaluated in
-  parallel and in isolation **[doc-verified]** means the cost of the decision call is roughly
-  independent of question count; the cost that matters is *legal* question count. Filtering
-  first turns a broad routing decision into a single constrained Choice.
+### Ordering Consequences for the Roadmap
 
-- **The one-time link requires identity *and* RBAC** — the token claim carries the resolved user,
-  and consumption re-checks `perm_version` so a permission revoked between issue and click is
-  caught. This is why one-time links cannot ship ahead of the permission cache.
-
-- **The App Builder requires nothing, and everything requires the App Builder.** It is the only
-  large component with no upstream dependency. It is also the reason Phases 3 and 4 are load-bearing.
-
-- **The Form Renderer requires the App Builder's output** — a schema to render. In the PRD's
-  sequence it ships in Phase 1, before the builder that authors the schemas. Seeded/fixture
-  schemas are a legitimate Phase 1 workaround but they are not a substitute: the form-rendering
-  path cannot be exercised against real builder output until Phase 3.
-
-- **Object storage is required by file upload but has no FR.** Form.io issues a temporary
-  server-generated PUT URL and the file "will remain in storage even if the user removes the
-  attached file" **[doc-verified]**. So object storage provisioning, a token endpoint, a quota
-  policy, and a cleanup job are all *implied* by `FR-F-10` without being specified anywhere.
-
-- **NG3 (native IM forms) conflicts with the Form Renderer.** They are two different
-  implementations of the same product promise, with different data models (Slack `view` state vs
-  signed stateless claim). Building both means maintaining two rendering paths, two validation
-  paths, and two audit paths for one feature.
-
-- **NG1 (open-ended AI) conflicts with the permission-first filter.** An open-ended generator
-  decides at generation time; the permission filter decides before. There is no way to have both
-  without re-introducing the "model suggested a tool the user cannot use" failure.
-
-### Sequencing Hazards (why 19–28 weeks is not achievable as sequenced)
-
-These are ordering defects in the PRD §20 roadmap, not estimation disagreements. The 26–34 week
-figure in PROJECT.md is a consequence of them.
-
-**DH-1 — The read path is deferred past its dependents.**
-Phase 4 introduces View/Query links and `perm_version`. But Phase 1 ships an App Registry with
-per-app RBAC, and Phase 3 ships a Submission viewer. A submission viewer with no read path is a
-viewer that cannot open anything. Either the read path moves earlier, or the viewer is explicitly
-scoped as "list of submissions, details in Mongo" until Ph4.
-
-**DH-2 — The App Builder is deferred past the value proposition.**
-The Core Value in PROJECT.md is "complete a cross-system task through chat plus a single rendered
-form". Phases 1–2 build the *plumbing* for that. The thing that makes it usable — a department
-admin authoring the form — arrives in Phase 3. Phases 1–2 without Ph3 ship a gateway with no
-forms except hand-written fixtures, which validates nothing about the actual proposition.
-
-**DH-3 — Phase 1 has no decision model, yet ships the link infrastructure.**
-The PRD places JEV in Phase 4. Phase 1 nevertheless ships one-time create links and the Form
-Renderer. Until Ph4 the create flow is slash-command-only with manual app selection. That is a
-reasonable *interim*, but it means Phase 1's link and renderer work is validated against a flow
-nobody will use in production. Either stub the routing decision deterministically in Phase 1, or
-move JEV earlier — it is the smallest high-value item in the roadmap, and AD-1 makes it cheap.
-
-**DH-4 — Phase 4 bundles four independent risks.**
-Teams adapter + Zalo hand-rolled client + read links + webhooks all land in one 4–6 week phase.
-These share no code and no failure mode. Bundling them means a slip in any one consumes the whole
-phase's slack.
+1. **Contract amendment first.** The `OutboundMessage` thread field, the ordering/dedupe layer, and (if needed) the
+   identity persistence are **shared prerequisites** for Zalo, Telegram, two-way sync, group RBAC, and the AI guard.
+   Doing them inside the first adapter phase means every later phase inherits them; doing them per-adapter means four
+   incompatible shapes.
+2. **Telegram before Zalo.** Telegram has first-party docs, a real Node SDK, and no approval gate. Zalo has no
+   official SDK, no published Node docs for the OA Open API, an undocumented-ish changelog discipline, and an
+   **approval + real-account dependency**. Telegram is the low-risk adapter that proves the shared seam; Zalo is the
+   high-risk one that should not be first.
+3. **Group RBAC needs the real RBAC resolver, which needs the identity layer to be persistent.** Both are
+   preconditions, and both are more work than the group sync itself.
+4. **The AI guard is last among the four.** It depends on the RBAC filter being real (so the candidate set is
+   meaningful), on the clarification session (v1 has it), and on the ordered-turn machinery (needed by two-way sync).
+   It also carries the PRD-interpretation risk (NG1 amendment) and should not be the thing that is cut when the
+   milestone runs long — but it also should not be the thing that is built first and then retrofitted.
 
 ---
 
-## MVP Definition — scope calibration: 4 platforms × 3 routing modes
+## MVP Definition — v2 Scope
 
-The PRD matrix is 4 IM platforms (Slack, Teams, Zalo, Telegram) × 3 routing modes (internal,
-hybrid, external). Shipping the full matrix is 12 combinations. This is the opinionated answer.
+### Launch With (v2 must-have)
 
-### Recommendation
+- [ ] **Telegram adapter** — webhook receiver, signature/secret verification, commands, inline keyboards, thread-aware
+      replies, normalized to `InboundEvent`/`OutboundMessage`. *Proves the shared multi-platform seam with the
+      lowest-risk platform.*
+- [ ] **Zalo OA adapter** — signature-verified receiver, 2-second ack, retry-tolerant ingest, OA access-token
+      lifecycle, quota-aware consultation-message send, correct message class per recipient. *The milestone's headline
+      capability and its highest-risk item; requires spike S2 against a real OA first.*
+- [ ] **Two-way inbound webhooks** — signed endpoint, external-entity → submission mapping, submitter-bound
+      notification, per-platform thread semantics, idempotent on redelivery. *This is FR-N-1..3 and the feature that
+      turns the gateway into a two-way integration surface.*
+- [ ] **Group-based RBAC** — group→role binding per app, platform membership reads, join/leave handling, stale-
+      membership bound, real RBAC resolver underneath. *Closes AD-7's "Pending" state and v1 Pitfall 4's missing
+      revocation event.*
+- [ ] **Permission-first AI guard** — model selects from the pre-filtered tool set, never invokes; bounded
+      clarification with re-authorization at display time; disambiguation between high-confidence alternatives;
+      multi-turn context. *Amends NG1 without reversing it; must keep the v1 invariant that the model never sees an
+      unauthorized tool.*
 
-**v1 = one IM platform (Slack) × two routing modes (internal + one external connector).**
-Then add Teams as the first post-validation adapter. Defer Zalo and Telegram indefinitely.
+### Add After Validation (v2.x)
 
-| Dimension | Slack-only (recommended) | Full 4×3 matrix |
-|---|---|---|
-| Delivers "task via chat + one form" | **Yes** | Yes |
-| Delivers "integration **gateway**" | **Yes** (internal + ≥1 external connector) | Yes |
-| IM adapter surface to build & QA | 1 | 4 |
-| Webhook verification variants (signature schemes) | 1 | 4 distinct, each with its own failure mode |
-| Rate-limit / retry semantics to handle | 1 (Slack's 3s ack, 3 retries) | 4 (Teams 429/502 retry-with-jitter; Zalo and Telegram undocumented/unofficial) |
-| Threading + message-format variants | 1 | 4 |
-| Realistic weeks | see PROJECT.md total | +8–12 weeks, high variance |
+- [ ] **Notification topic subscriptions** (FR-N-5) — per-app opt-in topic subscriptions. *Trigger: two-way sync ships
+      and users start asking to be notified about other people's records.*
+- [ ] **Zalo group chat (GMF) targeting** — send into a GMF group the OA manages. *Trigger: a customer actually asks
+      for team-visible notifications on Zalo; requires the group-management permission grant.*
+- [ ] **Per-app notification muting** (FR-N-7). *Trigger: notification volume complaints after two-way sync lands.*
+- [ ] **Directory sync via SCIM / Entra ID as an optional upstream.** *Trigger: a customer declares the HR directory —
+      not the IM platform — as the authoritative membership source. This is the largest cost in the group-RBAC area
+      and the least differentiating; it should never be a v2 launch item.*
+- [ ] **Telegram forum-topic-aware threads** (`message_thread_id` for supergroups). *Trigger: a customer runs a
+      Telegram supergroup with forum mode enabled.*
 
-**Why Slack first:** it is the only adapter with an actively-published official SDK
-(`@slack/bolt@5`), a documented, stable Block Kit contract, and a documented precedent for the
-product's exact model (outbound link for structured capture). Building the formatter and the
-adapter-interface contract against one platform produces a *general* abstraction; building it
-against four from day one produces four special cases with no generalisation.
+### Future Consideration (v3+)
 
-**Why at least one external connector is mandatory:** routing mode `internal` alone makes this a
-form-forwarder. The stated problem is cross-system access (Redmine, HR, ERP, ticketing,
-procurement, asset management). Shipping only `internal` means the central claim is untested.
-Ship exactly one — Redmine, per the PRD — and prove the connector contract generalises before
-building the second.
-
-**Teams is the first expansion, not a co-launch partner.** Required if the target enterprise is
-Microsoft-based, and the M365 Agents SDK is the correct (actively maintained) package — but
-each additional adapter multiplies webhook-verification, rate-limit, threading, and error-handling
-surface against a single message-formatter contract. Prove the contract with one.
-
-**Zalo and Telegram: defer past v1.** Zalo has no official Node SDK — Zalo's own SDK docs are
-PHP-only and every npm wrapper self-describes as unofficial, so it is a hand-rolled ~200-line
-client over `undici` with an unofficial, undocumented contract. That is a Phase-4 risk item, not
-an MVP item. Telegram is straightforward but has no role in validating the core value proposition.
-
-### Launch With (v1)
-
-- [ ] **Identity resolution + RBAC + `perm_version` cache** (`FR-I-*`, `FR-R-1..3`) — nothing else is safe without it
-- [ ] **Deterministic routing decision** (permission-filtered picker), *then* JEV behind the provider seam — decision routing without a model is shippable and testable; JEV is an upgrade, not a prerequisite
-- [ ] **One-time signed link → Form Renderer** (`FR-L-1..3`, `FR-F-1`) — the product promise
-- [ ] **Submission persistence + internal routing mode** (`FR-D-1..3`) — proves the data path
-- [ ] **One external connector (Redmine) with retry + DLQ** (`FR-C-1..7`) — proves it is a gateway
-- [ ] **Audit log with `submission_id` correlation** (`FR-AU-*`) — procurement precondition
-- [ ] **Terminal-state chat notifications, success and failure** (`FR-N-*`) — trust
-- [ ] **Submission status view** (end-user-readable, not just admin audit) — *from Tier 2 above, absent from PRD*
-- [ ] **Draft save & resume on long forms** — *from Tier 2 above, absent from PRD*
-- [ ] **App tags/categories + ~10 seed templates** — *from Tier 2 above, absent from PRD; cheap day-90 usability*
-
-### Add After Validation (v1.x)
-
-- [ ] **Microsoft Teams adapter** (M365 Agents SDK) — first expansion, once the adapter contract holds
-- [ ] **Self-service App Builder UI** (`FR-F-2..14`, §14) — the real differentiator; Phase 3
-- [ ] **Stateless signed read links + `perm_version`** (`FR-L-4/5`) — resolves DH-1
-- [ ] **App definition versioning + rollback** (`FR-F-6`) — needs real builder-authored schemas to be meaningful
-- [ ] **Disambiguation and explicit no-JEV fallback mode** (`FR-J-9/11`)
-- [ ] **DLQ UI + connector health checks + dry-run** (`FR-C-8/9/11/12`)
-- [ ] **Custom roles + owner transfer** (`FR-R-4/6`, `FR-LC-7`) — triggered by real department turnover
-- [ ] **Object storage, quota, and orphaned-upload cleanup** — *if* `FR-F-10` file upload is retained
-- [ ] **Retention policy + purge automation** (`FR-LC-4/5`)
-
-### Future Consideration (v2+)
-
-- [ ] **Cross-app data sharing** (`FR-X-1..7`) — the literal "gateway" claim; needs an explicit authorization rule before code
-- [ ] **Zalo OA adapter** (hand-rolled client, unofficial contract)
-- [ ] **Telegram adapter**
-- [ ] **Approval workflow, single-step** (`FR-J-*`/Phase 5) — see NG4; cheap-sounding, large surface
-- [ ] **Publish-review gate for admin-authored apps** — see NG10
-- [ ] **Workflow-manager delegation as a general model** — beyond apps to forms and connectors
-- [ ] **Tenant / multi-org** — only on a named customer requirement (NG8)
+- [ ] **Native IM form rendering** (Block Kit / Zalo Mini App forms). *Deferred by NG3/AD-3 — one engine, one renderer.
+      Only revisit if a specific platform's users refuse to leave the chat window.*
+- [ ] **Cross-app collection sharing** (PRD Phase 5). *Deferred to a later milestone; it is a data-model change, not
+      an IM-platform change, and v2 is already large.*
+- [ ] **29 additional IM platforms.** *Deferred past v2; each is a full adapter with its own ack budget, retry
+      schedule, threading semantics, and verification scheme. Four platforms is the defensible set.*
+- [ ] **Multi-step approval workflows** (PRD NG5). *Deferred; out of scope for v1 and v2 alike.*
 
 ---
 
 ## Feature Prioritization Matrix
 
-Complexity uses S/M/L/XL (S ≈ ≤3 days, M ≈ 1 week, L ≈ 2–3 weeks, XL ≈ 4+ weeks, for a
-developer already inside this codebase).
-
-### PRD clusters
-
-| Feature cluster (FRs) | User Value | Implementation Cost | Priority | Complexity |
-|---|---|---|---|---|
-| Identity resolution (`FR-I-*`) | HIGH | MEDIUM | **P0** | S |
-| RBAC + permission-first filter (`FR-R-1..3`) | HIGH | HIGH | **P0** | M |
-| One-time signed links (`FR-L-1..3`) | HIGH | MEDIUM | **P0** | M |
-| Form Renderer (`FR-F-1`) | HIGH | MEDIUM | **P0** | M |
-| Submission persistence (`FR-D-1..3`) | HIGH | MEDIUM | **P0** | M |
-| Internal routing mode | HIGH | LOW | **P0** | S |
-| Audit log (`FR-AU-*`) | HIGH (procurement) | MEDIUM | **P0** | M |
-| Terminal notifications (`FR-N-1..8`) | HIGH | LOW | **P0** | S |
-| Deterministic routing fallback | HIGH | LOW | **P0** | S |
-| Webhook ack <200 ms + enqueue | HIGH (correctness) | MEDIUM | **P0** | M |
-| JEV decision model (`FR-J-*`) | HIGH | MEDIUM | **P0** (move earlier — DH-3) | M |
-| One external connector (`FR-C-1..7`) | HIGH | MEDIUM | **P0** | M |
-| Submission status view | HIGH | LOW | **P0** (absent from PRD) | M |
-| Draft save & resume | MEDIUM-HIGH | MEDIUM | **P1** (absent from PRD) | M |
-| Retry / DLQ core (`FR-C-*`) | HIGH | MEDIUM | **P0** | M |
-| App Builder UI (`FR-F-2..14`) | HIGH (differentiator) | HIGH | **P0, but see DH-2** | **XL** |
-| Custom roles (`FR-R-4`) | MEDIUM | MEDIUM | **P2** (P0 in PRD) | M |
-| Owner transfer (`FR-R-6`, `FR-LC-7`) | MEDIUM | LOW | **P2** (P0 in PRD) | S |
-| Read links + `perm_version` (`FR-L-4/5`) | HIGH | MEDIUM | **P1 in PRD — move to P0 or scope the viewer** | M |
-| Retention + purge (`FR-LC-4/5`) | MEDIUM (compliance) | MEDIUM | **P1** | M |
-| Connector health checks (`FR-C-9`) | MEDIUM | LOW | **P2** (P0 in PRD) | S |
-| `dry_run` (`FR-C-8`) | MEDIUM | LOW | **P2** | S |
-| Connector timeout config (`FR-C-11`) | MEDIUM | LOW | **P2** | S |
-| DLQ UI (`FR-C-12`) | MEDIUM | MEDIUM | **P2** | M |
-| Field transformations (`FR-D-11`) | MEDIUM | MEDIUM | **P2** | M |
-| Disambiguation (`FR-J-9`) | MEDIUM | MEDIUM | **P2** | M |
-| No-JEV fallback mode (`FR-J-11`) | MEDIUM | LOW | **P2** | S |
-| App version rollback (`FR-F-6`) | MEDIUM | MEDIUM | **P2** | M |
-| File upload (`FR-F-10`) | MEDIUM | MEDIUM + **licensing risk** | **P2 — spike NG13 first** | M |
-| Teams adapter | MEDIUM | MEDIUM | **P1** | M |
-| Zalo adapter | LOW | MEDIUM + **unofficial contract risk** | **P3** | M |
-| Telegram adapter | LOW | LOW | **P3** | S |
-| Cross-app sharing (`FR-X-*`) | HIGH | HIGH | **P2 (all P1 in PRD)** | L |
-| Approval workflow (Ph5) | MEDIUM | HIGH | **P3** | L |
-
-### Gaps (absent from PRD) — recommended priority
-
-| Gap | User Value | Implementation Cost | Priority | Complexity |
-|---|---|---|---|---|
-| Draft save & resume | MEDIUM-HIGH | MEDIUM | **P1** | M |
-| Submission status view (user-facing) | HIGH | LOW | **P0** | M |
-| Object storage + quota + orphan cleanup | MEDIUM | LOW-MED | **P1** (conditional on `FR-F-10`) | M |
-| App tags/categories | MEDIUM | LOW | **P1** | S |
-| Seed template gallery (~10) | MEDIUM | LOW | **P1** | M |
-| Notification cadence policy | MEDIUM | LOW | **P2** (policy, not code) | S |
-| Publish-review gate | MEDIUM | MEDIUM | **P3** | M |
-| App definition rollback in v1 | MEDIUM | MEDIUM | **P3** (covered by `FR-F-6` in P1) | M |
+| Feature | User Value | Implementation Cost | Priority |
+|---|---|---|---|
+| Telegram adapter (webhook, commands, inline keyboards, threading) | HIGH | MEDIUM | **P1** |
+| Zalo OA adapter (receiver, ack, quota-aware send, token lifecycle) | HIGH | MEDIUM–HIGH | **P1** |
+| `OutboundMessage` thread/reply contract extension | HIGH (enabler) | LOW | **P1** |
+| Per-platform ordering + dedupe layer (event_id / update_id / msg_id) | HIGH (enabler) | MEDIUM | **P1** |
+| Submitter conversation identity bound at submit time | HIGH (enabler) | MEDIUM | **P1** |
+| Two-way inbound webhooks (signed endpoint → notification to submitter) | HIGH | MEDIUM | **P1** |
+| Real RBAC resolver (replacing the v1 stub) | HIGH (enabler) | MEDIUM | **P1** |
+| Group RBAC: group→role binding + membership reads + join/leave | HIGH | MEDIUM | **P1** |
+| Group RBAC: stale-membership bound + reconciliation job | MEDIUM (but correctness-critical) | MEDIUM | **P1** |
+| Permission-first AI guard (select-only, never invokes) | HIGH | MEDIUM | **P1** |
+| AI guard: disambiguation interaction surface (inline keyboards / numbered lists) | MEDIUM–HIGH | MEDIUM | **P2** (needs the guard's candidate design) |
+| AI guard: multi-turn context over ordered delivery | MEDIUM | MEDIUM | **P2** (depends on the ordering layer) |
+| Zalo follow/unfollow event handling | MEDIUM | LOW | **P2** |
+| Zalo GMF group targeting | LOW–MEDIUM | MEDIUM | **P3** |
+| Telegram privacy-mode detection & user-facing diagnosis | LOW (but high support-value) | LOW | **P2** |
+| Notification topic subscriptions (FR-N-5) | MEDIUM | MEDIUM | **P3** |
+| Per-app notification muting (FR-N-7) | LOW | LOW | **P3** |
+| Directory sync via SCIM / Entra ID | MEDIUM | HIGH | **P3** |
+| Native IM form rendering | LOW (contradicts NG3) | HIGH | **P4 — out of scope** |
+| Open-ended free-form chat | LOW (contradicts NG1) | HIGH | **P4 — out of scope** |
+| Model tool-calling / auto-execution | LOW (contradicts AD-1) | HIGH | **P4 — out of scope** |
+| Broadcast notifications to IM groups | LOW (contradicts FR-N-3) | LOW | **P4 — out of scope** |
 
 **Priority key:**
-- P0: must have for launch
-- P1: should have — high value for low cost, or required to avoid a production failure mode
-- P2: add when possible; P0 in the PRD that is realistically deferrable
-- P3: future consideration
-
-**P0-but-deferrable in the PRD** (called out explicitly because the PRD marks these P0 and the
-cost column disagrees): `FR-R-4`, `FR-R-6`, `FR-LC-4`, `FR-LC-5`, `FR-LC-7`, `FR-C-8`,
-`FR-C-9`, `FR-C-11`, `FR-C-12`, `FR-D-11`, `FR-J-9`, `FR-J-11`, `FR-F-6`, `FR-F-10`.
+- **P1**: Must have for the v2 launch — either a user-facing capability or a hard enabler of one.
+- **P2**: Should have; add once the P1 path is stable.
+- **P3**: Nice to have; explicit v2.x trigger.
+- **P4**: Out of scope; listed to prevent accidental absorption.
 
 ---
 
 ## Competitor Feature Analysis
 
-| Feature | Slack Workflow Builder | Power Automate / Copilot Studio | n8n | ServiceNow | Retool / Zoho Creator | Our Approach |
-|---|---|---|---|---|---|---|
-| **Structured data capture** | Modal views, ≤3 views, 1 input element/block **[doc-verified]**; recommended for "cut out the conversation" **[doc-verified]** | Adaptive Cards / forms | Node config, not user-facing forms | Service Catalog request items + forms | Native form builder | **Outbound signed link → web form.** Chosen because real business forms do not fit a 3-view modal. |
-| **Natural-language intent → tool** | Limited / none | Copilot Studio conversational paths | AI Agent / tool nodes | Agent Workspace assist | Limited | **Permission-filtered atomic Choice with `confidence` + deterministic fallback.** No precedent filters by RBAC *before* the model. |
-| **Routing / destination** | Connector steps, per-user third-party auth **[doc-verified]** | Flows + connectors | Any HTTP node | Assignments + integrations | DB / API actions | **Fixed small destination enum + connector contract.** Explicitly not a workflow engine (NG9). |
-| **Self-service authoring** | Anyone can build; admins restrict which steps/triggers members may use **[doc-verified]** | Yes, per-licence | Yes | Catalog admin required | Yes, some technical skill | **Department-admin App Builder without engineering tickets.** Note the precedent that *admins still restrict what others may use* — worth adopting for v2. |
-| **Delegated ownership** | Workflow managers **[doc-verified]** | Ownership + sharing | Project roles | Delegation rules | Workspace roles | `FR-R-5/6` owner transfer + workflow-manager role. |
-| **Publish review / change control** | Activity logs; draft/publish | Solution checker | **Workflow reviews: pinned version, status workflow, visual diff, blocks publish from editor/API/MCP, attributed to requester** **[doc-verified]** | Approval workflows | Version history | **v1: owner + audit log only.** Gap recorded (NG10, §22–§25). |
-| **Error visibility** | Activity logs show in-progress/completed + errors **[doc-verified]** | Run history | Global error workflow + "Save failed executions" **[doc-verified]** | SLA + work notes | Run logs | BullMQ DLQ + DLQ UI (`FR-C-*`). DLQ without UI is a support-ticket generator. |
-| **Execution data retention / redaction** | Limited | Run history retention | **Manage + redact execution data, "to protect sensitive information and meet compliance requirements"** **[doc-verified]** | System logs | Logs | **PII field allowlist before log serialisation** (not a downstream scrubber). Precedent that redaction is a named compliance feature. |
-| **Credential / key rotation** | Per-connection auth | Connection references | **Rotate encryption keys** **[doc-verified]** | Credential store | Secrets | 90-day dual-key rotation, zero downtime (NFR-SEC-9). |
-| **Tags / templates / search** | Templates + gallery + search **[doc-verified]** | Solution catalogue | Tags + templates **[doc-verified]** | Categories | Templates | **Adopt in v1** — cheap, high day-90 usability. Currently absent from the PRD. |
-| **Long-form / draft handling** | Outbound link for long forms **[doc-verified]** | Resubmit / run again | Execution persistence toggles | — | — | **Draft save & resume.** Currently absent from the PRD. |
-| **File upload** | Native attachment | Native | — | Attachment | Native | **Risk:** Form.io File is a premium component **[doc-verified]** → spike or drop from v1 (NG13). |
-| **Approval workflows** | Workflow Builder steps | **Large: sequential, parallel, cancel, long-running (>30d → Dataverse + 2 flows)** **[doc-verified]** | Human-in-the-loop for tools **[doc-verified]** | Deep, native | Approval steps | **Defer past v1** (NG4). Route to the destination system's approval flow where one exists. |
-| **Cross-org / multi-tenant** | Slack Connect + admin controls | Per-tenant environments | n8n Cloud tenancy | Enterprise instances | Workspaces | **Explicitly out of scope v1** (NG8). |
-| **Notification discipline** | Channel/user notifications | Approval notifications | Execution webhooks | Subscriptions + watchers | — | **One terminal-state notification per submission. No conversational status polling** — PagerDuty names "too frequent status updates" an anti-pattern, rejects 5-min cadence for 20–30 min **[doc-verified]**. |
+The comparison set is *gateway and bot platforms that connect enterprise IM to downstream systems* — not
+general-purpose assistants, because those already win on conversation and lose on the thing this product is for.
+
+| Feature | Microsoft Power Automate + Teams | n8n + Slack/Telegram nodes | Zapier + Slack | **Our approach** |
+|---|---|---|---|---|
+| Multi-platform coverage | Teams-first; Slack via connector | Slack + Telegram via community nodes | Slack only (plus app-specific channels) | **Four platforms on one frozen `InboundEvent`/`OutboundMessage` contract** — Slack, Teams, Zalo OA, Telegram, with platform quirks (2 s ack, no threads, quotas) handled honestly rather than flattened |
+| Permission model at the routing layer | Per-connector user auth; no pre-model tool filtering | Workflow-level credentials; no per-user tool visibility | Connection-level credentials | **RBAC filter runs *before* the model** — the model never receives an unauthorized tool. No competitor gates the *tool set* by the requesting user's role. |
+| Who chooses the workflow | User picks a pre-built flow | User picks a pre-built workflow | User picks a pre-built zap | **Model picks from the user's authorized apps**, with confidence gating and bounded clarification — the model selects, the platform executes |
+| Form capture surface | Adaptive Cards / native forms | Arbitrary | Arbitrary | **One renderer (FormIO.js), one validation semantics, one link-issuance path.** Forms are reached by a signed link, not embedded |
+| Two-way notification back to the submitter | Supported, but as a configured action per flow | Supported, but routed to a channel, not to the submitting user | Supported, email-first | **Notifications return to the submitter's original conversation and thread, per platform semantics, idempotently** — including on Zalo, where there is no thread primitive and the reply is a fresh message in the OA chat |
+| Group / directory-driven access | M365 group membership via Graph | None | None | **Group→role binding per app, with a bounded-staleness rule and audit attribution** — and revocation that actually revokes outstanding links via `perm_version` |
+| Zalo (Vietnam market) | Not supported | Community node, unofficial | Not supported | **A first-class adapter built to Zalo's actual rules** — 7-day consultation window, per-user quota read before send, 2-second ack, `num_retry` redelivery. Most competitors simply cannot target this market. |
+| Open-ended AI assistant | Copilot in Teams | AI Agent nodes | Zapier Central / Agents | **Explicitly bounded**: a permission-first *guard* over a pre-filtered tool set. Free generation is out of scope by PRD NG1 and stays out of scope in v2 |
+
+**The honest competitive read:** the incumbents win on breadth of workflow templates and on raw conversational
+fluency. They lose on three axes this product deliberately optimizes — **who can see which tool** (permission-first
+routing), **where data capture happens** (one renderer, always), and **whether the notification comes back to the
+person who filed the request** (submitter-bound, threaded). Zalo support is the one axis where the gap is not merely
+architectural but **absolute**: most of this category cannot reach the Vietnamese market at all.
 
 ---
 
-## Gaps that belong in the missing PRD §22–§25
+## Complexity Legend
 
-The PRD's table of contents lists sections 22–25 but the body ends at §21 (§21 = KPIs). These
-gaps have no home in the current document and were surfaced by the precedent research above.
-They should be written as new sections, not folded into §8.
+| Rating | Meaning | Rough shape in this milestone |
+|---|---|---|
+| **S** | Single-file or single-service change; no new contract, no new dependency, no new failure mode | Follow/unfollow event handler; `editMessageText` helper; privacy-mode diagnosis |
+| **M** | Multi-file, touches a contract or a shared service, introduces a new failure mode or a new external dependency | Zalo/Telegram adapters; two-way webhook endpoint; group→role binding; the AI guard itself |
+| **L** | Multi-service, new persistence model, new external system, or a change to a frozen contract with wide blast radius | `OutboundMessage` thread-field amendment; directory (SCIM) sync |
+| **XL** | Should not be attempted in v2 | Native IM form rendering; open-ended assistant; 29 more platforms |
 
-| # | Gap | Why it matters | Suggested new section |
+---
+
+## Gaps — What This Research Could Not Verify
+
+These are load-bearing unknowns, listed with the consequence of being wrong.
+
+| # | Gap | Why it matters | Suggested resolution |
 |---|---|---|---|
-| 1 | **No end-user submission status view** | Admin audit log ≠ requester-visible status. Highest-value gap in this list — "did my thing go through?" is the #1 support question in any async integration tool, and Slack ships workflow activity logs for exactly this **[doc-verified]**. | §23 Product Requirements Gaps |
-| 2 | **No draft-save / resume FR** | Baseline expectation of the form-vendor class (Jotform "Save and Continue Later" **[MEDIUM]**). Also structurally incompatible with a stateless one-time-token SPA as currently designed — a resumable draft needs a second, longer-lived token. Requires an explicit decision. | §23 |
-| 3 | **Form.io premium-component licensing risk for `FR-F-10`** | `formio.js` renderer is MIT; the `formio` engine is OSL 3.0; **File** is a premium component requiring a Library License key + `@formio/premium` **[doc-verified]**. This directly threatens AD-3 / the §7.4 "open source" claim. **Needs a spike**: can `@formio/js` alone render a `file` component unlicensed? Currently unresolved. | §22 Licensing & Third-Party Constraints |
-| 4 | **Object storage provisioning implied but never stated** | Form.io's temporary server-generated PUT URL requires S3-class storage + a token endpoint that the PRD never specifies **[doc-verified]**. | §22 |
-| 5 | **No storage-quota or orphaned-upload cleanup requirement** | Form.io uploads persist **regardless of submit**, and "the file will remain in storage even if the user removes the attached file" **[doc-verified]**. A documented, guaranteed storage leak with no owner in the PRD. | §23 |
-| 6 | **No app template gallery or tag/category taxonomy** | Both Slack and n8n ship tags + templates **[doc-verified]**; 200 apps with no taxonomy is unusable at day 90. | §23 |
-| 7 | **No publish-review gate for admin-authored apps** | Department admins author production workflows that write to real downstream systems. n8n ships exactly this control (pinned version, status workflow, visual diff, blocks publish from editor/API/MCP) **[doc-verified]**. v1 mitigates with named owner + audit log, but the gap should be acknowledged rather than left silent. | §23 |
-| 8 | **No notification-cadence / rate policy** | PagerDuty publishes "too frequent status updates" as a named incident-response anti-pattern, rejecting 5-minute cadence for 20–30 minutes **[doc-verified]**. Cadence is a designed decision, not a "send immediately" default. | §23 |
-| 9 | **"JEV-compatible" is a PRD-invented protocol** | Jev is TypeSafe AI's hosted flagship model **[doc-verified]**; there is no published JEV wire protocol industry standard. The spec should be named and published as a first-party interface, and the provider seam kept thin. The roadmap's Phase 4 reference to "OpenJev" points at an unofficial reconstruction — **[MEDIUM, unverified]**; treat as a risk, not a dependency. | §24 Integration Contracts |
+| **G1** | **Zalo group member enumeration.** No documented "list all members of a Zalo GMF group" API was found. Join/leave **events** exist (`user_join_group`, `user_out_group`, `accept_request_join_group`) and group **message** history exists (`GET /v3.0/oa/group/conversation`), but a member list was not located. | **Group RBAC on Zalo may be event-driven-only** — which means a missed event leaves a stale grant with no reconciliation source. | Spike S2 against a real OA. If no member list exists, Zalo group bindings must be **event-driven with a bounded staleness rule**, and the group-role feature may need to be **Slack/Teams-only in v2** with Zalo groups deferred. **Decide before the group-RBAC phase, not during it.** |
+| **G2** | **Zalo webhook signing strength.** The documented scheme is `sha256(appId + data + timeStamp + OAsecretKey)` **[doc-verified]** — a concatenation hash, not an HMAC. Whether Zalo also exposes a per-request nonce or a timestamp-validity rule is undocumented. | Determines the **replay-protection** story for the Zalo leg. If there is no nonce, FR-N-8's replay protection must be implemented platform-side (timestamp window + a platform-side idempotency key). | Spike S2. Assume the worst (timestamp-window only) and design the ingest seam to accept a platform-supplied idempotency key independently of the signature scheme. |
+| **G3** | **Zalo OA bot vs OA distinction.** Zalo exposes a separate "Zalo Bot" surface (`bot-api.zaloplatforms.com`, `X-Bot-Api-Secret-Token`, Telegram-shaped `{ok, result:{event_name: "message.text.received"}}` payloads) alongside the OA Open API (`X-ZEvent-Signature`, `user_send_*` events) **[both doc-verified]**. Which surface the target customers actually use is a **commercial question, not a technical one**. | The two surfaces have **different payload shapes, different verification schemes, different capability sets** (the Bot surface is Telegram-shaped and has inline-style interactivity; the OA surface has the quota model and the template product). | Ask in discovery: "Which Zalo surface do your users already use?" **Build against the OA** (the PRD names "Zalo OA API", it has the follower model the product needs, and the Bot surface's shape is closer to Telegram than to what v1 already supports) — but **confirm before the spike**. |
+| **G4** | **Zalo OA approval and access-token provisioning lead time.** OAuth app registration, OA creation, and permission grants are real-world queues, not code. | **The Zalo phase can be blocked on someone else's calendar.** A phase plan that assumes same-week provisioning is a plan that slips. | Start the approval request in the **pre-phase**, in parallel with the Telegram work — not in the phase itself. |
+| **G5** | **Zalo quota exhaustion behaviour.** The quota API returns `remain` counts but the behaviour on exhaustion (silent drop, error code, delayed send) is undocumented. | Determines whether a quota-exhausted send is a **retryable** or a **terminal** failure — which changes the DLQ semantics for the Zalo leg. | Spike S2: exhaust a test quota deliberately and observe. |
+| **G6** | **Telegram `node-telegram-bot-api` v2 webhook-mode ergonomics.** The library exposes `webhookCallback` / `createWebhookServer` **[doc-verified]**, but v1 uses `@slack/bolt`'s `ExpressReceiver` and the Microsoft Agents SDK for Teams — **two different hosting idioms**. | A third idiom may be needed, or the Telegram adapter may need to bypass the library's HTTP layer entirely and use it only as a typed API client. | Decide at implementation time: **most likely, use the library for its typed API client only and host the webhook in the existing Express app** — this keeps one HTTP stack, one OTel path, and one auth seam. |
+| **G7** | **Telegram bot-token revocation and rotation.** Bot tokens are single secrets; Telegram offers no dual-key rotation, unlike the project's own `jose` keyring for link signing. | A token rotation is a **hard cutover**, not a zero-downtime dual-key window. | Accept the cutover and plan a runbook. Do **not** invent a rotation scheme the platform does not offer. |
+| **G8** | **Exact Slack `x-slack-retry-num` / `x-slack-no-retry` semantics for the *Events API* vs the *HTTP API*.** The 3-times/1 min/5 min schedule is confirmed from `api.slack.com/events-api` **[doc-verified]**; the header names appear in the same source. Whether `x-slack-no-retry` is honoured on Events API deliveries is less certain. | Affects the **dedupe key design**: if a delivery can be retried with no distinguishing header beyond `x-slack-retry-num`, the dedupe key must be `event_id` (stable across retries), not `event_id + retry_num`. | **Design the dedupe key on the stable `event_id` regardless** — that is correct under either semantics and costs nothing. |
+| **G9** | **Whether the AI guard's disambiguation UI needs a new `InboundAction` value.** `InboundActionSchema` is `message \| slash_command \| interaction \| event` **[code-verified]** — `interaction` exists and fits a Telegram `callback_query` or a Slack button press. | If `interaction` does not carry enough structure (e.g. which choice was selected), the contract needs an extension — and `InboundEvent` is a **frozen `.strict()` contract**. | **Decide before the AI-guard phase.** Prefer reusing `interaction` + `text` over extending a frozen contract; if the choice identity must be structured, model it as `app_id`/`form_id` (which already exist and are optional) rather than adding a field. |
+| **G10** | **Whether group-derived roles require a new `perm_version` fan-out.** Revoking one user from a group bumps `perm_version` per user-per-app (fine). But **revoking a whole group** must bump it for **every member × every app that group is bound to** — a fan-out whose size is unbounded by anything the v1 design has seen. | A naive synchronous fan-out in the sync job could take down the sync worker on a 500-person group × 20 apps. | Design the revocation fan-out as a **queued, batched, idempotent job** with its own rate limit. **Do not do it inline.** |
+| **G11** | **The v1 identity and RBAC repositories are in-memory stubs, not MongoDB-backed.** `IdentityMappingRepository` and `ProfileRepository` hold arrays in process memory **[code-verified]**; `RbacService` returns hardcoded grants **[code-verified]**. | Group RBAC and the AI guard both depend on **persistent, real** identity and permission state. Shipping them on top of stubs would make the features **non-functional across multiple API/worker replicas** — and v1's AD-9 constraint is explicitly *stateless application services with state in Redis/Mongo*. | **Resolve before the group-RBAC phase.** This is a genuine prerequisite, not a cleanup task. |
+| **G12** | **How much of the AI guard's value survives the PRD's "no free generation" constraint.** The research could not verify that a *selector-only* guard is what users actually want — the literature on permission-bounded assistants is thin, and the closest product precedents (Copilot, n8n AI nodes, Zapier Agents) are all generation-capable. | Risk that v2's headline AI feature under-delivers against user expectation, or that a stakeholder reads "permission-first guard" as "we watered down the AI". | **Frame the amendment explicitly** in the roadmap and in user-facing copy: NG1 is **amended, not reversed** — the model gains a wider *input* space (free-text intent) while keeping a *narrower* *action* space (select a pre-authorized app). **The guard's correctness is testable; a chatbot's is not.** |
 
 ---
 
 ## Sources
 
-**Vendor documentation fetched directly (HIGH confidence):**
-- `docs.slack.dev` — Block Kit Input block (one element, 2000-char label), modal view stack
-  (max 3 views), `trigger_id` (3 s), `view_submission` (3 s ack), `views.update` hash
-  concurrency, and the guidance to "cut out the conversation" for structured data
-- `slack.com/help/articles/360035692513` — Slack Workflow Builder: open authoring, admin
-  restriction of steps/triggers, workflow managers, activity logs, downloadable form responses,
-  templates/gallery/search, per-user connector auth, outbound links for long forms
-- `docs.typesafe.ai/introduction` + `/confidence` — Jev model (Choice/Score/Noul), parallel
-  isolated question evaluation, atomic-question composition guidance
-- `form.io/open-source` + `help.form.io/form-building/premium-components` — MIT renderer,
-  OSL 3.0 engine, premium component list, immediate-upload/cleanup-on-submit semantics
-- `learn.microsoft.com` — Power Automate modern approvals: sequential, parallel, cancel,
-  long-running (>30 days → Dataverse, two flows), multi-surface approver response
-- `docs.n8n.io` (sitemap + workflow reviews) — save/publish, change history, workflow reviews
-  (pinned version, status workflow, visual diff, blocks publish from editor/API/MCP, attributed
-  to requester), tags, templates, sub-workflows, error workflows, execution-data
-  manage/redact, encryption-key rotation, security audits, AI evaluation, human-in-the-loop
-- `response.pagerduty.com/resources/anti_patterns/` — "too frequent status updates" (5-min
-  cadence rejected; 20–30 min working), assuming silence, hesitancy to escalate, failure to
-  disseminate policy changes
+**Zalo — first-party documentation (all doc-verified)**
+- `developers.zalo.me/docs/official-account/webhook/tong-quan` — 2-second response requirement, HTTP 200 for all
+  events, retry schedule (30 s / 5 m / 15 m / 30 m / 1 h), `num_retry` header, webhook deregistration on repeated failure
+- `developers.zalo.me/docs/official-account/webhook/tin-nhan/su-kien-nguoi-dung-gui-tin-nhan` — inbound webhook payload,
+  `X-ZEvent-Signature` formula, `event_name` enumeration, `quote_msg_id` on replies
+- `developers.zalo.me/docs/official-account/webhook/tin-nhan/su-kien-official-account-gui-tin-nhan-cho-nguoi-dung` —
+  OA-sent events (`oa_send_*`), `sender.admin_id` for admin-window sends
+- `developers.zalo.me/docs/official-account/webhook/nhom-chat-gmf/user_join_group` and `.../user_leave_group` —
+  group join/leave event payloads (`oa_id`, `group_id`, `users[]`)
+- `developers.zalo.me/docs/official-account/tin-nhan/tong-quan` — the three message classes (Tin Tư vấn / GMF group /
+  Broadcast), the 7-day interaction condition, ZBS template messages as a separate paid product
+- `developers.zalo.me/docs/official-account/quan-ly/quan-ly-thong-tin-oa/kiem-tra-han-muc-tin-nhan-oa` — quota API,
+  `cs_reply` / `promotion` quota structure, `last_interaction`
+- `developers.zalo.me/docs/official-account/bat-dau/xac-thuc-va-uy-quyen-cho-ung-dung` — OAuth permission groups and
+  the authorization-code flow
+- `docs.zaloplatforms.com/docs/OA/nhom-chat-gmf/...` — group message send (`POST /v3.0/oa/group/message`), group
+  conversation read, group-management permission requirement
+- `docs.zaloplatforms.com/docs/BOT/webhook` and `.../BOT/apis/setWebhook` — the **separate** Zalo Bot surface
+  (`X-Bot-Api-Secret-Token`, Telegram-shaped payloads) — the OA/Bot distinction behind G3
+- `docs.zaloplatforms.com/docs/MA/api/widgets/showOAWidget` — Mini App → OA follow relationship (NG3 rationale)
 
-**Located but not fetched (MEDIUM confidence — not used to justify any scope cut):**
-- Jotform Workflows + "Save and Continue Later" / Autofill as a form-class baseline
-- ServiceNow Service Catalog (request items, categories, approval, SLA, Agent Workspace)
-- Retool and Zoho Creator as form-driven internal-tool builders
-- n8n community guidance on "Save failed executions" vs disabling "Save Execution Progress"
-  in production (execution-data bloat)
-- n8n workflow reviews are **Enterprise-only, Preview** — treated as *pattern* precedent, not a
-  hard requirement
+**Telegram — first-party documentation (all doc-verified)**
+- `core.telegram.org/bots/api` — `setWebhook` / `secret_token` / `max_connections` / `allowed_updates`; `sendMessage`
+  and `reply_parameters` / `message_thread_id`; `editMessageText`; `InlineKeyboardMarkup` / `callback_data` (1–64 bytes);
+  `answerCallbackQuery` (200 chars, `show_alert`); `setMyCommands` / `deleteMyCommands` / `getMyCommands` and the 7
+  `BotCommandScope` variants; `ChatMemberUpdated` / `ChatMember` statuses; `getChatMember` (bot must be administrator);
+  `getChatMemberCount`; `sendChatAction`
+- `core.telegram.org/bots/features` — commands, custom reply keyboards, inline keyboards, command scopes, the
+  "backend must always verify that received commands are valid and that the user was authorized … regardless of scope"
+- `core.telegram.org/bots/faq` — webhook vs long polling mutual exclusion, supported webhook ports (443/80/88/8443),
+  self-signed certificates, privacy-mode behaviour, **20 messages/minute in a group**, 30 messages/second broadcast
+- `core.telegram.org/bots/api-changelog` — Bot API 5.1 `chat_member` updates and the administrator requirement
+- `github.com/yagop/node-telegram-bot-api` — v2 API surface: `startPolling` / `LongPollOptions` (`offset`, `timeout`,
+  `retry`, `retryDelayMs`, `conflictRetryDelayMs`, `maxConflictRetries`), `webhookCallback` / `createWebhookServer`,
+  non-re-entrant polling
 
-**Primary project sources:**
-- `PRD.md` v2.0 — §8 FRs, §12 flows, §14 App Builder UI, §20 roadmap, §21 KPIs, TOC/body gap
-  at §22–§25
-- `.planning/PROJECT.md` — Core Value, Active/Out-of-Scope split, 26–34 week estimate,
-  stack amendments
+**Slack — first-party documentation (all doc-verified)**
+- `api.slack.com/events-api` — **3 retries, exponential backoff (~immediately, 1 min, 5 min)** with `x-slack-retry-num`;
+  `x-slack-no-retry`; `event_id` as the stable delivery identifier; the event envelope shape
+- `docs.slack.dev/reference/methods/chat.postMessage` — `thread_ts` (reply to parent), `reply_broadcast`
+- `docs.slack.dev/reference/methods/conversations.members` — cursor-paginated channel membership
+- `docs.slack.dev/reference/methods/conversations.replies` — thread read
+- `docs.slack.dev/reference/methods/usergroups.list` — user-group enumeration, `usergroups:read` scope, Tier 2 rate limit
+- `docs.slack.dev/reference/scim-api/` — SCIM v2 `/Users` and `/Groups` resource schemas (the optional directory upstream)
+- `docs.slack.dev/reference/events/member_joined_channel` and `/user_change` — membership and profile-change events
 
-**Method notes:**
-- All 12 research questions were planned through the GSD `research-plan` seam, which routed
-  every item to `websearch` (`classify-confidence` → LOW). No exa/tavily/firecrawl/context7
-  provider was available in this runtime.
-- Because the routed tier was LOW, every finding that drives a scope decision was independently
-  re-verified against the vendor's own documentation before being treated as authoritative.
-  Claims above are marked `[doc-verified]` where that applies and `[MEDIUM]` where it does not.
+**Microsoft — first-party documentation (doc-verified)**
+- `learn.microsoft.com/en-us/graph/api/resources/aaduserconversationmember` — `GET /teams/{team-id}/members`
+- `learn.microsoft.com/en-us/graph/api/channel-list-allmembers` — `GET /teams/{team-id}/channels/{channel-id}/allMembers`,
+  opaque membership IDs, shared-channel indirect members
+
+**This codebase — read directly (code-verified)**
+- `packages/contract/src/events/inbound-event.ts` — `ImPlatformSchema` already contains `'zalo'` and `'telegram'`;
+  `InboundActionSchema` = `message | slash_command | interaction | event`; `.strict()` envelope with no thread field
+- `packages/contract/src/events/outbound-message.ts` — `OutboundMessage` has **no** `thread_id`/`reply_to` field; the
+  thread-field amendment this milestone requires
+- `packages/contract/src/jev/v1/jev-request.ts` / `jev-response.ts` — `JEV_SPEC_VERSION = '1.0'`, `ToolDescriptor`
+  (id/description/parameters, no permission surface), `state.force_clarification`, `context.previous_turns`
+  (`role: 'user' | 'assistant'` — **no system turn**), `choice.verified` tri-state
+- `packages/domain/src/decision/routing-orchestrator.ts` — `authorizedTools` (never the global catalogue, `T-03-01`),
+  `app_hints` re-filtered against the permitted set, `canOpenNow` re-check at the execution boundary, `verified !== true`
+  → clarify, empty tool set → clarify, deadline → clarify
+- `packages/domain/src/decision/clarification-session.service.ts` — max 2 replies, max 3 displayed choices,
+  Redis key `jev:clarify:{realUserId}:{channelId}:{threadTs}`, 15-minute TTL, re-filter on every reply, escalation path
+- `packages/domain/src/authz/rbac.service.ts` — **currently a stub** (hardcoded grants) — the prerequisite behind G11
+- `packages/domain/src/identity/identity-mapping.repository.ts` / `profile.repository.ts` — **in-memory stubs**, keyed
+  `(platform, chat_user_id)`
+- `packages/domain/src/notifications/notification-assembler.service.ts` — the v1 assembler that two-way sync extends
+- `apps/worker/src/processors/notification.processor.ts` — the v1 notification queue, jittered backoff, DLQ path
+
+**Prior project research (this repository)**
+- `.planning/research/PITFALLS.md` — Pitfall 4 (`perm_version` covers 1 of 7 revocation events — group membership
+  revocation is the missing one), Pitfall 5 (ack-then-enqueue has an unobservable gap; missing webhook counters),
+  Pitfall 7 (IM platforms deliver at-least-once and out of order; `previous_turns` can be silently wrong)
+- `.planning/research/STACK.md` — Zalo hand-rolled-client decision (~200 lines over `undici`), Telegram
+  `node-telegram-bot-api@2.1.0` (rejected `grammy` for its un-instrumented `node-fetch@^2` dependency), spike **S2**
+  (two-day Zalo spike on a real OA account) and its open question on Zalo webhook signature verification
+- `.planning/PROJECT.md` — AD-1 (permission-first routing), AD-7 (real-user-only RBAC — the "Pending" item v2 closes),
+  AD-11 (signed stateless read links), NG1 (the non-goal v2 amends), the `<200 ms` ack constraint, the modular-monolith
+  and stateless-service constraints
+- `PRD.md` — FR-IM-1..8, FR-N-1..8, FR-R-1..12, FR-J-1..11, §11.1 JEV wire spec, §4.2 NG1/NG3/NG8, §20 Phase 4–5
+  placement of the Zalo adapter and inbound webhooks
 
 ---
-*Feature research for: IM-driven app builder & integration gateway*
-*Researched: 2026-10-01*
+*Feature research for: IM-driven enterprise gateway — v2 platform expansion*
+*Researched: 2026-10-21*
+
