@@ -4,30 +4,30 @@ milestone: v2.0
 milestone_name: Platform Expansion & Advanced Capabilities
 current_phase: 10
 current_phase_name: Outbound Delivery Seam & Event Contract
-current_plan: 5
-status: Milestone v2.0 planned — awaiting Phase 10
-stopped_at: Completed 10-04-PLAN.md (outbound ports in domain, Teams impl in worker)
-last_updated: "2026-10-22T09:46:47.992Z"
+current_plan: 8
+status: Phase 10 complete — all 8 plans, 14/14 OUT requirements
+stopped_at: Completed 10-08-PLAN.md (trace propagation OUT-13 + end-to-end seam proof)
+last_updated: "2026-10-22T21:45:00.000Z"
 last_activity: 2026-10-22
-last_activity_desc: Roadmap created for milestone v2.0 — Phases 10-17, 97/97 requirements mapped
+last_activity_desc: Phase 10 complete — the outbound delivery seam, the event contract, and trace propagation shipped
 state_head: be8371acaa2f703c0306494aa73102c68dd1ddbc
 progress:
   total_phases: 8
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 8
+  completed_plans: 8
 ---
 
 ## Current Position
 
 Phase: 10 of 17 (Outbound Delivery Seam & Event Contract)
-Plan: 5 of 8 — 10-04 (outbound ports + worker delivery) complete
-Current Plan: 5
+Plan: 8 of 8 — Phase 10 complete
+Current Plan: none
 Total Plans in Phase: 8
-Status: Phase 10 in progress — plans 10-01, 10-02, 10-03, 10-04 complete; 10-05 next
-Last activity: 2026-10-22 — 10-04 moved outbound delivery to the worker under R1
+Status: Phase 10 COMPLETE — all 8 plans shipped; 14/14 OUT requirements met
+Last activity: 2026-10-22 — OUT-13 trace propagation + end-to-end seam proof landed
 
-Progress: [█░░░░░░░░░] 3%
+Progress: [█████░░░░░] Phase 10 of 8 phases (12% of v2.0 milestone)
 
 ## Project Reference
 

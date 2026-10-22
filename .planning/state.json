@@ -6,7 +6,7 @@
     {
       "number": "10",
       "name": "Outbound Delivery Seam & Event Contract",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "11",
@@ -45,9 +45,9 @@
     }
   ],
   "next": {
-    "command": "/gsd-progress --next",
+    "command": "/gsd:progress --next",
     "label": "Advance to the next step (plan phase 10)",
-    "reason": "Phase 1 of 8 — needs a plan"
+    "reason": "Phase 10 of 8 — needs a plan"
   },
-  "updated_at": "2026-10-22T09:13:30.638Z"
+  "updated_at": "2026-10-22T09:46:21.062Z"
 }

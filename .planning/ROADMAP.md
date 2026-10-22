@@ -84,7 +84,7 @@ The deviation is deliberate and is honoured through phase *breadth*, not phase *
 - Integer phases (10-17): the whole of v2.0, executed in numeric order.
 - v1.0's phases 1-9 are shipped and archived. Numbering **continues**; it never resets.
 
-- [ ] **Phase 10: Outbound Delivery Seam & Event Contract** - The missing half of the product: the bot finally answers, every platform becomes a two-sided plug-in, and the event envelopes gain the optional threading fields that later phases inherit.
+- [x] **Phase 10: Outbound Delivery Seam & Event Contract** - The missing half of the product: the bot finally answers, every platform becomes a two-sided plug-in, and the event envelopes gain the optional threading fields that later phases inherit.
 - [ ] **Phase 11: Real Authorization & Persistent Identity** - A v1 correctness fix, not a v2 feature: real effective permissions, a required permission version, a Redis-backed cache every replica shares, and persistent identity - so group RBAC and the AI guard are not built on a stub.
 - [ ] **Phase 12: Telegram Adapter** - The lowest-risk platform proves the shared seam: verified webhook, threaded replies, authorisation on every command, bounded inline keyboards, and a boot-time check of the bot's own configuration.
 - [ ] **Phase 13: Zalo OA Adapter** - The milestone's headline and highest-risk item: a verified 2-second receiver, a hand-written OA client, single-flight token rotation, quota-aware sends, and big-int-safe identifiers.
