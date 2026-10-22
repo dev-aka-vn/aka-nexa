@@ -239,12 +239,110 @@ Populated by the roadmapper. Every requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |---|---|---|
-| *(populated during roadmap creation)* | | Pending |
+| OUT-01 | Phase 10 | Pending |
+| OUT-02 | Phase 10 | Pending |
+| OUT-03 | Phase 10 | Pending |
+| OUT-04 | Phase 10 | Pending |
+| OUT-05 | Phase 10 | Pending |
+| OUT-06 | Phase 10 | Pending |
+| OUT-07 | Phase 10 | Pending |
+| OUT-08 | Phase 10 | Pending |
+| OUT-09 | Phase 10 | Pending |
+| OUT-10 | Phase 10 | Pending |
+| OUT-11 | Phase 10 | Pending |
+| OUT-12 | Phase 10 | Pending |
+| OUT-13 | Phase 10 | Pending |
+| OUT-14 | Phase 10 | Pending |
+| AUT-01 | Phase 11 | Pending |
+| AUT-02 | Phase 11 | Pending |
+| AUT-03 | Phase 11 | Pending |
+| AUT-04 | Phase 11 | Pending |
+| AUT-05 | Phase 11 | Pending |
+| AUT-06 | Phase 11 | Pending |
+| AUT-07 | Phase 11 | Pending |
+| AUT-08 | Phase 11 | Pending |
+| AUT-09 | Phase 11 | Pending |
+| AUT-10 | Phase 11 | Pending |
+| TGA-01 | Phase 12 | Pending |
+| TGA-02 | Phase 12 | Pending |
+| TGA-03 | Phase 12 | Pending |
+| TGA-04 | Phase 12 | Pending |
+| TGA-05 | Phase 12 | Pending |
+| TGA-06 | Phase 12 | Pending |
+| TGA-07 | Phase 12 | Pending |
+| TGA-08 | Phase 12 | Pending |
+| TGA-09 | Phase 12 | Pending |
+| TGA-10 | Phase 12 | Pending |
+| TGA-11 | Phase 12 | Pending |
+| ZAL-01 | Phase 13 | Pending |
+| ZAL-02 | Phase 13 | Pending |
+| ZAL-03 | Phase 13 | Pending |
+| ZAL-04 | Phase 13 | Pending |
+| ZAL-05 | Phase 13 | Pending |
+| ZAL-06 | Phase 13 | Pending |
+| ZAL-07 | Phase 13 | Pending |
+| ZAL-08 | Phase 13 | Pending |
+| ZAL-09 | Phase 13 | Pending |
+| ZAL-10 | Phase 13 | Pending |
+| ZAL-11 | Phase 13 | Pending |
+| ZAL-12 | Phase 13 | Pending |
+| ZAL-13 | Phase 13 | Pending |
+| ZAL-14 | Phase 13 | Pending |
+| ZAL-15 | Phase 13 | Pending |
+| SYNC-01 | Phase 14 | Pending |
+| SYNC-02 | Phase 14 | Pending |
+| SYNC-03 | Phase 14 | Pending |
+| SYNC-04 | Phase 14 | Pending |
+| SYNC-05 | Phase 14 | Pending |
+| SYNC-06 | Phase 14 | Pending |
+| SYNC-07 | Phase 14 | Pending |
+| SYNC-08 | Phase 14 | Pending |
+| SYNC-09 | Phase 14 | Pending |
+| SYNC-10 | Phase 14 | Pending |
+| SYNC-11 | Phase 14 | Pending |
+| GRP-01 | Phase 15 | Pending |
+| GRP-02 | Phase 15 | Pending |
+| GRP-03 | Phase 15 | Pending |
+| GRP-04 | Phase 15 | Pending |
+| GRP-05 | Phase 15 | Pending |
+| GRP-06 | Phase 15 | Pending |
+| GRP-07 | Phase 15 | Pending |
+| GRP-08 | Phase 15 | Pending |
+| GRP-09 | Phase 15 | Pending |
+| GRP-10 | Phase 15 | Pending |
+| GRP-11 | Phase 15 | Pending |
+| GRP-12 | Phase 15 | Pending |
+| GRP-13 | Phase 15 | Pending |
+| AIG-01 | Phase 16 | Pending |
+| AIG-02 | Phase 16 | Pending |
+| AIG-03 | Phase 16 | Pending |
+| AIG-04 | Phase 16 | Pending |
+| AIG-05 | Phase 16 | Pending |
+| AIG-06 | Phase 16 | Pending |
+| AIG-07 | Phase 16 | Pending |
+| AIG-08 | Phase 16 | Pending |
+| AIG-09 | Phase 16 | Pending |
+| AIG-10 | Phase 16 | Pending |
+| AIG-11 | Phase 16 | Pending |
+| AIG-12 | Phase 16 | Pending |
+| AIG-13 | Phase 16 | Pending |
+| OPS-01 | Phase 17 | Pending |
+| OPS-02 | Phase 17 | Pending |
+| OPS-03 | Phase 17 | Pending |
+| OPS-04 | Phase 17 | Pending |
+| OPS-05 | Phase 17 | Pending |
+| OPS-06 | Phase 17 | Pending |
+| OPS-07 | Phase 17 | Pending |
+| OPS-08 | Phase 17 | Pending |
+| OPS-09 | Phase 17 | Pending |
+| OPS-10 | Phase 17 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 97 total — OUT 14, AUT 10, TGA 11, ZAL 15, SYNC 11, GRP 13, AIG 13, OPS 10
-- Mapped to phases: 0
-- Unmapped: 97 ⚠️ *(expected — the roadmapper fills this next)*
+- Mapped to phases: 97
+- Unmapped: 0 ✓
+- Duplicated (mapped to more than one phase): 0 ✓
+- Roadmap: `.planning/ROADMAP.md` (v2.0, Phases 10–17)
 
 ---
 
@@ -263,4 +361,4 @@ Populated by the roadmapper. Every requirement maps to exactly one phase.
 
 ---
 *Requirements defined: 2026-10-22*
-*Last updated: 2026-10-22 after initial definition for milestone v2.0*
+*Last updated: 2026-10-22 after roadmap creation for milestone v2.0 — 97/97 requirements mapped across Phases 10–17*
