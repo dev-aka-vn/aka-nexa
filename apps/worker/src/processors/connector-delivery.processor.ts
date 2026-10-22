@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   BUSINESS_METRICS_RECORDER,
+  CONNECTOR_DELIVERY_QUEUE,
   type BusinessMetricsRecorder,
 } from '@akane/platform';
 import { ConnectorRegistry, ConnectorRateLimiter, ConnectorRateLimitedError, SubmissionRevisionsRepository } from '@akane/domain';
@@ -19,7 +20,7 @@ const DeliveryJobSchema = z.object({
 export type DeliveryJobData = z.infer<typeof DeliveryJobSchema>;
 
 @Injectable()
-@Processor('connector-delivery')
+@Processor(CONNECTOR_DELIVERY_QUEUE)
 export class ConnectorDeliveryProcessor extends WorkerHost {
   constructor(
     private readonly revisionsRepo: SubmissionRevisionsRepository,

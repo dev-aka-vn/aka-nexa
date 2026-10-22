@@ -1,4 +1,20 @@
 /**
+ * The outbound delivery seam, recorded so this spec can assert that a plaintext
+ * OTP was never queued onto it (T-10-09).
+ */
+class FakeOutboundQueue {
+  readonly added: { name: string; data: unknown; opts: unknown }[] = [];
+  async add(name: string, data: unknown, opts: unknown): Promise<unknown> {
+    this.added.push({ name, data, opts });
+    return { id: 'job_1' };
+  }
+  /** Every message text enqueued — the surface a leaked code would appear on. */
+  texts(): string[] {
+    return this.added.map((job) => String((job.data as { text?: unknown }).text ?? ''));
+  }
+}
+
+/**
  * IDN-05 — the OTP self-onboarding flow, end-to-end through
  * the inbound-event processor over real Redis.
  *
@@ -114,6 +130,7 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       mappings,
       delivery,
     );
+    const outboundQueue = new FakeOutboundQueue();
     const processor = new InboundEventProcessor(
       new IdentityService(mappings),
       new PublishedAppLoader(CATALOG, async () => true),
@@ -124,13 +141,27 @@ describe('OTP self-onboarding through the inbound processor (IDN-05)', () => {
       new ClarificationSessionService(redis),
       onboarding,
       routingOutcomes,
+      outboundQueue as never,
     );
-    return { processor, mappings, stateMachine };
+    return { processor, mappings, stateMachine, outboundQueue };
   }
+
+  it('never queues a plaintext OTP code (T-10-09)', async () => {
+    const deliveries: Array<{ chatUserId: string; code: string }> = [];
+    const { processor, outboundQueue } = buildProcessor(deliveries);
+    await processor.process({ data: event({ text: 'onboard' }) } as never);
+    const code = deliveries[0]!.code;
+    expect(code).toMatch(/^\d{6}$/);
+    // The code is out of process and on the delivery port; nothing enqueued
+    // carries it, because `otp_requested` produces no outbound message at all.
+    // A plaintext code on the queue would be a durable, replayable secret.
+    expect(outboundQueue.added).toHaveLength(0);
+    expect(outboundQueue.texts().some((text) => text.includes(code))).toBe(false);
+  });
 
   it('self-onboards an unmapped employee end-to-end (ROADMAP SC#3)', async () => {
     const deliveries: Array<{ chatUserId: string; code: string }> = [];
-    const { processor, mappings, stateMachine } = buildProcessor(deliveries);
+    const { processor, mappings, stateMachine, outboundQueue } = buildProcessor(deliveries);
 
     // 1. The onboarding intent from an unmapped chat identity.
     const requested = await processor.process({

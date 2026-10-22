@@ -1,13 +1,18 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue } from '@nestjs/bullmq';
 
-import { INBOUND_EVENTS_QUEUE } from '@akane/platform';
+import { IM_OUTBOUND_QUEUE, INBOUND_EVENTS_QUEUE } from '@akane/platform';
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
+import { createHash } from 'node:crypto';
 import {
   InboundEventSchema,
   JEV_SPEC_VERSION,
   type InboundEvent,
+  type OutboundAction,
+  type OutboundMessage,
 } from '@akane/contract';
+import { OUTBOUND_DELIVERY_ATTEMPTS } from './outbound-delivery.registry.js';
 import {
   IdentityService,
   LinkIssuerService,
@@ -76,19 +81,112 @@ export class InboundEventProcessor extends WorkerHost {
     private readonly clarificationSession: ClarificationSessionService,
     private readonly onboarding: OtpOnboardingService,
     private readonly routingOutcomes: RoutingOutcomeRepository,
+    @InjectQueue(IM_OUTBOUND_QUEUE) private readonly outboundQueue: Queue,
   ) {
     super();
   }
 
+  /**
+   * Run the pipeline, then hand the outcome to the delivery seam.
+   *
+   * BullMQ discards a processor's return value, so this used to be where every
+   * `link` / `clarify` / OTP reply died silently. The outcome is now turned
+   * into an `OutboundMessage` and enqueued before the promise resolves.
+   *
+   * `skipped` and `otp_requested` produce nothing here: there is no reply to
+   * send in the first case, and in the second the code has already been
+   * delivered by `OtpOnboardingService` through `OTP_DELIVERY_PORT` — a
+   * plaintext OTP must never be queued (T-10-09).
+   */
   async process(job: Job): Promise<ProcessorOutcome> {
     const parsed = InboundEventSchema.safeParse(job.data);
     if (!parsed.success) return { kind: 'skipped', reason: 'invalid_event' };
     const event = parsed.data;
 
-    if (event.action === 'slash_command') return this.handleSlash(event);
-    if (event.action === 'interaction') return this.handleInteraction(event);
+    if (event.action === 'slash_command') {
+      return this.deliver(await this.handleSlash(event), event);
+    }
+    if (event.action === 'interaction') {
+      return this.deliver(await this.handleInteraction(event), event);
+    }
     if (event.action !== 'message') return { kind: 'skipped', reason: event.action };
-    return this.handleMessage(event);
+    return this.deliver(await this.handleMessage(event), event);
+  }
+
+  /**
+   * Turn one outcome into the outbound envelope and enqueue it.
+   *
+   * ## The `message_id` is derived, never random
+   *
+   * `crypto.randomUUID()` would produce a different id every time the inbound
+   * job is retried, and the id must be stable across delivery retries (10-01)
+   * — the contract calls it "producer-generated, unique per outbound message,
+   * stable across delivery retries". Hashing `(platform, event_id, action)`
+   * gives both: unique per inbound event, and identical on every retry of it.
+   *
+   * ## The `jobId` is deterministic for the same reason
+   *
+   * BullMQ de-duplicates on `jobId` while a job with that id still exists, so
+   * a re-driven inbound event cannot enqueue the reply twice.
+   */
+  private async deliver(
+    outcome: ProcessorOutcome,
+    event: InboundEvent,
+  ): Promise<ProcessorOutcome> {
+    const message = this.outboundFrom(outcome, event);
+    if (!message) return outcome;
+
+    await this.outboundQueue.add(
+      IM_OUTBOUND_QUEUE,
+      message,
+      {
+        // 10-06: bounded retries; the jittered backoff strategy is registered
+        // on the consumer side, not here.
+        attempts: OUTBOUND_DELIVERY_ATTEMPTS,
+        jobId: `${event.platform}:${event.channel_id}:${message.message_id}`,
+      },
+    );
+
+    return outcome;
+  }
+
+  /**
+   * Map a pipeline outcome onto an outbound envelope, or `null` when the
+   * outcome has no reply to send.
+   *
+   * Only OTP *code* delivery stays off the queue (`otp_requested` carries no
+   * code in its outcome, so there is nothing to leak); the OTP *status*
+   * outcomes are ordinary text and belong on the queue like any other reply.
+   */
+  private outboundFrom(
+    outcome: ProcessorOutcome,
+    event: InboundEvent,
+  ): OutboundMessage | null {
+    const action = outboundActionFor(outcome);
+    if (!action) return null;
+
+    const text = outboundTextFor(outcome);
+    if (text === null) return null;
+
+    return {
+      message_id: outboundMessageId(event),
+      platform: event.platform,
+      channel_id: event.channel_id,
+      chat_user_id: event.chat_user_id,
+      text,
+      action,
+      queue: IM_OUTBOUND_QUEUE,
+      // Filled in by the delivery processor from `job.attemptsMade`; the
+      // enqueue itself is the first attempt.
+      attempt: 0,
+      // The inbound event this reply answers. The delivery processor marks the
+      // ledger row for it `dispatched`, so the reconciler does not re-deliver.
+      native_event_id: event.event_id,
+      ...(event.thread_id ? { thread_id: event.thread_id } : {}),
+      ...(event.reply_to_message_id
+        ? { reply_to_message_id: event.reply_to_message_id }
+        : {}),
+    };
   }
 
   /** Form-driven slash path — no JevProvider is constructed or invoked (RTE-02). */
@@ -497,4 +595,78 @@ function firstMatchingLabel(
     }
   }
   return UNLABELLED_INTENT;
+}
+
+/**
+ * The outbound envelope action an outcome maps to, or `null` when the outcome
+ * has no reply.
+ *
+ * The `OutboundAction` union is what makes the platform's replies
+ * inspectable (10-01): an operator can tell a rendered form link from a
+ * clarify prompt or an error without reading the body.
+ */
+function outboundActionFor(outcome: ProcessorOutcome): OutboundAction | null {
+  switch (outcome.kind) {
+    case 'link':
+      return 'form_link';
+    case 'clarify':
+      return 'reply';
+    case 'otp_verified':
+    case 'otp_invalid':
+    case 'otp_locked':
+    case 'otp_expired':
+    case 'otp_consumed':
+      return 'error';
+    case 'otp_requested':
+    // No reply: the code itself was delivered by OTP onboarding through
+    // OTP_DELIVERY_PORT, and re-sending it here would put a plaintext code
+    // in a queue (T-10-09).
+    case 'skipped':
+      return null;
+  }
+}
+
+/**
+ * The visible text for an outcome, or `null` when there is nothing to say.
+ *
+ * Blunt by design: this is the seam, not the copy. Phase 11 owns the wording
+ * and the locale — `detectLocale` already exists above and the envelope has
+ * no locale field — so the strings live in one reviewed place rather than
+ * scattered across six `return` sites.
+ */
+function outboundTextFor(outcome: ProcessorOutcome): string | null {
+  switch (outcome.kind) {
+    case 'link':
+      return outcome.url;
+    case 'clarify':
+      return 'Which app did you mean? Reply with the app name, or /help for the list.';
+    case 'otp_verified':
+      return 'Your identity is confirmed. Send your request again to continue.';
+    case 'otp_invalid':
+      return `That code did not match. ${outcome.attemptsRemaining} attempt(s) remaining.`;
+    case 'otp_locked':
+      return `Too many attempts. Try again in ${outcome.remainingMinutes} minute(s).`;
+    case 'otp_expired':
+      return 'That code has expired. Send "onboard me" to request a new one.';
+    case 'otp_consumed':
+      return 'That code was already used. Send "onboard me" to request a new one.';
+    case 'otp_requested':
+    case 'skipped':
+      return null;
+  }
+}
+
+/**
+ * The stable outbound message id for one inbound event.
+ *
+ * A digest rather than `randomUUID()` because the id must be identical on
+ * every retry of the same inbound event: BullMQ re-drives the inbound job on
+ * failure, and a fresh id each time would enqueue the *same* reply as several
+ * distinct messages.
+ */
+function outboundMessageId(event: InboundEvent): string {
+  return createHash('sha256')
+    .update(`outbound:${event.platform}:${event.event_id}:${event.action}`)
+    .digest('hex')
+    .slice(0, 32);
 }

@@ -33,6 +33,7 @@ import {
   ConnectorRegistry,
   NotificationsModule,
   OutboxRepository,
+  PlatformEventRepository,
   SubmissionRevisionsRepository,
   TransferRequestRepository,
   TransferRequestService,
@@ -62,6 +63,14 @@ import { PurgeSweepProcessor } from './processors/purge-sweep.processor.js';
 import {
   NotificationProcessor,
 } from './processors/notification.processor.js';
+import { OutboundDeliveryProcessor } from './processors/outbound-delivery.processor.js';
+import {
+  OUTBOUND_DELIVERY_REGISTRY,
+  OutboundDeliveryRegistry,
+} from './processors/outbound-delivery.registry.js';
+import { WorkerQueueModule } from './queue/worker-queue.module.js';
+import { WorkerModule } from './worker.module.js';
+import { InboundEventProcessor } from './processors/inbound-event.processor.js';
 import {
   TeamsDeliveryAdapter,
   TEAMS_CLOUD_ADAPTER,
@@ -83,6 +92,13 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     CryptoModule,
     MongoModule,
     QueueModule,
+    // The outbound delivery seam's queue. Registered here (not in
+    // `packages/platform`) because only this process produces onto it.
+    WorkerQueueModule,
+    // The inbound routing path. Previously an orphan: `WorkerModule` was
+    // imported for its decorators only, so `InboundEventProcessor` was never
+    // instantiated and nothing consumed `INBOUND_EVENTS_QUEUE`.
+    WorkerModule,
     NotificationsModule,
     TerminusModule.forRoot(),
     MetricsModule,
@@ -108,6 +124,25 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
       provide: TEAMS_CLOUD_ADAPTER,
       useFactory: () => new TeamsCloudAdapterHolder(),
     },
+    // OUT-12's registry: platform → delivery port. Teams is the only one
+    // with an implementation today; Zalo (Phase 12) and Telegram (Phase 13)
+    // each add a port and one `register` line, not a new processor branch.
+    {
+      provide: OUTBOUND_DELIVERY_REGISTRY,
+      useFactory: (teams: TeamsDeliveryAdapter): OutboundDeliveryRegistry => {
+        const registry = new OutboundDeliveryRegistry();
+        registry.register('teams', teams);
+        return registry;
+      },
+      inject: [TeamsDeliveryAdapter],
+    },
+    {
+      provide: PlatformEventRepository,
+      useFactory: (config: ConfigService): PlatformEventRepository =>
+        new PlatformEventRepository(config),
+      inject: [ConfigService],
+    },
+    OutboundDeliveryProcessor,
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
@@ -176,7 +211,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor, AuditRetentionProcessor, PurgeSweepProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor, AuditRetentionProcessor, PurgeSweepProcessor, OutboundDeliveryProcessor, InboundEventProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
@@ -186,7 +221,9 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
         notification: NotificationProcessor,
         auditRetention: AuditRetentionProcessor,
         purgeSweep: PurgeSweepProcessor,
-      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification, auditRetention, purgeSweep],
+        outbound: OutboundDeliveryProcessor,
+        inbound: InboundEventProcessor,
+      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification, auditRetention, purgeSweep, outbound, inbound],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,

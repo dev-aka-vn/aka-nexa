@@ -24,6 +24,18 @@ class FakeRedis {
   async quit(): Promise<void> { this.store.clear(); this.ttis.clear(); }
 }
 
+/** The outbound delivery seam, recorded so a spec can assert delivery. */
+class FakeOutboundQueue {
+  readonly added: { name: string; data: unknown; opts: unknown }[] = [];
+  async add(name: string, data: unknown, opts: unknown): Promise<unknown> {
+    this.added.push({ name, data, opts });
+    return { id: 'job_1' };
+  }
+  message(): Record<string, unknown> | undefined {
+    return this.added[0]?.data as Record<string, unknown> | undefined;
+  }
+}
+
 const CATALOG: any[] = [
   {
     id: 'leave-request',
@@ -48,7 +60,7 @@ describe('InboundEventProcessor — teams platform (IM-10)', () => {
     const clarification = new ClarificationSessionService(new FakeRedis() as unknown as Redis);
     const onboarding = new OtpOnboardingService(new OtpStateMachine(new FakeRedis() as unknown as Redis), repo, { deliverOtp: async () => {} });
     const routingOutcomes = { record: async () => {}, outcomesForIntent: async () => [], outcomesForApp: async () => [] };
-    const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as any);
+    const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as any, new FakeOutboundQueue() as any);
 
     const out = await processor.process({
       data: {
