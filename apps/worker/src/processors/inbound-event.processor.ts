@@ -1,7 +1,11 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 
-import { IM_OUTBOUND_QUEUE, INBOUND_EVENTS_QUEUE } from '@akane/platform';
+import {
+  IM_OUTBOUND_QUEUE,
+  INBOUND_EVENTS_QUEUE,
+  injectTraceContextInto,
+} from '@akane/platform';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { createHash } from 'node:crypto';
@@ -139,12 +143,16 @@ export class InboundEventProcessor extends WorkerHost {
     await this.outboundQueue.add(
       IM_OUTBOUND_QUEUE,
       message,
-      {
+      // OUT-13: the traceparent rides in the job options, not the envelope.
+      // The envelope is frozen by D-21/D-23/D-43 (Phase 11 may widen it), and
+      // an internal trace id on the wire would be visible to every platform.
+      // Job options are persisted with the job and no contract enumerates them.
+      injectTraceContextInto({
         // 10-06: bounded retries; the jittered backoff strategy is registered
         // on the consumer side, not here.
         attempts: OUTBOUND_DELIVERY_ATTEMPTS,
         jobId: `${event.platform}:${event.channel_id}:${message.message_id}`,
-      },
+      }),
     );
 
     return outcome;

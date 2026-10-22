@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 
-import { IM_OUTBOUND_QUEUE } from '@akane/platform';
+import { IM_OUTBOUND_QUEUE, runWithJobTraceContext } from '@akane/platform';
 import {
   AuditRepository,
   PlatformEventRepository,
@@ -91,7 +91,29 @@ export class OutboundDeliveryProcessor extends WorkerHost {
     super();
   }
 
+  /**
+   * Consume one outbound delivery job (OUT-01).
+   *
+   * ## OUT-13: the trace context is restored before anything is delivered
+   *
+   * The producer wrote the inbound span's W3C `traceparent` into the job's
+   * options (see `InboundEventProcessor.deliver`). Without restoring it the
+   * delivery attempt, the audit write and the `markDispatched` call are all
+   * orphan spans — present, but with no path back to the message that caused
+   * them, which is precisely what NFR-O-1's "a reply is traceable to the
+   * message that caused it" rules out.
+   *
+   * Restoring means making the remote span the *active* one, so every span the
+   * delivery path starts becomes its child and appears in the same waterfall
+   * as the inbound event. The batch is the whole job, not just the `send()`
+   * call, because the failure-notice path and the audit rows belong to the
+   * same causal chain.
+   */
   async process(job: Job): Promise<void> {
+    return runWithJobTraceContext(job.opts, () => this.deliver(job));
+  }
+
+  private async deliver(job: Job): Promise<void> {
     const parsed = OutboundMessageSchema.safeParse(job.data);
     if (!parsed.success) {
       // A malformed job is a producer bug, not a transient failure. Retrying

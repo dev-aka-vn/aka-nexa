@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Redis } from 'ioredis';
+import { context } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
   IdentityMappingRepository,
   IdentityService,
@@ -16,6 +18,16 @@ import {
 import type { JevRequest, JevResponse } from '@akane/contract';
 
 import { InboundEventProcessor } from './inbound-event.processor.js';
+import * as traceRuntime from './otel-trace.testutil.js';
+
+/**
+ * `context.with()` is inert without a context manager, and `NodeSDK` only
+ * installs one in a real process (OUT-13's specs run the producer inside an
+ * active span, which is exactly what production's manager provides).
+ */
+beforeAll(() => {
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+});
 
 /**
  * The OBS-05 producer's record store, in memory. The
@@ -613,8 +625,46 @@ describe('InboundEventProcessor — outbound delivery seam (OUT-01, T-10-09)', (
     expect(job.opts).toMatchObject({ attempts: 5 });
   });
 
-  it('produces a message_id that is stable across delivery retries', async () => {
+  it('carries the traceparent in job options, never in the envelope (OUT-13)', async () => {
     const { processor, outboundQueue } = await buildProcessor();
+
+    // The producer reads the span at the moment it enqueues, synchronously,
+    // so an active context must be established for that call — not around the
+    // `await` that follows it.
+    traceRuntime.runWithin(traceRuntime.makeActiveSpanForTrace(), () => {
+      void processor.process({
+        data: event({ text: 'I want to request leave' }),
+      } as never);
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(outboundQueue.added).toHaveLength(1);
+    const job = outboundQueue.added[0]!;
+    // In the options: Redis already persists them with the job, and no
+    // contract enumerates them. A trace id on the envelope would be visible
+    // to every platform and would amend a frozen contract (D-21/D-23/D-43).
+    expect(job.opts).toMatchObject({
+      [traceRuntime.TRACEPARENT_JOB_OPTION]: expect.stringMatching(
+        /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/,
+      ),
+    });
+    // And NOT in the payload the platform's port receives.
+    expect(traceRuntime.TRACEPARENT_JOB_OPTION in (job.data as object)).toBe(false);
+    expect((job.data as Record<string, unknown>).platform_metadata).toBeUndefined();
+  });
+
+  it('omits the traceparent when there is no active span (OUT-13)', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    await processor.process({
+      data: event({ text: 'I want to request leave' }),
+    } as never);
+
+    const opts = outboundQueue.added[0]!.opts as object;
+    expect(traceRuntime.TRACEPARENT_JOB_OPTION in opts).toBe(false);
+  });
+
+  it('produces a message_id that is stable across delivery retries', async () => {    const { processor, outboundQueue } = await buildProcessor();
 
     await processor.process({ data: event({ text: 'I want to request leave' }) } as never);
     await processor.process({ data: event({ text: 'I want to request leave' }) } as never);

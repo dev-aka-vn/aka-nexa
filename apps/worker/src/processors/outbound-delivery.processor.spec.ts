@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { context, trace } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 
 import {
   OutboundMessageSchema,
@@ -8,6 +10,15 @@ import {
 import { outboundJitterBackoff } from './outbound-delivery.processor.js';
 import { OutboundDeliveryProcessor } from './outbound-delivery.processor.js';
 import { OutboundDeliveryRegistry } from './outbound-delivery.registry.js';
+
+/**
+ * `context.with()` is inert without a context manager, and `NodeSDK` only
+ * installs one in a real process (OUT-13's consumer test asserts the span that
+ * is active inside the delivery port, which is exactly what production gives).
+ */
+beforeAll(() => {
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+});
 
 /** A deliverable message in the shape the seam enqueues. */
 function message(overrides: Partial<OutboundMessage> = {}): OutboundMessage {
@@ -150,6 +161,51 @@ describe('OutboundDeliveryProcessor (OUT-01, OUT-02, OUT-14)', () => {
     await expect(processor.process({ data: message() } as never)).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(1);
     expect(markDispatched).toHaveBeenCalledWith('evt_1', 'teams');
+  });
+});
+
+describe('OutboundDeliveryProcessor — trace propagation (OUT-13)', () => {
+  /** A traceparent in the W3C grammar, as the producer writes it. */
+  const TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+  it('restores the inbound trace before delivering, so the port sees it', async () => {
+    const seen: (string | undefined)[] = [];
+    const send = vi.fn().mockImplementation(() => {
+      seen.push(trace.getSpan(context.active())?.spanContext().spanId);
+      return Promise.resolve();
+    });
+    const registry = new OutboundDeliveryRegistry();
+    registry.register('teams', { send } as never);
+    const processor = new OutboundDeliveryProcessor(
+      registry,
+      { markDispatched: vi.fn().mockResolvedValue(true) } as never,
+      { append: vi.fn() } as never,
+    );
+
+    await processor.process({
+      data: message(),
+      opts: { traceparent: TRACEPARENT },
+    } as never);
+
+    // The span active inside the port is the *restored* one, so any span the
+    // delivery path starts is a child of the inbound event's trace.
+    expect(seen[0]).toBe('b7ad6b7169203331');
+  });
+
+  it('leaves the context untouched when the job carries no traceparent', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const registry = new OutboundDeliveryRegistry();
+    registry.register('teams', { send });
+    const processor = new OutboundDeliveryProcessor(
+      registry,
+      { markDispatched: vi.fn() } as never,
+      { append: vi.fn() } as never,
+    );
+
+    // Must not throw, and must still deliver: a missing trace is not a reason
+    // to drop a reply.
+    await expect(processor.process({ data: message() } as never)).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -28,3 +28,11 @@ export {
   type OtelBootstrapConfig,
   type OtelHandle,
 } from './otel.bootstrap.js';
+export {
+  formatTraceparent,
+  injectTraceContextInto,
+  parseTraceparent,
+  runWithJobTraceContext,
+  TRACEPARENT_JOB_OPTION,
+  traceContextFromJobOptions,
+} from './trace-context.js';
