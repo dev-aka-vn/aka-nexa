@@ -160,6 +160,21 @@ export {
 export { NotificationAssemblerService } from './notifications/notification-assembler.service.js';
 export type { NotificationAssembleResult } from './notifications/notification-assembler.service.js';
 export { NotificationsModule } from './notifications/notifications.module.js';
+// OUT-09/OUT-10/OUT-11: the neutral platform-event ledger. Also reachable via
+// the `platform-events/index.js` subpath for a consumer that wants only the
+// ledger. It is its own element type so both the api (dedupe write on the ack
+// path) and the worker (reconciler) can import it without touching an inbound
+// adapter, which the entrypoint-drift gate and R1 forbid the worker from doing.
+export {
+  PLATFORM_EVENT_COLLECTION,
+  PLATFORM_EVENT_RETENTION_DAYS,
+  PLATFORM_EVENT_STATES,
+  PlatformEventRepository,
+  type PlatformEventDocument,
+  type PlatformEventInput,
+  type PlatformEventInsertResult,
+  type PlatformEventState,
+} from './platform-events/index.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,
