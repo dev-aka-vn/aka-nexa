@@ -152,6 +152,14 @@ export { ConnectorsModule } from './connectors/connectors.module.js';
 // entrypoint-drift gate forbids the worker from reaching any
 // adapters/<name>/inbound/ path. api imports them via the @akane/domain
 // subpath (see apps/api/src/adapters/teams/*).
+//
+// OUT-12's outbound ports are subpath-only for the mirror-image reason: the
+// `outbound-adapter` file category is worker-only (R1), and this barrel is in
+// the api's import closure, so re-exporting a port here would make api reach a
+// worker-only path *transitively* — `tooling/entrypoint-drift.spec.ts` asserts
+// exactly that and would fail. The worker imports
+// `@akane/domain/adapters/<platform>/outbound/<port>.js` directly; the subpath
+// mappings live in this package's exports.
 export {
   ConversationReferenceRepository,
   type ConversationReferenceRecord,
