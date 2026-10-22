@@ -22,5 +22,6 @@ export type {
   PlatformEventDocument,
   PlatformEventInput,
   PlatformEventInsertResult,
+  PlatformEventRepositoryOptions,
   PlatformEventState,
 } from './platform-event.repository.js';

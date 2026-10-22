@@ -17,6 +17,7 @@ import {
   type OtpDeliveryPort,
 } from '@akane/domain';
 import { MongoModule, MongoService, REDIS_CACHE } from '@akane/platform';
+import { WorkerQueueModule } from './queue/worker-queue.module.js';
 import { InboundEventProcessor } from './processors/inbound-event.processor.js';
 import { OtpDeliveryService } from './processors/otp-delivery.service.js';
 
@@ -27,7 +28,15 @@ import { OtpDeliveryService } from './processors/otp-delivery.service.js';
  * any of the decision providers (RTE-02).
  */
 @Module({
-  imports: [MongoModule],
+  // `MongoModule` for the identity/routing stores, and `WorkerQueueModule`
+  // for the outbound delivery seam. The queue registration must be reachable
+  // *from this module*, not just from `app.module`: Nest only lets a provider
+  // inject tokens declared in a module it imports, and
+  // `InboundEventProcessor` (declared below) injects
+  // `@InjectQueue(IM_OUTBOUND_QUEUE)`. Registering the queue in `app.module`
+  // alone compiles and then fails boot with `UnknownDependenciesException` —
+  // after routing has already run, so the reply is lost.
+  imports: [MongoModule, WorkerQueueModule],
   providers: [
     IdentityMappingRepository,
     IdentityService,

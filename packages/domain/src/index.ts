@@ -181,6 +181,7 @@ export {
   type PlatformEventDocument,
   type PlatformEventInput,
   type PlatformEventInsertResult,
+  type PlatformEventRepositoryOptions,
   type PlatformEventState,
 } from './platform-events/index.js';
 // OUT-03: the adapter-coverage declaration and its boot assertion. Exported

@@ -22,6 +22,27 @@ export const PLATFORM_EVENT_REPOSITORY_SERVER_SELECTION_TIMEOUT_MS = 40;
 export const PLATFORM_EVENT_REPOSITORY_CONNECT_TIMEOUT_MS = 40;
 export const PLATFORM_EVENT_REPOSITORY_SOCKET_TIMEOUT_MS = 40;
 
+/**
+ * The per-timeout overrides, mirroring `MongoService`'s `MongoServiceOptions`.
+ *
+ * ## Why this exists, and why it does not weaken the budget
+ *
+ * Every composition root leaves these at the defaults above, which is the
+ * <50 ms constraint the ack path depends on. The overrides exist for
+ * **integration tests against a freshly mapped container**, where a single
+ * TCP connect plus DNS resolve routinely costs more than 40 ms and the
+ * repository's own budget would make the first operation always time out —
+ * an un-testable seam that cannot be proven to work at all.
+ *
+ * A wider value in a test proves the seam's sequencing; it does not prove the
+ * production budget. That stays the default, deliberately.
+ */
+export interface PlatformEventRepositoryOptions {
+  readonly serverSelectionTimeoutMS?: number;
+  readonly connectTimeoutMS?: number;
+  readonly socketTimeoutMS?: number;
+}
+
 /** OUT-11: entries older than this are swept by the retention job. */
 export const PLATFORM_EVENT_RETENTION_DAYS = 30;
 
@@ -90,12 +111,21 @@ export class PlatformEventRepository {
   private readonly dbName: string;
   private indexPromise: Promise<void> | undefined;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    options: PlatformEventRepositoryOptions = {},
+  ) {
     const url = config.getOrThrow<string>('MONGO_URL');
     this.client = new MongoClient(url, {
-      serverSelectionTimeoutMS: PLATFORM_EVENT_REPOSITORY_SERVER_SELECTION_TIMEOUT_MS,
-      connectTimeoutMS: PLATFORM_EVENT_REPOSITORY_CONNECT_TIMEOUT_MS,
-      socketTimeoutMS: PLATFORM_EVENT_REPOSITORY_SOCKET_TIMEOUT_MS,
+      serverSelectionTimeoutMS:
+        options.serverSelectionTimeoutMS ??
+        PLATFORM_EVENT_REPOSITORY_SERVER_SELECTION_TIMEOUT_MS,
+      connectTimeoutMS:
+        options.connectTimeoutMS ??
+        PLATFORM_EVENT_REPOSITORY_CONNECT_TIMEOUT_MS,
+      socketTimeoutMS:
+        options.socketTimeoutMS ??
+        PLATFORM_EVENT_REPOSITORY_SOCKET_TIMEOUT_MS,
     });
     this.dbName = new URL(url).pathname.replace(/^\//, '') || 'akane';
   }
@@ -205,6 +235,20 @@ export class PlatformEventRepository {
    * ledger grows without bound, and re-driving a 30-day-old message would be
    * worse for the user than dropping it. Called by the scheduler, not the ack
    * path.
+   *
+   * ## The fate of the pre-Phase-10 `teams_events` collection
+   *
+   * Before this ledger, Teams dedupe rows lived in a Teams-only collection keyed
+   * on `teamsEventId`. Phase 10 generalized that onto `platform_events` and
+   * nothing in the codebase writes or reads the old collection any more.
+   *
+   * **Decision: age out, no migration.** The rows' only job was suppressing a
+   * redelivery, so their value expires on the same 30-day schedule this sweep
+   * runs. A backfill would add new code, new test surface and new failure modes
+   * to preserve a bounded dedupe window across a deploy — work that buys
+   * nothing once the window has passed. Operators who want it gone immediately
+   * may drop the collection by hand after deploy; the sweep makes it a cleanup,
+   * not a prerequisite.
    */
   async sweepOlderThan(days = PLATFORM_EVENT_RETENTION_DAYS): Promise<number> {
     await this.ensureIndex();
