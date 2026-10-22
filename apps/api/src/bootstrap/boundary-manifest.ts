@@ -5,6 +5,7 @@ import {
   INBOUND_ADAPTER_REGISTRATIONS,
   JOB_SCHEDULER_REGISTRATIONS,
   NOTIFICATION_SEND_QUEUE,
+  OUTBOUND_DELIVERY_REGISTRATIONS,
   QUEUE_PRODUCER_TOKEN,
   WORKER_CONSUMERS,
   type BoundaryManifest,
@@ -44,6 +45,12 @@ import {
  * *shared* surface all three processes mount (D-09) — forbidding them here would
  * forbid the very endpoint FND-05 requires. And no inbound-adapter token here:
  * `api` is the one process allowed to have it.
+ *
+ * **`OUTBOUND_DELIVERY_REGISTRATIONS`** (10-07) is the fourth forbidden token,
+ * added for the same shape as `WORKER_CONSUMERS`: a delivery port is a worker
+ * capability, and a single misplaced `providers:` line that mounts one would
+ * put an outbound SDK call inside the ack path (T-10-06). The lint rule
+ * forbids the import; this manifest forbids the registration.
  */
 export const API_BOUNDARY_MANIFEST: BoundaryManifest = Object.freeze({
   app: 'api',
@@ -51,6 +58,14 @@ export const API_BOUNDARY_MANIFEST: BoundaryManifest = Object.freeze({
     QUEUE_PRODUCER_TOKEN,
     WORKER_CONSUMERS,
     JOB_SCHEDULER_REGISTRATIONS,
+    // T-10-06: the api request path must never hold a live outbound delivery
+    // port. Delivery needs the conversation-reference lookup and a platform
+    // SDK call, and either one inside the receiver spends the <200 ms ack
+    // budget (D-13). The port *interface* stays importable from
+    // `@akane/domain/adapters/*/outbound`; what is forbidden here is the
+    // process-level capability, which is what R1's file-category rule cannot
+    // see.
+    OUTBOUND_DELIVERY_REGISTRATIONS,
   ]),
   // D-37: the api process is the request path and must never hold the heartbeat
   // producer token, a worker, or a scheduler. It DOES legitimately enqueue onto

@@ -13,6 +13,7 @@ import {
   MetricsModule,
   MongoModule,
   MongoService,
+  OUTBOUND_DELIVERY_REGISTRATIONS,
   REDIS_QUEUE,
   ProviderBoundaryGuardRunner,
   QueueModule,
@@ -68,6 +69,10 @@ import {
   OUTBOUND_DELIVERY_REGISTRY,
   OutboundDeliveryRegistry,
 } from './processors/outbound-delivery.registry.js';
+import {
+  outboundDeliveryRegistrationsProvider,
+} from './processors/outbound-delivery.registry.js';
+import { AdapterCoverageRunner } from './bootstrap/adapter-coverage.runner.js';
 import { WorkerQueueModule } from './queue/worker-queue.module.js';
 import { WorkerModule } from './worker.module.js';
 import { InboundEventProcessor } from './processors/inbound-event.processor.js';
@@ -143,6 +148,14 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
       inject: [ConfigService],
     },
     OutboundDeliveryProcessor,
+    {
+      // OUT-03's worker half: which platforms this build can deliver to.
+      // Forbidden in the api manifest (T-10-06), named as an allowed
+      // capability here, and the value the boot assertion reads.
+      provide: OUTBOUND_DELIVERY_REGISTRATIONS,
+      useFactory: outboundDeliveryRegistrationsProvider,
+      inject: [OUTBOUND_DELIVERY_REGISTRY],
+    },
     OutboxRepository,
     SubmissionRevisionsRepository,
     ConnectorRegistry,
@@ -227,6 +240,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
+    AdapterCoverageRunner,
     {
       provide: EXTRA_HEALTH_INDICATORS,
       inject: [HealthIndicatorService, WORKER_CONSUMERS],

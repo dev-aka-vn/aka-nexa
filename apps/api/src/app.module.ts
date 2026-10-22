@@ -8,6 +8,7 @@ import {
   ConfigModule,
   CryptoModule,
   HealthController,
+  INBOUND_ADAPTER_REGISTRATIONS,
   MetricsModule,
   MongoModule,
   ProviderBoundaryGuardRunner,
@@ -28,6 +29,10 @@ import { TeamsModule } from './adapters/teams/teams.module.js';
 import { SlackModule } from './adapters/slack/slack.module.js';
 import { ExternalWebhookModule } from './webhooks/external/external-webhook.module.js';
 import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
+import {
+  API_INBOUND_ADAPTERS,
+  ApiAdapterCoverageRunner,
+} from './bootstrap/adapter-coverage.runner.js';
 
 /**
  * The `api` composition root (FND-03, FND-05, FND-08, OBS-01).
@@ -97,6 +102,13 @@ import { API_BOUNDARY_MANIFEST } from './bootstrap/boundary-manifest.js';
     redisShutdownProvider,
     { provide: BOUNDARY_MANIFEST, useValue: API_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
+    // OUT-03's api half. The token is api's own capability record (the worker
+    // and scheduler manifests forbid it), and the runner asserts this build's
+    // inbound registrations match the shared IM_ADAPTER_WIRING declaration —
+    // so a platform that is wired on the worker side but has no receiver here
+    // fails boot instead of dropping every message from it.
+    { provide: INBOUND_ADAPTER_REGISTRATIONS, useValue: API_INBOUND_ADAPTERS },
+    ApiAdapterCoverageRunner,
   ],
 })
 export class AppModule implements OnApplicationShutdown {

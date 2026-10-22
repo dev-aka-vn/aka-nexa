@@ -183,6 +183,26 @@ export {
   type PlatformEventInsertResult,
   type PlatformEventState,
 } from './platform-events/index.js';
+// OUT-03: the adapter-coverage declaration and its boot assertion. Exported
+// from the root barrel because every composition root needs it — `api` asserts
+// its inbound registrations, `worker` its outbound ones — and the two must
+// agree, which is only possible if both read the same declaration.
+export {
+  analyzeCoverage,
+  analyzeRegistrations,
+  assertAdapterCoverage,
+  assertRegistrations,
+  halfWiredPlatforms,
+  IM_ADAPTER_WIRING,
+  IM_PLATFORMS,
+  unwiredPlatforms,
+  wiredPlatforms,
+  wiringFor,
+  type AdapterCoverageViolation,
+  type AdapterRegistrations,
+  type AdapterRegistration,
+  type ImPlatformWiring,
+} from './adapters/coverage/im-adapter-coverage.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,

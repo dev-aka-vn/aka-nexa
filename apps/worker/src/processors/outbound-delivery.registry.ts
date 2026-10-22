@@ -56,3 +56,18 @@ export class OutboundDeliveryRegistry {
     return [...this.ports.keys()];
   }
 }
+
+/**
+ * The OUT-03 capability token, resolved from the registry.
+ *
+ * Kept beside the registry so the two cannot drift: the token's value *is*
+ * `registry.registered()`, so a port registered after boot would silently
+ * disagree with the value the guard read. The registry is mutably registered
+ * before boot for exactly the platforms this build supports, and the token is
+ * the frozen snapshot the assertion runs against.
+ */
+export function outboundDeliveryRegistrationsProvider(
+  registry: OutboundDeliveryRegistry,
+): readonly ImPlatform[] {
+  return registry.registered();
+}
