@@ -136,7 +136,15 @@ OUT-10, OUT-11, OUT-12, OUT-13, OUT-14
    reply is traceable to the message that caused it - and a dead-lettered message is visible on
    an operator surface with its failure reason and the platform event that produced it.
 
-**Plans**: TBD
+**Plans**: 3/8 plans executed
+- [x] 10-01-PLAN.md
+- [x] 10-02-PLAN.md
+- [x] 10-03-PLAN.md
+- [ ] 10-04-PLAN.md
+- [ ] 10-05-PLAN.md
+- [ ] 10-06-PLAN.md
+- [ ] 10-07-PLAN.md
+- [ ] 10-08-PLAN.md
 
 **UI hint**: yes
 
@@ -639,7 +647,7 @@ one-engineer team should follow the sequence.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. Outbound Delivery Seam & Event Contract | 0/TBD | Not started | - |
+| 10. Outbound Delivery Seam & Event Contract | 3/8 | In Progress | - |
 | 11. Real Authorization & Persistent Identity | 0/TBD | Not started | - |
 | 12. Telegram Adapter | 0/TBD | Not started | - |
 | 13. Zalo OA Adapter | 0/TBD | Not started | - |

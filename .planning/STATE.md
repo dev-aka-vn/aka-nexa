@@ -1,32 +1,33 @@
 ---
 gsd_state_version: "1.0"
+milestone: v2.0
+milestone_name: Platform Expansion & Advanced Capabilities
 current_phase: 10
-current_plan: Not started
-status: "Milestone v2.0 planned — awaiting Phase 10"
-milestone: "v2.0"
-milestone_name: "Platform Expansion & Advanced Capabilities"
-stopped_at: Milestone v2.0 roadmap created — 8 phases (10-17), 97/97 requirements mapped
-last_updated: "2026-10-22T00:00:00.000Z"
-state_head: 02f33227afbd983b5d339546c8b57e3eb1dac982
+current_phase_name: Outbound Delivery Seam & Event Contract
+current_plan: 4
+status: Milestone v2.0 planned — awaiting Phase 10
+stopped_at: Completed 10-03-PLAN.md (platform event ledger)
+last_updated: "2026-10-22T09:14:44.752Z"
+last_activity: 2026-10-22
+last_activity_desc: Roadmap created for milestone v2.0 — Phases 10-17, 97/97 requirements mapped
+state_head: 7c1b30477ea79d3fddd23fc515b2e1f4e7d70cfe
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
-last_activity: 2026-10-22
-current_phase_name: Outbound Delivery Seam & Event Contract
-last_activity_desc: Roadmap created for milestone v2.0 — Phases 10-17, 97/97 requirements mapped
 ---
 
 ## Current Position
 
 Phase: 10 of 17 (Outbound Delivery Seam & Event Contract)
-Plan: — (not planned)
-Status: Milestone v2.0 planned — awaiting Phase 10
-Last activity: 2026-10-22 — v2.0 roadmap created; Phase 10 ready to plan
+Plan: 4 of 8 — 10-03 (platform event ledger) complete
+Current Plan: 4
+Total Plans in Phase: 8
+Status: Phase 10 in progress — plans 10-01, 10-02, 10-03 complete; 10-04 next
+Last activity: 2026-10-22 — 10-03 shipped the neutral platform-event ledger
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 3%
 
 ## Project Reference
 
@@ -39,8 +40,8 @@ rendered form, without ever logging into — or learning — the downstream syst
 
 ## Session
 
-**Last session:** 2026-10-22
-**Stopped at:** Milestone v2.0 roadmap created — 8 phases, 97/97 requirements mapped
+**Last session:** 2026-10-22T09:14:44.575Z
+**Stopped at:** Completed 10-03-PLAN.md (platform event ledger)
 **Resume file:** None
 
 ## Performance Metrics
@@ -51,6 +52,11 @@ record is preserved in `.planning/milestones/v1.0-ROADMAP.md` and the phase summ
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | v2.0 (Phases 10-17) | 0 | — | — |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 10 P03 | ~50min | 4 tasks | 8 files |
 
 ## Decisions
 
@@ -81,6 +87,9 @@ record is preserved in `.planning/milestones/v1.0-ROADMAP.md` and the phase summ
 - **[Stack]** Frozen. New runtime deps permitted: `node-telegram-bot-api@2.1.0`, `ai` + exactly one
   `@ai-sdk/*` provider package, and **no Zalo package** (hand-rolled over `undici`).
   OpenTelemetry is **not** bumped this milestone (3.0.0 shipped 2026-10-20, breaking).
+- [Phase 10]: 10-03: the platform-event ledger uses 40 ms Mongo timeouts, not the 500 ms inherited from TeamsEventRepository — the phase decision memo names 500 ms as wrong for the 200 ms ack budget. Only the plan's key_links pattern still says 500.
+- [Phase 10]: 10-03: `platform-events` is a declared domain element type, not an unclassified directory. Empirically, R3 (no raw mongodb outside mongo-owner/data-access) does not fire at all for files in no element type, so D-02's per-subdirectory config change is what keeps the rule live there.
+- [Phase 10]: 10-03: TeamsEventRepository stays as a stateless Teams-scoped facade over PlatformEventRepository instead of being deleted, so the receiver rewrite in 10-04/10-05 lands as its own atomic commit and the @akane/domain subpath export stays stable.
 
 ## Blockers/Concerns
 
