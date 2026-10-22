@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { NOTIFICATION_SEND_QUEUE } from '@akane/platform';
 import { AuditRepository } from '@akane/domain';
 import { NotificationAssemblerService } from '@akane/domain';
-import { TeamsDeliveryService, isRetryableDeliveryError } from '../adapters/teams/teams-delivery.service.js';
+import { TeamsDeliveryAdapter, isRetryableDeliveryError } from '../adapters/teams/outbound/teams-delivery.adapter.js';
 import type { OutboundMessage } from '@akane/contract';
 
 const NotificationJobSchema = z.object({
@@ -84,7 +84,7 @@ export class NotificationProcessor extends WorkerHost {
 
   constructor(
     private readonly assembler: NotificationAssemblerService,
-    private readonly delivery: TeamsDeliveryService,
+    private readonly delivery: TeamsDeliveryAdapter,
     private readonly audit: AuditRepository,
   ) {
     super();

@@ -63,10 +63,10 @@ import {
   NotificationProcessor,
 } from './processors/notification.processor.js';
 import {
-  TeamsDeliveryService,
+  TeamsDeliveryAdapter,
   TEAMS_CLOUD_ADAPTER,
   TeamsCloudAdapterHolder,
-} from './adapters/teams/teams-delivery.service.js';
+} from './adapters/teams/outbound/teams-delivery.adapter.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const WORKER_READINESS_KEY = 'bullmq_workers';
@@ -103,7 +103,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     AuditRetentionProcessor,
     PurgeSweepProcessor,
     NotificationProcessor,
-    TeamsDeliveryService,
+    TeamsDeliveryAdapter,
     {
       provide: TEAMS_CLOUD_ADAPTER,
       useFactory: () => new TeamsCloudAdapterHolder(),
