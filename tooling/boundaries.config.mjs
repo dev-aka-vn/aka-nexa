@@ -60,6 +60,15 @@ export const DOMAIN_ELEMENT_TYPES = Object.freeze([
   // of the DSL (links, submissions) lists `dsl` explicitly below; `default:
   // disallow` means an edge that is not listed is a build failure.
   'dsl',
+  // Phase 10 (OUT-09/OUT-10/OUT-11): the platform-event ledger. Neutral on
+  // purpose — OUT-09's dedupe write happens in the api receiver while the
+  // reconciler and the 30-day sweep run in the worker, and `adapters` is not
+  // reachable by the worker (R1). Declaring it as its own element type is what
+  // D-02 requires for every new `packages/domain/src/*` subdirectory; without
+  // it the whole directory is outside the boundary graph, so R3 is silently
+  // inert there and a raw `mongodb` import in a neutral location would pass
+  // the build gate (the exact under-enforcement D-32 warns about).
+  'platform-events',
 ]);
 
 /**
@@ -117,6 +126,13 @@ export const BOUNDARY_FILE_CATEGORIES = Object.freeze([
   { category: 'connector-owner', pattern: 'packages/domain/src/connectors/**' },
   { category: 'mongo-owner', pattern: 'packages/platform/src/mongo/**' },
   { category: 'data-access', pattern: 'packages/domain/src/**/data-access/**' },
+  // Phase 10: the platform-event ledger is a data-access layer by role but
+  // lives at the element root (`platform-events/platform-event.repository.ts`)
+  // rather than under a `data-access/` subdirectory, because the ledger IS the
+  // element. Scoped to the whole element directory so a second repository
+  // added there inherits the same R3 allowance instead of needing another
+  // category. Everything else about the element is still element-typed.
+  { category: 'platform-events-owner', pattern: 'packages/domain/src/platform-events/**' },
 ]);
 
 /**
@@ -177,13 +193,23 @@ export const ALLOWED_EDGES = Object.freeze({
     'builder',
   ]),
   // adapters → contract: inbound + outbound event shapes only. NOTHING else.
-  adapters: Object.freeze(['platform', 'kernel', 'contract']),
+  // `platform-events` is the one addition: the inbound receivers dedupe through
+  // the neutral ledger (OUT-09), and the ledger is deliberately NOT an adapter
+  // so the worker can reach it too (CONTEXT: "Ledger location").
+  adapters: Object.freeze(['platform', 'kernel', 'contract', 'platform-events']),
   // notifications → platform (own Mongo client / config), kernel, contract,
   // plus the submission/identity/link seams the notification assembler (NOT-03)
   // traverses. dsl is required because SubmissionRepository is constructed over
   // DslService (DAT-10/11).
   notifications: Object.freeze(['platform', 'kernel', 'contract', 'submissions', 'identity', 'links', 'dsl']),
   audit: Object.freeze(['platform', 'kernel', 'contract']),
+  // Phase 10: the platform-event ledger is a leaf. It owns its own Mongo client
+  // (a dedicated one, so the ack path can fail closed inside the <50 ms budget
+  // without tightening the shared client), imports no other domain element, and
+  // is reachable from `adapters` plus both composition roots. An empty target
+  // list still contributes the element type to the graph, so an *incoming* edge
+  // that is not declared above stays a build failure (`default: disallow`).
+  'platform-events': Object.freeze([]),
   pipeline: Object.freeze([
     'platform',
     'kernel',
@@ -260,8 +286,9 @@ const R2_MESSAGE =
   'may reach the KMS/ signing surface. NFR-SEC-3: no plaintext env secrets, no ad-hoc crypto.';
 
 const R3_MESSAGE =
-  'R3 no direct Mongo: only packages/platform/src/mongo/** and packages/domain/src/**/data-access/** ' +
-  'may import the mongodb driver. Go through a repository so transaction-scoped sessions are threaded.';
+  'R3 no direct Mongo: only packages/platform/src/mongo/**, packages/domain/src/**/data-access/** and ' +
+  'packages/domain/src/platform-events/** may import the mongodb driver. Go through a repository so ' +
+  'transaction-scoped sessions are threaded.';
 
 /**
  * `boundaries/dependencies` rule body.
@@ -427,7 +454,7 @@ export const boundariesDependenciesRule = Object.freeze([
       },
       {
         from: {
-          file: { categories: { anyOf: ['mongo-owner', 'data-access'] } },
+          file: { categories: { anyOf: ['mongo-owner', 'data-access', 'platform-events-owner'] } },
         },
         allow: { to: { module: { origin: 'external', source: 'mongodb' } } },
       },
