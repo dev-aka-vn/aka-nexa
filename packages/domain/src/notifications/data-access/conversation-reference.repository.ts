@@ -29,8 +29,8 @@ export class ConversationReferenceRepository {
     return this.mongo.db().collection<ConversationReferenceRecord>('conversation_references');
   }
 
-  static key(channelId: string, chatUserId: string): string {
-    return `${channelId}::${chatUserId}`;
+  static key(platform: string, channelId: string, chatUserId: string): string {
+    return `${platform}:${channelId}::${chatUserId}`;
   }
 
   async upsert(key: string, input: ConversationReferenceInput): Promise<void> {

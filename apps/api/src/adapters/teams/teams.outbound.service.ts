@@ -97,7 +97,7 @@ export class TeamsOutboundService {
       throw new Error(`Invalid platform for Teams outbound: ${message.platform}`);
     }
 
-    const key = ConversationReferenceRepository.key(message.channel_id, message.chat_user_id);
+    const key = ConversationReferenceRepository.key('teams', message.channel_id, message.chat_user_id);
     const ref = await this.convRefRepo.get(key);
     if (!ref) {
       throw new Error(

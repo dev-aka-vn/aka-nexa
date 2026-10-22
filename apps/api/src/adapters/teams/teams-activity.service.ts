@@ -77,7 +77,7 @@ export class TeamsActivityService {
     const serviceUrl = a.serviceUrl ?? '';
     const conversationId = a.conversation?.id ?? channelId;
     const tenantId = a.conversation?.tenantId ?? a.channelData?.tenant?.id ?? '';
-    const key = ConversationReferenceRepository.key(channelId, chatUserId);
+    const key = ConversationReferenceRepository.key('teams', channelId, chatUserId);
     await this.convRefRepo.upsert(key, {
       serviceUrl,
       conversationId,
