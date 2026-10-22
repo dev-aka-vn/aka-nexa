@@ -19,6 +19,17 @@ const VALID_CONFIG: Record<string, unknown> = {
   REDIS_QUEUE_URL: 'redis://queue.internal:6379',
   CRYPTO_KEY_PROVIDER: 'local',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.internal:4318',
+  // Declared keys with schema defaults. They were added to the schema without
+  // being added here, so this fixture and `APP_CONFIG_KEYS` disagreed and the
+  // key-set assertion below was red before this plan touched the file.
+  AUDIT_RETENTION_DAYS: '1095',
+  PURGE_GRACE_DAYS: '30',
+  THROTTLE_PER_CONNECTOR_LIMIT: '60',
+  THROTTLE_PER_CONNECTOR_RPM: '60',
+  PER_CONNECTOR_RATE_LIMIT: '60',
+  // OUT-04: optional at boot, but declared — so it belongs in this fixture,
+  // which the key-set assertion below pins to the schema shape.
+  SLACK_SIGNING_SECRET: 'test-slack-signing-secret',
 };
 
 const omit = (
@@ -113,8 +124,25 @@ describe('AppConfigSchema — full boot surface (FND-09)', () => {
     ).toThrowError(/^CONFIG_INVALID: OTEL_EXPORTER_OTLP_ENDPOINT/);
   });
 
-  it('throws a named CONFIG_INVALID error naming a missing required Redis URL', () => {
-    expect(() => validateConfig(omit(VALID_CONFIG, ['REDIS_QUEUE_URL']))).toThrowError(
+  /**
+   * OUT-04. Absent is legal (a deployment that has not connected Slack still
+   * boots); the receiver fails closed on its own. Empty is not: an empty
+   * signing secret is a misconfiguration, and a scheme that treated it as
+   * "disabled" would silently accept nothing while looking configured.
+   */
+  it('accepts an absent Slack signing secret and rejects an empty one (OUT-04)', () => {
+    expect(
+      validateConfig(omit(VALID_CONFIG, ['SLACK_SIGNING_SECRET'])).SLACK_SIGNING_SECRET,
+    ).toBeUndefined();
+    expect(validateConfig(VALID_CONFIG).SLACK_SIGNING_SECRET).toBe(
+      'test-slack-signing-secret',
+    );
+    expect(() =>
+      validateConfig({ ...VALID_CONFIG, SLACK_SIGNING_SECRET: '' }),
+    ).toThrowError(/^CONFIG_INVALID: SLACK_SIGNING_SECRET/);
+  });
+
+  it('throws a named CONFIG_INVALID error naming a missing required Redis URL', () => {    expect(() => validateConfig(omit(VALID_CONFIG, ['REDIS_QUEUE_URL']))).toThrowError(
       /^CONFIG_INVALID: REDIS_QUEUE_URL invalid_type$/,
     );
   });
