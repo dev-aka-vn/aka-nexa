@@ -22,17 +22,19 @@ self-sustaining.
 ## Current State
 
 **Shipped Version:** v1.0  
-**Milestone:** Complete (2026-10-21)  
-**Phase:** 9 of 9 — Production Readiness  
-**PR:** #7 (28 commits, mergeable)  
-**Verification:** `nyquist_compliant: true`, 59 tests pass, `npm run build` exit 0  
-**Security:** 54 threat mitigations across 7 STRIDE categories  
-**Requirements:** All v1 requirements archived to `.planning/milestones/v1.0-REQUIREMENTS.md`  
-**Roadmap:** Archived to `.planning/milestones/v1.0-ROADMAP.md`  
+**Milestone:** v2.0 — Platform Expansion & Advanced Capabilities (planned)  
+**Phase:** Not started — Phase 10 is next  
+**Roadmap:** `.planning/ROADMAP.md` — 8 phases (10–17), 97/97 requirements mapped  
+**Requirements:** `.planning/REQUIREMENTS.md` — 97 requirements in 8 categories  
+**Research:** `.planning/research/` — 4 parallel passes + synthesis  
+**v1 Verification:** `nyquist_compliant: true`, 59 tests pass, `npm run build` exit 0, 54 threat mitigations  
+**v1 PR:** #7 (28 commits, mergeable)  
 
 The v1 milestone delivered Slack × (internal routing + Redmine connector) + self-service
-App Builder + Microsoft Teams expansion. v2 requirements (29 additional IM platforms, open-ended
-AI assistant) are deferred past v1.
+App Builder + Microsoft Teams expansion. v2.0 completes the chat loop: it builds the outbound
+delivery seam v1 never had, replaces the v1 stub authoriser with real epoch-backed RBAC, then
+adds Telegram and Zalo OA adapters, two-way synchronisation, directory/group RBAC, and a
+permission-first AI guard.
 
 ---
 
