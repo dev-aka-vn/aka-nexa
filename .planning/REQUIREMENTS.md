@@ -52,7 +52,7 @@ never answers.
 - [x] **OUT-09**: A platform event is recorded in a platform-scoped ledger with a unique index on the platform event identifier and moves through `pending → dispatched`; a crashed delivery is reconciled by a scheduled job rather than lost.
 - [x] **OUT-10**: The inbound receiver verifies the signature, validates the envelope shape, deduplicates, enqueues, and returns — it performs no database read, no credential decryption, and no outbound call.
 - [x] **OUT-11**: The platform event ledger is swept of entries older than 30 days.
-- [ ] **OUT-12**: The outbound delivery implementation for each platform lives under that platform's adapter directory, so the architecture boundary rule applies to outbound code as well as inbound.
+- [x] **OUT-12**: The outbound delivery implementation for each platform lives under that platform's adapter directory, so the architecture boundary rule applies to outbound code as well as inbound.
 - [ ] **OUT-13**: The trace context of an inbound event is propagated into the outbound delivery attempt, so a reply is traceable to the message that caused it.
 - [ ] **OUT-14**: A dead-lettered outbound message is visible on an operator surface with its failure reason and the platform event that produced it.
 
@@ -250,7 +250,7 @@ Populated by the roadmapper. Every requirement maps to exactly one phase.
 | OUT-09 | Phase 10 | Complete |
 | OUT-10 | Phase 10 | Complete |
 | OUT-11 | Phase 10 | Complete |
-| OUT-12 | Phase 10 | Pending |
+| OUT-12 | Phase 10 | Complete |
 | OUT-13 | Phase 10 | Pending |
 | OUT-14 | Phase 10 | Pending |
 | AUT-01 | Phase 11 | Pending |

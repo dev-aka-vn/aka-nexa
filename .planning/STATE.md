@@ -4,13 +4,13 @@ milestone: v2.0
 milestone_name: Platform Expansion & Advanced Capabilities
 current_phase: 10
 current_phase_name: Outbound Delivery Seam & Event Contract
-current_plan: 4
+current_plan: 5
 status: Milestone v2.0 planned — awaiting Phase 10
-stopped_at: Completed 10-03-PLAN.md (platform event ledger)
-last_updated: "2026-10-22T09:14:44.752Z"
+stopped_at: Completed 10-04-PLAN.md (outbound ports in domain, Teams impl in worker)
+last_updated: "2026-10-22T09:46:47.992Z"
 last_activity: 2026-10-22
 last_activity_desc: Roadmap created for milestone v2.0 — Phases 10-17, 97/97 requirements mapped
-state_head: 7c1b30477ea79d3fddd23fc515b2e1f4e7d70cfe
+state_head: be8371acaa2f703c0306494aa73102c68dd1ddbc
 progress:
   total_phases: 8
   completed_phases: 0
@@ -21,11 +21,11 @@ progress:
 ## Current Position
 
 Phase: 10 of 17 (Outbound Delivery Seam & Event Contract)
-Plan: 4 of 8 — 10-03 (platform event ledger) complete
-Current Plan: 4
+Plan: 5 of 8 — 10-04 (outbound ports + worker delivery) complete
+Current Plan: 5
 Total Plans in Phase: 8
-Status: Phase 10 in progress — plans 10-01, 10-02, 10-03 complete; 10-04 next
-Last activity: 2026-10-22 — 10-03 shipped the neutral platform-event ledger
+Status: Phase 10 in progress — plans 10-01, 10-02, 10-03, 10-04 complete; 10-05 next
+Last activity: 2026-10-22 — 10-04 moved outbound delivery to the worker under R1
 
 Progress: [█░░░░░░░░░] 3%
 
@@ -40,8 +40,8 @@ rendered form, without ever logging into — or learning — the downstream syst
 
 ## Session
 
-**Last session:** 2026-10-22T09:14:44.575Z
-**Stopped at:** Completed 10-03-PLAN.md (platform event ledger)
+**Last session:** 2026-10-22T09:46:46.931Z
+**Stopped at:** Completed 10-04-PLAN.md (outbound ports in domain, Teams impl in worker)
 **Resume file:** None
 
 ## Performance Metrics
@@ -57,6 +57,7 @@ record is preserved in `.planning/milestones/v1.0-ROADMAP.md` and the phase summ
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 10 P03 | ~50min | 4 tasks | 8 files |
+| Phase 10 P4 | ~50min | 5 tasks | 12 files |
 
 ## Decisions
 
@@ -90,6 +91,9 @@ record is preserved in `.planning/milestones/v1.0-ROADMAP.md` and the phase summ
 - [Phase 10]: 10-03: the platform-event ledger uses 40 ms Mongo timeouts, not the 500 ms inherited from TeamsEventRepository — the phase decision memo names 500 ms as wrong for the 200 ms ack budget. Only the plan's key_links pattern still says 500.
 - [Phase 10]: 10-03: `platform-events` is a declared domain element type, not an unclassified directory. Empirically, R3 (no raw mongodb outside mongo-owner/data-access) does not fire at all for files in no element type, so D-02's per-subdirectory config change is what keeps the rule live there.
 - [Phase 10]: 10-03: TeamsEventRepository stays as a stateless Teams-scoped facade over PlatformEventRepository instead of being deleted, so the receiver rewrite in 10-04/10-05 lands as its own atomic commit and the @akane/domain subpath export stays stable.
+- [Phase 10]: OUT-12 ports are subpath-only: re-exporting them from the @akane/domain root barrel is legal to lint but puts a worker-only outbound-adapter file in the api's import closure, which tooling/entrypoint-drift.spec.ts's R1 assertion rejects. Each port has its own package.json subpath.
+- [Phase 10]: Worker Teams delivery was moved and renamed (TeamsDeliveryService -> TeamsDeliveryAdapter implements TeamsOutboundPort) with the old file deleted, so exactly one send path exists. Its spec moved with it and the api's now-orphaned spec was deleted.
+- [Phase 10]: Slack ships a port but no worker implementation in 10-04: no bot token, no Slack Web API client and no conversation-reference writer yet (10-05). Recorded as deferred item D-10-04-2 rather than wiring a dead adapter.
 
 ## Blockers/Concerns
 
