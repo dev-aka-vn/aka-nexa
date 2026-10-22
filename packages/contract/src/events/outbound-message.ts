@@ -28,7 +28,10 @@ export type OutboundAction = z.infer<typeof OutboundActionSchema>;
 
 const opaqueId = z.string().min(1);
 
-const platformMetadataSchema = z.record(z.union([z.string(), z.number(), z.boolean()]));
+const platformMetadataSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean()]),
+);
 
 export const OutboundMessageSchema = z
   .object({
