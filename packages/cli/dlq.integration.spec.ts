@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MongoDBContainer, type StartedMongoDBContainer } from '@testcontainers/mongodb';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { Queue } from 'bullmq';
@@ -9,12 +9,13 @@ import {
   REDIS_IMAGE,
   QUEUE_MAXMEMORY_POLICY,
 } from '../../tooling/containers.js';
-import { producerConnectionOptions, BULLMQ_PREFIX } from '@akane/platform';
+import { producerConnectionOptions, BULLMQ_PREFIX, IM_OUTBOUND_QUEUE } from '@akane/platform';
 import { MongoService } from '@akane/platform';
 import { SubmissionRevisionsRepository } from '@akane/domain';
-import { dlqList, dlqRetry } from './dlq.js';
+import { dlqList, dlqRetry, INSPECTABLE_QUEUES } from './dlq.js';
 
 const DELIVERY_QUEUE_NAME = 'connector-delivery';
+const OUTBOUND_QUEUE_NAME = IM_OUTBOUND_QUEUE;
 
 describe('dlq CLI', () => {
   let mongo: StartedMongoDBContainer;
@@ -139,4 +140,74 @@ describe('dlq CLI', () => {
     ).rejects.toThrow(/sent_unconfirmed/);
     await worker.close();
   }, 120_000);
+
+  it('surfaces an undelivered outbound message with its platform event (OUT-14)', async () => {
+    const queue = new Queue(OUTBOUND_QUEUE_NAME, {
+      connection: producerConnectionOptions(queueContainer.getConnectionUrl()),
+      prefix: BULLMQ_PREFIX,
+      defaultJobOptions: { attempts: 1 },
+    });
+    const { Worker } = await import('bullmq');
+    const worker = new Worker(
+      OUTBOUND_QUEUE_NAME,
+      async () => {
+        throw new Error('teams 503');
+      },
+      {
+        connection: producerConnectionOptions(queueContainer.getConnectionUrl()),
+        prefix: BULLMQ_PREFIX,
+      },
+    );
+    opened.push(queue, worker);
+
+    await queue.add(
+      'deliver',
+      {
+        message_id: 'msg-1',
+        platform: 'teams',
+        channel_id: 'C-1',
+        chat_user_id: 'U-1',
+        text: 'Here is your form',
+        action: 'form_link',
+        queue: 'im-outbound',
+        attempt: 0,
+        native_event_id: 'Ev123',
+      },
+      { jobId: 'out-job-1' },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const failed = await queue.getFailed();
+    expect(failed.length).toBe(1);
+    // The join key an operator needs: which inbound event produced this reply.
+    expect(failed[0]!.data.native_event_id).toBe('Ev123');
+    expect(failed[0]!.failedReason).toContain('teams 503');
+
+    // The list path is exercised for real output, not just rendering.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await dlqList(queueContainer.getConnectionUrl(), revisionsRepo, {
+        queue: OUTBOUND_QUEUE_NAME,
+      });
+      const output = log.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(output).toContain('Ev123');
+      expect(output).toContain('teams 503');
+    } finally {
+      log.mockRestore();
+    }
+
+    await worker.close();
+  }, 120_000);
+
+  it('rejects an unknown queue rather than listing nothing', async () => {
+    await expect(
+      dlqList(queueContainer.getConnectionUrl(), revisionsRepo, {
+        queue: 'no-such-queue',
+      }),
+    ).rejects.toThrow(/Unknown queue/);
+    // The known queue set is exported, not implied.
+    expect(INSPECTABLE_QUEUES).toContain(OUTBOUND_QUEUE_NAME);
+    expect(INSPECTABLE_QUEUES).toContain('connector-delivery');
+  }, 60_000);
 });

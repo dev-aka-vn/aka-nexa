@@ -83,3 +83,26 @@ export const JOB_SCHEDULER_REGISTRATIONS = Symbol('JOB_SCHEDULER_REGISTRATIONS')
  * is wired, and a token introduced alongside the thing it guards guards nothing.
  */
 export const INBOUND_ADAPTER_REGISTRATIONS = Symbol('INBOUND_ADAPTER_REGISTRATIONS');
+
+/**
+ * Outbound IM delivery ports registered by **this** process.
+ *
+ * Holds `readonly ImPlatform[]` — the platforms this process can deliver a
+ * reply to. Provided by `apps/worker` alone; forbidden by `api` and
+ * `scheduler`.
+ *
+ * The mirror of `INBOUND_ADAPTER_REGISTRATIONS`, and required for the same
+ * reason in the opposite direction: a delivery port in `api` would put an
+ * outbound SDK call inside the <200 ms ack path (T-10-06), and without a
+ * token the boundary would be enforced only by a file-category lint rule
+ * that cannot see "which process am I in".
+ *
+ * Worker rather than api, because delivery needs the
+ * `ConversationReferenceRepository` lookup and the platform SDK, and the
+ * `outbound-adapter` file category is R1-restricted to `app-worker`
+ * (10-04). The interface lives in `@akane/domain/adapters/<p>/outbound`;
+ * this token records which of those interfaces have a live implementation.
+ */
+export const OUTBOUND_DELIVERY_REGISTRATIONS = Symbol(
+  'OUTBOUND_DELIVERY_REGISTRATIONS',
+);

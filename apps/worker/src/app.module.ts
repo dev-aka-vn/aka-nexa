@@ -13,6 +13,7 @@ import {
   MetricsModule,
   MongoModule,
   MongoService,
+  OUTBOUND_DELIVERY_REGISTRATIONS,
   REDIS_QUEUE,
   ProviderBoundaryGuardRunner,
   QueueModule,
@@ -33,6 +34,7 @@ import {
   ConnectorRegistry,
   NotificationsModule,
   OutboxRepository,
+  PlatformEventRepository,
   SubmissionRevisionsRepository,
   TransferRequestRepository,
   TransferRequestService,
@@ -62,11 +64,23 @@ import { PurgeSweepProcessor } from './processors/purge-sweep.processor.js';
 import {
   NotificationProcessor,
 } from './processors/notification.processor.js';
+import { OutboundDeliveryProcessor } from './processors/outbound-delivery.processor.js';
 import {
-  TeamsDeliveryService,
+  OUTBOUND_DELIVERY_REGISTRY,
+  OutboundDeliveryRegistry,
+} from './processors/outbound-delivery.registry.js';
+import {
+  outboundDeliveryRegistrationsProvider,
+} from './processors/outbound-delivery.registry.js';
+import { AdapterCoverageRunner } from './bootstrap/adapter-coverage.runner.js';
+import { WorkerQueueModule } from './queue/worker-queue.module.js';
+import { WorkerModule } from './worker.module.js';
+import { InboundEventProcessor } from './processors/inbound-event.processor.js';
+import {
+  TeamsDeliveryAdapter,
   TEAMS_CLOUD_ADAPTER,
   TeamsCloudAdapterHolder,
-} from './adapters/teams/teams-delivery.service.js';
+} from './adapters/teams/outbound/teams-delivery.adapter.js';
 
 /** The readiness key this process contributes. Named so a dashboard can find it. */
 const WORKER_READINESS_KEY = 'bullmq_workers';
@@ -83,6 +97,13 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     CryptoModule,
     MongoModule,
     QueueModule,
+    // The outbound delivery seam's queue. Registered here (not in
+    // `packages/platform`) because only this process produces onto it.
+    WorkerQueueModule,
+    // The inbound routing path. Previously an orphan: `WorkerModule` was
+    // imported for its decorators only, so `InboundEventProcessor` was never
+    // instantiated and nothing consumed `INBOUND_EVENTS_QUEUE`.
+    WorkerModule,
     NotificationsModule,
     TerminusModule.forRoot(),
     MetricsModule,
@@ -103,10 +124,37 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     AuditRetentionProcessor,
     PurgeSweepProcessor,
     NotificationProcessor,
-    TeamsDeliveryService,
+    TeamsDeliveryAdapter,
     {
       provide: TEAMS_CLOUD_ADAPTER,
       useFactory: () => new TeamsCloudAdapterHolder(),
+    },
+    // OUT-12's registry: platform → delivery port. Teams is the only one
+    // with an implementation today; Zalo (Phase 12) and Telegram (Phase 13)
+    // each add a port and one `register` line, not a new processor branch.
+    {
+      provide: OUTBOUND_DELIVERY_REGISTRY,
+      useFactory: (teams: TeamsDeliveryAdapter): OutboundDeliveryRegistry => {
+        const registry = new OutboundDeliveryRegistry();
+        registry.register('teams', teams);
+        return registry;
+      },
+      inject: [TeamsDeliveryAdapter],
+    },
+    {
+      provide: PlatformEventRepository,
+      useFactory: (config: ConfigService): PlatformEventRepository =>
+        new PlatformEventRepository(config),
+      inject: [ConfigService],
+    },
+    OutboundDeliveryProcessor,
+    {
+      // OUT-03's worker half: which platforms this build can deliver to.
+      // Forbidden in the api manifest (T-10-06), named as an allowed
+      // capability here, and the value the boot assertion reads.
+      provide: OUTBOUND_DELIVERY_REGISTRATIONS,
+      useFactory: outboundDeliveryRegistrationsProvider,
+      inject: [OUTBOUND_DELIVERY_REGISTRY],
     },
     OutboxRepository,
     SubmissionRevisionsRepository,
@@ -176,7 +224,7 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
     },
     {
       provide: WORKER_CONSUMERS,
-      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor, AuditRetentionProcessor, PurgeSweepProcessor],
+      inject: [PlatformHeartbeatProcessor, OutboxRelayProcessor, ConnectorDeliveryProcessor, ReconciliationProcessor, TransferAutoCancelProcessor, NotificationProcessor, AuditRetentionProcessor, PurgeSweepProcessor, OutboundDeliveryProcessor, InboundEventProcessor],
       useFactory: (
         platform: PlatformHeartbeatProcessor,
         relay: OutboxRelayProcessor,
@@ -186,10 +234,13 @@ const WORKER_READINESS_KEY = 'bullmq_workers';
         notification: NotificationProcessor,
         auditRetention: AuditRetentionProcessor,
         purgeSweep: PurgeSweepProcessor,
-      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification, auditRetention, purgeSweep],
+        outbound: OutboundDeliveryProcessor,
+        inbound: InboundEventProcessor,
+      ) => [platform, relay, delivery, reconciliation, transferAutoCancel, notification, auditRetention, purgeSweep, outbound, inbound],
     },
     { provide: BOUNDARY_MANIFEST, useValue: WORKER_BOUNDARY_MANIFEST },
     ProviderBoundaryGuardRunner,
+    AdapterCoverageRunner,
     {
       provide: EXTRA_HEALTH_INDICATORS,
       inject: [HealthIndicatorService, WORKER_CONSUMERS],

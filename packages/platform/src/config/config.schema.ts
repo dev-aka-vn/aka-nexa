@@ -96,6 +96,21 @@ const AppConfigShape = {
   THROTTLE_PER_CONNECTOR_LIMIT: z.coerce.number().int().positive().default(60),
   THROTTLE_PER_CONNECTOR_RPM: z.coerce.number().int().positive().default(60),
   PER_CONNECTOR_RATE_LIMIT: z.coerce.number().int().positive().default(60),
+  /**
+   * Slack app signing secret (OUT-04, T-10-07).
+   *
+   * Optional, unlike the OIDC quartet above: a deployment that has not
+   * connected Slack must still boot, and the Slack receiver fails closed
+   * (`503`, not "accept everything") when this is absent. Declared here rather
+   * than read from `process.env` at the receiver so the value a verifier uses
+   * is the value the boot contract validated — the namedValidate narrowing in
+   * `config.module.ts` forwards only `APP_CONFIG_KEYS`, so an undeclared key
+   * would be invisible to `ConfigService` entirely.
+   *
+   * `.min(1)`: an empty string is a misconfiguration, not "disabled". Leave the
+   * key out to disable Slack.
+   */
+  SLACK_SIGNING_SECRET: z.string().min(1).optional(),
 };
 
 /**

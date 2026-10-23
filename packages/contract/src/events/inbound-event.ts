@@ -23,6 +23,9 @@ import { z } from 'zod';
  * frozen log-field vocabulary, so an envelope field is never simultaneously a
  * candidate for a serialised log record. `event_id` and `channel_id` are not
  * on the log allowlist and are not logged.
+ *
+ * Threading fields ride on the inbound envelope for threading context and must
+ * never be logged or added to span attributes.
  */
 export const ImPlatformSchema = z.enum(['slack', 'teams', 'zalo', 'telegram']);
 
@@ -39,6 +42,11 @@ export const InboundActionSchema = z.enum([
 export type InboundAction = z.infer<typeof InboundActionSchema>;
 
 const opaqueId = z.string().min(1);
+
+const platformMetadataSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean()]),
+);
 
 export const InboundEventSchema = z
   .object({
@@ -60,6 +68,14 @@ export const InboundEventSchema = z
     attempt: z.number().int().nonnegative(),
     /** When the platform received the event, ISO-8601 UTC. */
     occurred_at: z.string().datetime(),
+    /** Thread identifier for threading context. */
+    thread_id: opaqueId.optional(),
+    /** Message id to reply to. */
+    reply_to_message_id: opaqueId.optional(),
+    /** Platform-native event/message id for ledger deduplication. */
+    native_event_id: opaqueId.optional(),
+    /** Adapter-scoped, non-PII only; depth-1 primitives. Never log/span attributes. */
+    platform_metadata: platformMetadataSchema.optional(),
   })
   .strict();
 

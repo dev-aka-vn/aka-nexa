@@ -1,774 +1,654 @@
 # Pitfalls Research
 
-**Domain:** Chat-driven enterprise workflow gateway — IM front door (Slack / Teams / Zalo / Telegram) to internal + external enterprise systems, self-service FormIO.js App Builder, per-app RBAC, pluggable LLM decision layer, connector fan-out.
-**Researched:** 2026-10-01
-**Confidence:** HIGH for the link/webhook/connector/version classes (anchored in the PRD text and in Redis / Slack / BullMQ primary docs). MEDIUM for the JEV-accuracy and App-Builder-adoption classes (reasons from mechanism and from comparable platforms, not from measurement of *this* system — those two classes need phase-specific research before their roadmap phases are committed).
+**Domain:** Enterprise IM-driven app builder — adding Zalo OA + Telegram adapters, two-way inbound/outbound synchronisation, group/directory RBAC sync, and a permission-first open-ended AI guard to a shipped v1 (NestJS modular monolith, MongoDB + Redis + BullMQ, FormIO.js).
+**Researched:** 2026-10-21
+**Confidence:** MEDIUM overall (provider-tier). HIGH for the first-party-documentation claims (Zalo Developer docs, Telegram Bot API docs, Slack API docs, Microsoft Graph docs) — each cross-checked against a second independent source. MEDIUM for the codebase-grounded claims (read directly from this repo at commit `215f96e6`). LOW for anything about *this deployment's* real-world Zalo/Telegram behaviour (see §11 "Gaps").
 
-**Scope note.** PRD §20 is a 5-phase roadmap (Phase 1 Core Foundation → Phase 5 Advanced, post-MVP). Phase references below use those PRD phase names, because the roadmapper will be reconciling against them. Where research says a pitfall must be designed in a phase *earlier* than the feature that triggers it, that is called out explicitly — the PRD's sequencing defers the read path and the App Builder past several things that depend on them, and three of the pitfalls below are consequences of exactly that deferral.
+> **Scope note.** This document is scoped to **v2 additions on top of shipped v1**. It assumes the v1 constraints in `PROJECT.md` still hold: one NestJS codebase, three process entrypoints, modular-monolith boundary lint, `mongodb` native driver, ioredis 6 + BullMQ, `jose` for link signing, D-16 log-field allowlist, D-18 span-attribute allowlist, D-21 frozen read-link claim set, D-23 frozen JEV wire contract.
+>
+> **Phase-number note.** The v1 roadmap ran Phases 1–9; `PROJECT.md` states v2 numbering starts at **Phase 10**. The v2 roadmap does not exist yet, so every phase reference below is a **proposal** for the roadmapper to reconcile against `FEATURES.md` / `ARCHITECTURE.md`. The *ordering constraints* are the load-bearing content; the numbers are not.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: `GETDEL` is atomic, not durable — one-time create links come back to life
+### Pitfall 1: Zalo OA webhook signature — a plain hash used as a MAC, over a body that must stay byte-identical
 
 **What goes wrong:**
-A create link is consumed by `GETDEL` on a Redis primary. Redis replication is **asynchronous** (verified, Redis replication docs: *"Redis uses by default asynchronous replication… the master does not wait every time for a command to be processed by the replicas"*). The docs are also explicit that even the synchronous escape hatch does not close the hole: *"`WAIT` … does not turn a set of Redis instances into a CP system with strong consistency: acknowledged writes can still be lost during a failover, depending on the exact configuration of the Redis persistence."*
 
-So during a Redis Cluster failover, a `GETDEL` that was acknowledged on the demoted primary but not yet replicated **resurrects**: the new primary still has the key, the link is live a second time, and the user can submit twice. In cluster split-brain, two primaries both accept a `GETDEL` and whichever write is later discarded leaves a live key.
+Three separate failures live in one line of code, and the symptoms are indistinguishable from each other:
 
-Quantify the window. At the PRD's peak of 10 form submissions/sec (NFR-S-3), **one second of replication lag is 10 un-drained consumed tokens; five seconds is 50.** A Redis OOM (the §16.4 runbook literally has a "Redis OOM → check token leak" scenario), a long GC pause in the API pod, or a `BGSAVE` fork stall all push lag into the seconds range — exactly the conditions under which a failover is also likely.
-
-The PRD already suspects this: §16.4's runbook row is *"Double submission reports → Verify atomic consumption. Check Redis cluster split-brain."* That is diagnosis **after** the duplicate is in the external system. There is no prevention, because FR-L-1 / NFR-SEC-1 specify the mechanism but not its failure mode.
+1. **You implement HMAC-SHA256 because a tutorial said so.** The documented Zalo algorithm is `mac = sha256(app_id + data + timeStamp + OAsecretKey)` — a **plain SHA-256 digest**, not an HMAC. Third-party guides (including several popular Vietnamese-language walkthroughs) misstate this as HMAC. If you copy them, every Zalo event is rejected with 401 and the OA admin sees "the app stopped working."
+2. **You parse the body before hashing.** `data` is the **raw JSON body, byte-for-byte**. NestJS's `@Body()` gives you a parsed object; re-serialising it with `JSON.stringify` produces different bytes (key order, whitespace, unicode escaping of Vietnamese diacritics) and the digest never matches. The failure looks exactly like a wrong secret.
+3. **You use the wrong key.** The digest uses the **OA Secret Key**, not the **App Secret Key**. These are two different values in the Zalo developer portal and confusing them produces the same 401.
 
 **Why it happens:**
-`GETDEL` reads like an atomicity guarantee and is treated as a durability guarantee. It is neither. The mental model "one command, one key, done" has no notion of the replication stream behind it. This is the single most common mistake in one-time-token systems built on Redis.
+
+There is no official Node SDK for Zalo OA, no changelog discipline on the OpenAPI, and the primary documentation is Vietnamese-only prose describing a formula rather than a protocol. Every implementation reference in the ecosystem is community-authored and at least some of them are wrong. The NestJS default (`bodyParser: true` + `@Body()`) actively destroys the one input the algorithm needs, so the *convenient* path is the broken one.
 
 **How to avoid:**
-Make consumption a **two-tier operation with MongoDB as the durability backstop**, not a single Redis call:
 
-1. Fast path: `GETDEL` (unchanged) — this keeps NFR-P-7 (<50 ms link generation) and NFR-SEC-1's "no race conditions" honest.
-2. Durable path: insert `{ jti, submission_id, app_id, link_type, consumed_at }` into a `link_consumptions` collection with **`unique: { jti: 1 }`**. A duplicate-key error here means the Redis `DEL` was lost — treat the token as consumed and hard-fail the submission. The uniqueness constraint, not the distributed system, is now what prevents the double submission.
-3. Order matters: `GETDEL` first, insert second. A crash between them loses the submission (user retries, gets "already submitted") — acceptable. The reverse order would allow two submissions.
-4. Add `WAIT 1 50` after the `GETDEL` to shrink the lag window. Do not treat this as a fix; it is a mitigation for the case where the backstop write is also unavailable.
-5. Define the third gate now: **`submission_id` unique index on the submissions collection.** `submission_id` must be generated server-side at link issuance (not at submit time) so it is the same across retries. This is what survives *both* a Redis failover and a BullMQ stalled-job reprocess (Pitfall 13).
+- **One implementation, one module.** `ZaloWebhookVerifier` lives in `packages/domain/src/adapters/zalo/inbound/` (the `inbound-adapter` file category — R1 permits only `apps/api` to import it) and is the *only* place in the codebase that knows the algorithm. Nothing else hashes a Zalo body.
+- **Capture the raw bytes.** Use NestJS's `rawBody: true` / `@RawBody()` (the same mechanism the Slack controller must use) and hash `rawBody` as a `Buffer`, never a string.
+- **Exact formula, documented inline:**
+  ```
+  expected = sha256( utf8(app_id) ‖ rawBodyBytes ‖ utf8(timeStamp) ‖ utf8(oaSecretKey) )
+  presented = header 'X-ZEvent-Signature'
+  ```
+  The header value is the hex digest (the Mini App / Open API variant is a different formula: `sha256(sortedFieldsConcat ‖ API Key)` — keep them in separate functions, never one function with a boolean flag).
+- **Use `crypto.timingSafeEqual`**, never `===`, and validate the presented digest's length/shape first so a malformed header cannot throw inside the compare (same shape as the v1 `WebhookHmacService.verify`).
+- **Handle the length-extension question honestly.** Zalo's documented order is `H(app_id ‖ data ‖ timeStamp ‖ secret)` — the secret is a **suffix**. The canonical length-extension attack requires the key to be a **prefix** (`H(K ‖ M)`), so it does **not** directly apply to this ordering, and any write-up claiming "Zalo is length-extension vulnerable because the secret is at the end" is wrong in its reasoning even though it reaches a correct conclusion ("do not treat this as a safe MAC"). The residual hazards are real and are what you must engineer against:
+  - it is a **raw hash, not a keyed MAC** — no key derivation, no domain separation, no algorithm agility, no standard to lean on;
+  - the `data`/`timeStamp` boundary is **unseparated** (no delimiter between the concatenated fields), so any change to how Zalo orders or pads those fields silently breaks verification;
+  - the **Mini App variant** (`H(sortedFieldsConcat ‖ API Key)`) puts attacker-influenced field values in the hashed prefix, and the same secret is reused across purposes — a digest minted for one Zalo surface must never be accepted on another.
+  - **Consequence:** pin the algorithm as a frozen constant, freeze it with a **recorded test vector** (a real captured request + its expected digest) in the adapter's test suite, and treat a change in that test vector as a breaking event, not a test to update.
+- **Freeze a captured-request test vector during the spike.** This is the single highest-value artefact Phase 11 can produce.
 
 **Warning signs:**
-- `token_consumed_total` (§16.2) is labelled `link_type, app_id, result` — but the PRD **never defines the `result` values.** Define them now as `consumed | replayed | expired | conflict_mongo | already_submitted`. Without them the metric cannot detect anything.
-- Add `link_consume_age_at_replay_seconds` — when a token is consumed a second time, how old was the first consumption? A large value (≫ the 30-min TTL) is the failover-resurrection signature, not a user double-click.
-- Invariant to check on a schedule: `count(form_submission_total) == count(distinct jti in link_consumptions)`. A drift means documents exist with no consumption record — the reverse failure, which happens if the insert path is skipped.
-- `mongodb replication lag > 5s` (§16.3 already alerts on this) — treat that alert as a *token-safety* alert too, not just a data-freshness alert.
 
-**Severity if ignored:** HIGH — duplicate submissions into Redmine/ERP/HR, visible to a downstream team, and the PRD's connector idempotency does not save you (Pitfall 13).
+- Zalo events reach the controller and are all rejected; the app works in the Zalo simulator but not in production.
+- A "signature mismatch" error rate that is **exactly 100%** (wrong formula/key) versus **sporadic** (body not byte-identical, or a proxy re-serialising).
+- Any log line containing the computed digest or the secret.
+- The test suite passes against a **synthesised** body (generated by the test) but fails against a **captured** one — the synthesised body is always byte-perfect by construction.
 
-**Phase to address:** **Phase 1.** One-time create links are a Phase 1 deliverable. The `link_consumptions` collection and the `submission_id` unique index are 3 days of work in Phase 1 and a migration of live submissions in Phase 4.
+**Phase to address:** Phase 11 (Zalo OA Adapter) — but the raw-body capture plumbing and the frozen test vector are Phase 10 work.
 
 ---
 
-### Pitfall 2: Edit links are a double-submit machine *by design*
+### Pitfall 2: Zalo OA's 2-second ack budget and its 5-stage retry ladder end in *silent* webhook death
 
 **What goes wrong:**
-FR-L-2 inverts the create-link risk: edit links are **loadable multiple times, consumed once on submit, TTL 4 hours**. That is a much wider exposure than the 30-minute create link and it is easy to reason about incorrectly:
 
-- The same user opens the edit link on a laptop and a phone (both GETs succeed — by design).
-- Both render the same form. Both submit. Two POSTs race the `GETDEL`. One wins, one gets "already submitted".
-- Worse: the user opens the link, edits for 40 minutes, gets distracted, and a colleague (or the same user on a second device) submits the same record from the older tab. The losing submit gets "already submitted" — indistinguishable, to the user, from a data-loss bug.
-- The submit button is not disabled until the response lands. NFR-P-6 targets <1 s for submission → internal write confirmation; real p95 on a 20-field form over an office VPN is 1.5–3 s. That is a wide double-click window, and Slack/Teams users are on phones and trackpads.
+Zalo requires HTTP 200 within **2 seconds** (Slack allows 3, Teams is looser). If the callback fails, Zalo retries at **+30 s, +5 m, +15 m, +30 m, +1 h** — five stages, each carrying a `num_retry` header. If all five fail, **Zalo disables the webhook and cancels the app's OA event registration.** The platform does not get an error; it stops getting events. Re-enrolment is a **manual action in the Zalo OA portal** — there is no API to re-enable it.
+
+The failure mode is therefore not "an error appears in the logs." It is **"everything looks fine and the product is dead for that OA."** A single slow dependency (a KMS decrypt, a Redis round-trip, a cold NestJS provider, an unindexed Mongo query) on one unlucky request can permanently stop a customer's inbound flow.
 
 **Why it happens:**
-The PRD models the link as the unit of idempotency. But for edit links the link is *intentionally* replayable, so the idempotency key has to be the **record**, not the link. FR-L-2 does not say what happens to the second submit beyond "already submitted" (§12.1 step 14).
+
+Because 2 seconds *feels* generous. Teams/Slack budgets allow a slow path; teams will retry and eventually disable you with an email to the app owner. Zalo disables you with **nothing** — no email, no API, no webhook. The blast radius is per-OA and invisible from the platform side.
 
 **How to avoid:**
-- `submission_id` is minted **at link issuance** and embedded in the edit link's claims. The submit endpoint's idempotency key is `submission_id`, enforced by the Mongo unique index from Pitfall 1 — not the `jti`. `GETDEL` on `jti` stays as the anti-replay gate; the `submission_id` unique index is the anti-duplicate gate.
-- **Make the duplicate a success, not an error.** If `submission_id` already exists and the incoming content is identical or the caller is the same `real_user_id`, return the existing record's confirmation (HTTP 200 + the original confirmation payload). This removes the entire UX class and makes the client's ambiguity disappear. Reserve the error path for a *conflicting* second write (different user, or materially different payload), which is genuinely worth an error.
-- Client-side: disable the submit control on first click, show an in-flight state, and **do not re-enable on network error** — re-enable only on a 4xx that indicates a real validation problem. NFR-U-5 requires a loading indicator for >500 ms operations; extend that to "submit is in flight and will not be re-sent".
-- Consider a per-`submission_id` short-lived Redis lock as a cheap pre-filter (SET NX, 10 s TTL) so the second submit gets an instant "already being saved" rather than waiting on the unique-index round trip. This is an optimisation, not the guarantee.
+
+- **The receiver is a pure ingest contract.** Verify signature → validate envelope shape → enqueue to BullMQ → return 200. **No** permission lookup, **no** Mongo read, **no** KMS decrypt (cache the OA Secret Key in-process with a bounded TTL, or resolve it from a pre-warmed credential cache), **no** outbound HTTP, **no** LLM call. This mirrors the v1 rule and is now a hard requirement with a tighter budget.
+- **Measure the ack path, not the whole request.** Emit a histogram of *time-to-200* (already allowlisted as `duration_ms`) and alert at p99 > 1.2 s, not at the 2 s cliff. The cliff is where the outage is.
+- **Health check must measure ingestion freshness, not process liveness.** A `/health/live` that only proves the process is up will stay green through a disabled webhook. Add a **per-OA event-freshness probe** (last successfully received event age) to the readiness surface, and a scheduled probe that detects "OA registered but zero events for N hours" — this is the only way to learn about the disable.
+- **Never let the receiver return non-200 for a business reason.** A malformed event must still 200 (after logging) — a 4xx tells Zalo to retry something that will never succeed, and a 5xx burns a retry stage.
+- **Make re-enrolment a documented admin runbook** with the exact portal steps, and surface "this OA's webhook is disabled" as an admin-console alert, not a log line.
 
 **Warning signs:**
-- `form_submission_total{app_id, mode}` (§16.2) exceeding `token_consumed_total{link_type="edit", result="consumed"}` — direct double-submit evidence.
-- `token_consumed_total{result="already_submitted"}` rate. A rate above ~1% of edit submissions means either aggressive double-clicking or a client bug; both are fixable and both are invisible without this label value.
-- Duplicate-detection query on the submissions collection: count of `real_user_id` + `created_at` within 10 s for the same `app_id` > 1.
 
-**Severity if ignored:** HIGH — duplicate records in the downstream system of record, reported by the department that owns the app, with no way to explain it.
+- Event volume per OA flatlines to zero with **no error rate change** anywhere in the platform.
+- The ack-duration histogram has a long right tail even though the p50 is 3 ms.
+- Support tickets of the form "the bot worked yesterday and today it ignores everything," with no platform-side error.
+- A support engineer has already re-enabled the webhook once and did not write it down — this is the single most likely precursor to a repeat.
 
-**Phase to address:** **Phase 2** (edit links are a PRD Phase 2 deliverable), but the `submission_id`-at-issuance decision must be made in Phase 1 because create links set the precedent.
+**Phase to address:** Phase 11 (Zalo OA Adapter), with the freshness probe landing in Phase 16 (Operations).
 
 ---
 
-### Pitfall 3: NFR-SEC-10's brute-force cap and legitimate retries are in direct conflict — and it loses
+### Pitfall 3: Zalo's Vietnam-IP rule silently empties user data and breaks the platform's data-residency contract
 
 **What goes wrong:**
-NFR-SEC-10: *"Brute-force protection: max 5 failed link validations per IP per 10 minutes → temporary block."* The obvious implementation counts **any** failed validation. That bucket includes: expired token, wrong signature, already-consumed token, `perm_version` mismatch, and unknown `jti`. Those are not all the same kind of event.
 
-The collision is concrete and it is an availability incident the platform causes itself:
+Since **2024-02-29**, Zalo OpenAPI returns user-related data (name, avatar, phone, address) **only to app servers and webhook URLs whose source IP is a Vietnam IP address.** Called from outside Vietnam, the API returns **HTTP 200 with the user fields silently omitted** — no error code, no warning. The platform looks like it is working; the identity-resolution step just has nothing to match on.
 
-- Corporate networks egress through a small NAT pool or a single VPN concentrator. An office of 200 people shares one source IP.
-- Five people in that office hit a *benign* failure in a 10-minute window — a link is 31 minutes old (expired), someone double-clicked a consumed link (Pitfall 2), someone's role changed (perm_version mismatch), and one person fat-fingers a pasted URL.
-- The whole office is blocked for 10 minutes. Nobody can submit anything. Every app on the platform is down for that office.
-- Worse in Slack: if a bot's IP is rate-limited, Slack's own request retries (up to 3) each consume quota, and the block window extends under the platform's own retry pressure.
+Separately, Zalo enforces an **IP-whitelist policy** on production API hosts: requests from unregistered source IPs are rejected with **error `-7`**; the dev endpoint is permissive.
 
-The security value of the control is close to zero, and that is the part worth stating: FR-L-10 already requires links be *"unguessable (UUID-based or signed token, no sequential IDs)"*. Against a 128-bit unguessable token or a signed EdDSA JWT, an IP-based 5-attempts-in-10-minutes cap provides essentially no protection — an attacker with the token does not need five attempts, and an attacker without it is not stopped by five. **The control buys a large availability liability for a negligible security gain.**
+This collides head-on with the `PROJECT.md` constraint *"data residency: configurable and region-locked per deployment."* Zalo is not merely *hosted* in Vietnam — **it constrains where your egress must be.** A "region: ap-southeast" deployment that happens to use a Singapore egress will silently lose Zalo identity resolution.
 
 **Why it happens:**
-Rate limits are written as a single number without a threat model attached. "5 per 10 minutes" was chosen as a round brute-force number and never checked against what legitimate failure actually looks like, or against the deployment's network topology (shared NAT is the norm in an enterprise, not the exception).
 
-**Named conflict — which requirement loses:**
-> **NFR-SEC-10 loses.** It is written as a single threshold against a category of events ("failed link validations") that mixes credential probing with ordinary user lateness and ordinary user mistakes.
+The rule is documented in a policy notice, not in the API reference, so it is invisible to anyone reading endpoint docs. The silent-omission behaviour is the worst kind: it fails the *assertion*, not the *call*.
 
-The replacement, which should be adopted as the amendment:
+**How to avoid:**
 
-1. **Split the failure taxonomy first.** Two tiers, different thresholds:
-   - *Credential-probing class* — bad HMAC, unknown `kid`, malformed JWT, expired signature. In normal operation this counter is **zero**. A low threshold (5/10 min) is safe here because legitimate traffic never increments it.
-   - *Consumption/authorization class* — already consumed, `perm_version` mismatch, app archived, purged. These are **not** probing. They get a much higher threshold (or none), and they are **never** counted against a shared-IP bucket.
-2. **Move the counter off the shared IP.** A second counter keyed on `real_user_id` (from the link's claim, when the signature verifies) and on `jti` catches a user hammering a consumed token without punishing the 199 colleagues behind the same NAT. Note the ordering: the `real_user_id` is only trustworthy after signature verification, which is exactly the credential-probing case where you also want to rate-limit — so the two counters are naturally complementary.
-3. **Behind a corporate proxy, per-IP is the wrong key anyway.** Add a trusted-proxy configuration; if the deployment cannot verify the real client IP, per-IP limiting is *more* wrong, not less, and should degrade to per-`real_user_id` + per-`jti` only.
-4. **Every block must be observable.** Add `link_validation_block_total{reason,scope}` (scope = `ip|user|jti`) and `link_validation_failed_total{reason}`. The PRD currently has **no metric for link validation failures at all** — it has `token_consumed_total{result}` and an alert on ">10 failures/min", but no way to distinguish "attacker" from "expired link epidemic" from "we deployed a bug that rejects valid links".
-5. **Cap the blast radius of a block.** A blocked IP must block link *validation*, not identity resolution, not slash commands, not read links. A single misconfigured counter should not take an office's entire interaction surface offline.
+- **Make Zalo egress an explicit deployment topology requirement, not an application config.** The Zalo adapter must egress from a Vietnam-region runner (VN NAT egress / VN-hosted worker). Encode this as a startup precondition: the Zalo adapter refuses to enable itself unless `ZALO_EGRESS_REGION === 'vn'` is asserted, and a boot-time self-check hits a user-profile endpoint and fails loudly if the response has no user fields.
+- **Do not silently degrade identity resolution.** If the profile lookup returns no user fields, the pipeline must raise an explicit, typed error (`ZALO_PROFILE_EMPTY_OUTSIDE_VN`) rather than treating it as "unknown user" and continuing. The difference between "this user is not in the directory" and "we are not allowed to see users from here" is a 3 a.m. page difference.
+- **Register every production egress IP in the Zalo portal** before go-live, and keep that list in the deployment runbook (it changes whenever you scale).
+- **Reconcile with the residency story.** If the platform's residency config allows regions where Zalo cannot operate, the honest answer is that Zalo support is **VN-egress-only** and this must be stated in the deployment matrix — not papered over with a "configurable region" claim that has an asterisk.
 
 **Warning signs:**
-- `link_validation_failed_total{reason}` — the *ratio* `expired / signature_invalid` is the diagnostic. If `expired` dominates, the limiter is punishing lateness, not attacks, and the threshold is wrong.
-- `link_validation_block_total{scope="ip"}` > 0 while `link_validation_failed_total{reason="signature_invalid"}` ≈ 0 ⇒ **you are blocking legitimate users, not attackers.** This is the alert to add; it is the single most useful new alert in this document.
-- Any block event with `scope="ip"` where the IP belongs to the corporate egress range (known CIDRs) ⇒ pager, not dashboard.
-- A runbook entry that does not exist today: §16.4 has "IM webhook failing" and "Redis OOM" but **no "user reports 'this link does not work'" scenario**, which is exactly what a rate-limit false positive looks like at 09:00 on Monday.
 
-**Severity if ignored:** HIGH — a self-inflicted, network-scoped, all-apps outage with no clear signal. This is the highest ratio of blast radius to implementation effort in the whole document: a few days of taxonomy work removes a class of 10-minute office-wide outages.
+- Zalo identity resolution succeeds for exactly the users who interacted with the OA via an OA-initiated channel (where Zalo supplies the fields inline) and fails for everyone else.
+- A support ticket reading "the bot doesn't know who I am" from VN users only, while Slack/Teams users are fine.
+- Any `Zalo` adapter health check that only asserts "HTTP 200" — that assertion is worthless here.
 
-**Phase to address:** **Phase 1.** One-time links and the create flow are Phase 1. The failure taxonomy has to exist before the first alert rule is written, because alert rules encode the taxonomy.
+**Phase to address:** Phase 11 (Zalo OA Adapter) for the client; Phase 16 (Operations) for the egress topology and the residency-matrix reconciliation.
 
 ---
 
-### Pitfall 4: `perm_version` covers one of seven revocation events — and there is no kill switch
+### Pitfall 4: Zalo's 25-hour access token / 90-day rotating refresh token is a single-writer state machine, and the refresh *kills the previous access token*
 
 **What goes wrong:**
-FR-L-7 / NFR-SEC-4: read links are stateless 90-day signed JWTs (§12.2 step 8: verify signature → check expiry → fresh RBAC check → compare `perm_version`). The `perm_version` is *"a monotonically increasing integer per user (or per user-per-app)"*. FR-R-8 scopes it to permission changes on that user in that app.
 
-Enumerate the ways a stale read link still returns data:
+Zalo OA OAuth (v4, PKCE-based) issues:
 
-| # | Event | Does `perm_version` catch it? | Consequence |
+- an **access token valid 25 hours**;
+- a **refresh token valid ~90 days (3 months)** that **rotates on every use** — the old refresh token is invalidated, a new one is returned, **and the previous access token dies immediately when the new one is issued**.
+
+Consequences, all of them real:
+
+1. **Two workers refreshing at once.** Both read the current refresh token, both exchange it. One wins; the other's exchange fails — or worse, both succeed against a lenient server and one of them holds a **dead access token** it will keep using until the next 401, and the stored refresh token is now the *older* of two rotations, so the **newest** refresh token is lost and the chain breaks at the next rotation.
+2. **Refresh token lost = 90 days of dead OA.** There is no recovery short of re-running the OA authorisation flow, which requires **an OA admin in the Zalo portal**. A lost refresh token is an outage with a human, not an automated fix.
+3. **Clock skew.** A 25-hour token with a client that trusts its own clock will start failing with a confusing 401 near expiry.
+
+**Why it happens:**
+
+The mental model people carry is "OAuth tokens are interchangeable and refreshing is idempotent." Zalo's refresh is **neither** — it is a single-use rotating credential. Every other OAuth implementation in the wild tolerates a double-refresh, so a design that works against Google/Okta silently breaks here.
+
+**How to avoid:**
+
+- **Single-flight refresh.** One Redis lock per OA (`SET NX EX` on `zalo:refresh:<oa_id>`) around the exchange, and the loser re-reads the newly stored access token instead of exchanging again. Redis `GETDEL`-class semantics (available in the Redis ≥8.2 floor the stack already requires) make the handoff atomic.
+- **Persist the refresh token encrypted** in the KMS-backed credential store (`packages/domain/src/connectors/data-access/connector-credentials.repository.ts` — the v1 AES-256-GCM envelope) with the OA id in the reference key, and persist the access token **with its expiry and its "generation"**.
+- **Refresh early but not eagerly.** Refresh on a *scheduled* job at ~80% of the 25-hour lifetime, plus an on-demand refresh on a 401 that carries a Zalo auth error — but never on a bare 401 (a 401 can be a scope problem).
+- **Treat the access token as disposable and the refresh token as a crown jewel.** Only the refresh path touches persistent storage; the access token lives in a Redis cache with a TTL **shorter** than its own lifetime (e.g. 20 h for a 25 h token) so a stale-token bug self-heals within the day instead of persisting.
+- **Alert on refresh failure immediately** — a failed refresh is a **90-day countdown**, not a transient error. It belongs in the admin console, not in a log tail.
+- **Re-authorisation must be a one-click admin flow** (deep-link to the Zalo authorisation URL, PKCE, callback → store the new refresh token). If that flow is not in v2, a single lost token ends the OA.
+
+**Warning signs:**
+
+- Occasional `ZALO_AUTH_401` in the logs — especially *after* a deploy or a scale-out (two pods starting together and both refreshing).
+- A `zalo:refresh:*` Redis lock that never expires (a crashed holder).
+- The stored access token's `expires_at` is already in the past, but requests still "work" — that means something else is caching it.
+- Two `refresh_token` values in the credential store for one OA — this is the rotation race, already lost.
+
+**Phase to address:** Phase 11 (Zalo OA Adapter).
+
+---
+
+### Pitfall 5: Zalo IDs exceed `Number.MAX_SAFE_INTEGER`, and `JSON.parse` corrupts them silently
+
+**What goes wrong:**
+
+Zalo identifiers are 19-digit integers: `app_id: 360846524894903967`, `user_id: 8756287263669629130`. `Number.MAX_SAFE_INTEGER` is 9,007,199,254,740,991 (16 digits). Every Zalo id in the examples is **19 digits** and therefore **not representable as a JS number**.
+
+`JSON.parse` on such a value produces a **rounded** double — `8756287263669629130` becomes `8756287263669629000` — with **no error, no warning**. Zalo's own PHP guidance uses `JSON_BIGINT_AS_STRING` for exactly this reason.
+
+The consequence is a **silent identity collision**: two distinct Zalo users can map to the same stored `chat_user_id`, and the identity layer will treat them as one person. With `IdentityMappingRepository` upserting on `(platform, chat_user_id)`, a collision **overwrites the first user's mapping** — the second user inherits the first user's `real_user_id` and the first user's permissions.
+
+That is a cross-user authorisation defect, not a display bug.
+
+**Why it happens:**
+
+TypeScript's `number` is the default for JSON, and nothing in the type system distinguishes "id" from "count". Zalo's docs show ids as strings in examples (`user_id` in the member-list response is a string), so the string form is right there in the response — and a `z.number()` schema will *reject* it, pushing the developer toward `z.coerce.number()`, which is where the corruption lives.
+
+**How to avoid:**
+
+- **Ids are strings, everywhere.** Parse Zalo ids as `z.string()` (or `z.union([z.string(), z.number()]).transform(String)`) and **never** coerce them to `number`. If a source genuinely returns a number, convert with `BigInt(v).toString()`, not `String(v)`.
+- **A parse-level guard:** a Zalo id validator that rejects any value whose `String()` differs from the source text — or, for numeric sources, one that asserts `BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)` before converting.
+- **Assert the id shape at the adapter boundary**, not deep in the domain. The adapter is the only place that knows Zalo's id format.
+- **Never store a Zalo id in a numeric Mongo field.** `chat_user_id` is `string` in the v1 `IdentityMapping` interface — keep it that way.
+- **Test with the real 19-digit values.** A fixture with `user_id: '12345'` will not catch this. Include `8756287263669629130` and `360846524894903967` in the adapter fixtures, and assert round-trip equality.
+
+**Warning signs:**
+
+- A Zalo user's `chat_user_id` ends in a round number (`…629000`, `…6290000`) — the signature of float rounding.
+- Two Zalo users intermittently share a `real_user_id`.
+- `z.coerce.number()` anywhere in the Zalo adapter — grep for it; the presence of the call is the finding.
+- A JSON parse helper using `json-bigint`, `lossless-json`, or a `BigInt`-aware reviver — a sign someone already hit this and patched it locally, in one place, instead of fixing the type.
+
+**Phase to address:** Phase 11 (Zalo OA Adapter).
+
+---
+
+### Pitfall 6: Telegram `callback_data` is capped at 64 **bytes**, and the whole message fails to send
+
+**What goes wrong:**
+
+Inline-keyboard `callback_data` must be **1–64 bytes** (UTF-8, so Vietnamese text consumes the budget faster than a character count suggests — a 30-character Vietnamese string is 45–60 bytes). Exceeding the cap makes the **entire `sendMessage` fail** with `Bad Request: BUTTON_DATA_INVALID`. The message is not sent at all; nothing is truncated, no partial message appears. The user sees nothing and the platform sees an API error.
+
+The second half of the trap: **`answerCallbackQuery` is mandatory.** If you do not call it, Telegram shows the button spinner for 10–30 seconds and eventually displays "took too long" to the user. On a slow or failed send path, this is the most visible symptom of the whole subsystem — a spinning button for half a minute.
+
+**Why it happens:**
+
+The limit is on **bytes**, not characters, and the docs state it as a byte count. Teams and Slack have no equivalent constraint (Slack's `block_id` limit is 255 chars), so a cross-platform "button payload" abstraction that is generous on Slack and Teams will blow up only on Telegram — and only when the payload contains non-ASCII, which in a Vietnamese product it always will.
+
+**How to avoid:**
+
+- **`callback_data` carries an opaque handle, never data.** Use a Redis-backed one-time handle (`cb:<random>`) or a short signed id — ideally a `jti` you can look up. Never put a form field name, a role list, a permission name, a `chat_user_id`, an app name, or a tenant id in it.
+- **Enforce the limit in one helper.** A `TelegramCallbackData` builder that measures `Buffer.byteLength(value, 'utf8')` and **throws** if > 64 (or truncates to a safe handle) — with the byte count, not the character count. This is a one-line guard that prevents an entire class of production-only failures.
+- **Always `answerCallbackQuery`** — including on the error path. Make it a `finally` block in the callback handler, and fire it *before* any slow work (permission check, link issuance). The spinner timeout is user-visible; the work behind it is not.
+- **Never let the callback payload be the only copy of state.** Telegram callbacks can be replayed by the user tapping twice; the handle must be single-use.
+
+**Warning signs:**
+
+- `BUTTON_DATA_INVALID` in the error log, correlated with Vietnamese-language flows only (ASCII payloads work).
+- Users reporting "the button spins forever."
+- A callback payload that visibly contains a form id or a permission name.
+- A `callback_data` value longer than 64 characters — the check is *bytes*, so 40 Vietnamese characters is already over.
+
+**Phase to address:** Phase 12 (Telegram Adapter).
+
+---
+
+### Pitfall 7: Telegram commands carry no scope — Telegram says so explicitly — and group privacy mode hides most of what you think you receive
+
+**What goes wrong:**
+
+Telegram's own documentation states it plainly: *"Bot API updates will not contain any information about the scope of a command sent by the user… Your backend should always verify that received commands are valid and that the user was authorized to use them regardless of scope."*
+
+There is no per-command scope, no permission object, no "who is allowed to run this command" metadata anywhere in the update. A command handler that trusts "the user typed the command" as authorisation is trusting a client-supplied string.
+
+The second half: **privacy mode is on by default.** A bot receives only:
+
+- explicit `/cmd@bot` commands;
+- general commands when the bot was the **last bot** to speak in the group;
+- replies to the bot's own messages;
+- **all** private-chat, service and channel-post messages.
+
+**Bot administrators always see everything**, regardless of privacy mode. And **disabling privacy requires removing and re-adding the bot to the group** — it cannot be toggled per group at runtime by the bot.
+
+Consequence: a group-scoped command surface is **invisible until the bot is re-added**, and it stays invisible until then. If the product assumes "the bot listens in the group," that assumption is false on day one.
+
+**Why it happens:**
+
+The mental model is that Telegram delivers messages to bots like Slack delivers channel events to apps. It does not, and the privacy-mode behaviour is only discoverable by reading the docs carefully or by deploying into a real group and being confused.
+
+**How to avoid:**
+
+- **Re-validate permission on every command, always.** The v1 `PermissionCheckService.check` is the correct place: it already takes `(app_id, real_user_id, permission, perm_version)`. Telegram commands are just another trigger for the same check — **never** a source of authority.
+- **Never derive a role from the command text.** `/leave` does not mean "this user may request leave." The command is a *selector*; permission comes from the RBAC layer, with the `perm_version` epoch checked at execution.
+- **Treat privacy mode as a deployment variable.** Document the re-add procedure; if a group-scoped surface is a requirement, the onboarding flow must include "remove and re-add the bot to the group."
+- **Make the fallback graceful.** When the bot cannot see the message, the user sees nothing — so the bot must post an onboarding hint on first contact that names the exact re-add step.
+- **Group membership is not authorisation.** Being in the group grants nothing; group-scoped roles come from the directory sync (Pitfalls 11–13), not from presence.
+
+**Warning signs:**
+
+- A Telegram command "works for admins" and "silently does nothing for everyone else" — that is privacy mode plus the fact that admins see everything.
+- A handler that reads a permission out of the command payload (e.g. `/grant role=admin`).
+- Support conversations about "the bot doesn't hear me in the group" with no platform error.
+
+**Phase to address:** Phase 12 (Telegram Adapter), with the RBAC re-check enforced in Phase 14.
+
+---
+
+### Pitfall 8: Telegram `allowed_updates` must name `chat_member` explicitly, and `update_id` is not monotonic
+
+**What goes wrong:**
+
+Two independent traps in the polling/webhook configuration:
+
+1. **`allowed_updates` defaults to excluding `chat_member`, `message_reaction` and `message_reaction_count`.** If the platform's group-membership sync relies on Telegram's `chat_member` update, it receives **nothing** until `allowed_updates` explicitly names it — and the bot must be an **administrator** of the group for that update to arrive at all. A bot that is not an admin gets no membership events, silently.
+2. **`update_id` is not reliably monotonic.** Telegram documents it as increasing sequentially, **but**: *"if there are no new updates for at least a week, then identifier of the next update will be chosen randomly instead of sequentially."* A cursor that assumes strict monotonicity can therefore **regress** — and a regressed cursor causes Telegram to **re-deliver** a window of updates.
+
+There is a third: **`allowed_updates` does not affect updates created before the `setWebhook` call.** Switching the allowed set is not retroactive — the platform will not see membership events that happened during the changeover. And `getUpdates` and webhook mode are **mutually exclusive**.
+
+**Why it happens:**
+
+`allowed_updates` is an argument most people omit because the default "works" for message handling. The `update_id` randomisation after a week of inactivity is a genuinely surprising documented behaviour, and the platform *will* have quiet weeks (a deployment with no traffic, a single-tenant OA in holiday season).
+
+**How to avoid:**
+
+- **Set `allowed_updates` explicitly and centrally** — one constant listing `['message', 'callback_query', 'chat_member', 'my_chat_member']` — and assert it at boot by reading back `getWebhookInfo` and comparing. Assert it in a test too; a config regression here is invisible until a group-leave event fails to arrive.
+- **Never use `update_id` as a strict monotonic cursor.** Use it as an **opaque dedupe key** and treat the offset as *advisory*. The dedupe set is what actually protects you.
+- **Poll `getWebhookInfo` for `pending_update_count`** as a health signal: a growing backlog means the consumer is behind or wedged.
+- **Plan for the changeover gap**: after changing `allowed_updates`, do a **full resync** of group membership rather than relying on events that happened during the window.
+- **Assert admin status** in the group's onboarding checklist. If the bot is not an admin, `chat_member` updates do not arrive — and the platform will believe it is synced.
+
+**Warning signs:**
+
+- Group membership sync that works in Slack and Teams but is completely inert on Telegram.
+- A `pending_update_count` that grows without bound.
+- Duplicate processing bursts that cluster around quiet periods — the `update_id` randomisation after a week of inactivity.
+- A support claim "the bot left the group" that no event ever reported.
+
+**Phase to address:** Phase 12 (Telegram Adapter) for the configuration; Phase 14 (Directory & Group RBAC Sync) for the consequences.
+
+---
+
+### Pitfall 9: At-least-once delivery, and Slack's dedupe key is **not** what you think it is
+
+**What goes wrong:**
+
+All four platforms deliver inbound webhooks **at-least-once**. The v1 `InboundEventSchema` is `.strict()` and has **`event_id`** ("Adapter-assigned, unique per delivery attempt chain") but **no `native_event_id`** — the platform's own identifier for the event. Without a native id, dedupe has to be done on a hash of the payload, which is fragile.
+
+The Slack-specific trap is the important one:
+
+- Slack retries a failed delivery up to **3 times** (nearly immediately, **+1 minute**, **+5 minutes**), marking each attempt with `x-slack-retry-num` (`1|2|3`) and `x-slack-retry-reason` (`http_timeout`, `too_many_redirects`, `connection_failed`, `ssl_error`, `http_error`, `unknown_error`). A response carrying `x-slack-no-retry: 1` suppresses further attempts.
+- If more than **95% of delivery attempts fail within a 60-minute window**, **Slack disables the event subscriptions** and emails the app owner.
+- **Critically: Slack can also deliver the *same message* multiple times with *different* `event_id`s.** This is documented in the `node-slack-sdk` issue tracker (up to 11 deliveries for one message, with **no** `X-Slack-Retry-Num` header present). So `event_id` — the field the v1 contract already has — is **not** a sufficient dedupe key for message events. The stable identity is the **platform message timestamp** (`event_ts` / `ts`).
+
+Telegram redelivers the same update with the same `update_id`, so `update_id` is the natural dedupe key there. Zalo's redelivery carries `num_retry` but the v1 contract has no Zalo-native id either.
+
+**Why it happens:**
+
+Because "the webhook handler is idempotent" is usually solved by keying on the platform event id — and Slack's event id is per **delivery attempt chain**, not per **message**. The two coincide in the retry case (the same event is re-sent) but **not** in the duplicate-send case. The bug only appears in production, under Slack's own load-shedding behaviour, and looks like "the bot replied three times."
+
+**How to avoid:**
+
+- **Extend the contract with `native_event_id`** — the platform's own idempotency key — plus `delivery_attempt` semantics. The v1 `attempt` field is the *platform's* attempt counter; it is **not** a dedupe key and must not be used as one. This is a **D-21-adjacent contract change** and must be landed in Phase 10 with the frozen-key-set discipline applied (see Pitfall 14).
+- **Dedupe with a unique index, not an in-memory set.** The consumer inserts `(platform, native_event_id)` with a unique constraint inside the same transaction as the side effect. A `SET NX` in Redis is *not* sufficient on its own: it can expire, and it does not make the side effect atomic with the dedupe record.
+- **Slack: key on the message `ts`/`event_ts`, not `event_id`.** Map `event_id` → `native_event_id` for the retry case, and derive a **second** key — `platform:slack:<channel_id>:<ts>` — for the duplicate-send case. Both must be unique-constrained. Retries additionally carry `x-slack-retry-num`; log it (as the allowlisted `attempt`) but do **not** branch on it — a duplicate without the header must be handled identically.
+- **Zalo: use the OA's own event identifier** where the payload carries one, and combine it with `num_retry` only as a diagnostic, never as the dedupe key.
+- **At-least-once is the default assumption, not an edge case.** Every consumer must be written so that re-running it is safe, and every side effect must be idempotent by construction (upsert, not insert; state-machine transitions keyed on a version, not on "did I see this").
+
+**Warning signs:**
+
+- Duplicate bot replies in Slack with **no** `x-slack-retry-num` header in the access log — the duplicate-send case, not the retry case.
+- A dedupe store implemented as a `Set` in memory, or as a Redis key with no TTL rationale.
+- `event_id` used as the uniqueness key in a Mongo unique index.
+- Idempotency implemented as "check then insert" (a TOCTOU race) rather than "insert and catch the duplicate key."
+
+**Phase to address:** Phase 10 (Contract extensions) for `native_event_id`; Phase 13 (Two-Way Synchronisation) for the dedupe machinery.
+
+---
+
+### Pitfall 10: Two-way sync needs a conversation/thread identity that the v1 model cannot express
+
+**What goes wrong:**
+
+The v1 outbound envelope `OutboundMessageSchema` is `.strict()` and carries `platform`, `channel_id`, `chat_user_id`, `action`, `text`, `queue`, `attempt`, `scheduled_for`. It has **no thread, conversation, reply-to, or tenant field**.
+
+The v1 `ConversationReferenceRepository` is **Teams-shaped**: `{ serviceUrl, conversationId, tenantId, chatUserId, channelId, reference }`, keyed by `static key(channelId, chatUserId) => \`${channelId}::${chatUserId}\``.
+
+Three things break as soon as a second platform arrives:
+
+1. **One binding per (channel, user).** A user talking to the bot in **two different threads** of the same channel has **one** reference — the second overwrites the first, and the bot's reply lands in the wrong thread. The same user in **two DMs** from two channel ids is fine, but the key cannot represent "which thread did this message come from."
+2. **A `ConversationReference` is a Teams concept.** Slack uses `channel_id` + `thread_ts` (a string timestamp); Telegram uses `chat_id` + `message_id`; Zalo uses `conversation_id` + a group id. `serviceUrl` / `tenantId` / `conversationId` are Teams vocabulary forced onto three platforms that do not share it.
+3. **The `reference` blob is `unknown`.** It holds "the full continuation payload (Teams ConversationReference)". It is **unserialisable in a stable cross-platform sense**, unvalidated, and un-loggable. For the **notification link** flow — where the platform must send a message *to a conversation it did not just receive in* — there is no way to reconstruct the destination.
+
+The end-to-end notification flow (FR-L-5) is exactly the case that breaks: a link is minted, then delivered back to a conversation. Today the only binding is "last channel this user spoke in."
+
+**Why it happens:**
+
+Because the v1 product only needed **Slack → user → form**, one reference per user per channel was sufficient. The two-way requirement (and the notification link bound to `real_user_id` — not to a chat) turns a *convenience* key into a *correctness* key.
+
+**How to avoid:**
+
+- **Make the conversation reference a first-class, platform-neutral record** with a discriminated shape:
+  ```
+  key          = ${platform}::${conversation_scope_id}::${scope_kind}::${chat_user_id}
+  scope_kind   = 'direct' | 'group' | 'thread'
+  scope_id     = channel/chat id (+ thread id when scope_kind = 'thread')
+  platform_ref = { slack: { channel_id, thread_ts }, teams: { service_url, conversation_id, tenant_id },
+                   telegram: { chat_id, message_id }, zalo: { conversation_id, group_id } }
+  ```
+  The key must be **platform-prefixed** — the v1 key is not, so a Slack channel id and a Telegram chat id that happen to collide would share a record today.
+- **Never store an unvalidated `unknown` as a continuation payload.** Validate it per platform with a Zod discriminated union in `packages/contract/`. It is a **contract** concern (the adapter owns the platform vocabulary), not a domain concern.
+- **Scope `ConversationReference` to the `notifications` element type** (it already lives there) and extend `ALLOWED_EDGES` only as far as needed. Note that `notifications` currently may import `platform, kernel, contract, submissions, identity, links, dsl` — the new platform-ref shapes belong in **`contract`**, so no new edge is required.
+- **The notification link is bound to `real_user_id`, not to a chat.** The D-21 `action: 'notification'` claim has **`target_id` absent** — "the link is bound to the original submitter instead". That means the *delivery destination* must be resolved at send time from `real_user_id` → conversation reference. This makes the reference repository a **required** dependency of the notification path, and its current shape is insufficient (see the three breaks above).
+- **Notification link TTL must be bounded independently of the 90-day read-link ceiling.** D-21's `MAX_READ_LINK_TTL_SECONDS` is 90 days, and the claim set is **frozen**. A notification link that lives 90 days in a chat notification list is a stale-link surface. If v2 needs a shorter TTL, that is a **claim-semantics** change on a frozen set — a Phase 10 decision that must be made deliberately, not discovered in Phase 13. See Pitfall 14.
+
+**Warning signs:**
+
+- The bot replies into the wrong Slack thread for one user.
+- A notification link that opens the form but the "return to chat" link does nothing.
+- `ConversationReferenceRecord.reference` containing a payload that no test asserts against.
+- A Slack channel id and a Telegram chat id in the same collection with no platform discriminator.
+
+**Phase to address:** Phase 10 (contract + reference model), consumed by Phase 13 (Two-Way Synchronisation).
+
+---
+
+### Pitfall 11: Group RBAC revocation is a **fan-out** problem, and the v1 cache makes it worse
+
+**What goes wrong:**
+
+The v1 `RbacCacheService` is an **in-process `Map`** keyed `ak:rbac:${app_id}:${real_user_id}:${perm_version}` with a **60-second TTL**. `PermissionCheckService.check(app_id, real_user_id, permission, perm_version = 0)` — the `perm_version` **defaults to 0**.
+
+Three problems compound:
+
+1. **`perm_version` defaults to 0.** Any call path that forgets the epoch is reading the *epoch-zero* cache entry — the one from before any revocation. A new group-scoped permission check that forgets to pass the epoch will silently read a stale-or-empty entry.
+2. **The epoch is currently a stub.** `RbacService.hasPermission` returns **`true` for every permission, unconditionally**, and `getRoles` returns `['employee']`. The `perm_version` plumbing is *shape without substance* — the epoch value that keys the cache is not yet derived from anything real.
+3. **The cache is per-process.** Under horizontal scaling (AD-9: "application services stateless, all session state in Redis, no sticky sessions"), **each pod has its own cache**. A revocation that bumps the epoch on pod A does **not** evict pod B's cached grant. Revocation is therefore **eventually consistent only if every pod happens to receive the bump** — and with an in-process cache and a 60-second TTL, the window is "up to 60 seconds **per pod, independently, and only for pods that get the bump at all**."
+
+The scale of the fan-out is the real cost: revoking one person's access to one app in one group must invalidate **every app × every group × every pod** cache entry for that user, or the user retains a live grant for up to a minute. Revoking a **group's** access (e.g. the whole team loses leave-request rights) invalidates **every member × every app** entry — potentially thousands of cache keys, times the number of pods, times every app the group touches.
+
+**Why it happens:**
+
+Because "RBAC with a cache" is normally a per-user lookup and the fan-out is invisible until the *group* axis is added. A group role introduces a **second dimension of invalidation** that a `(app, user, epoch)` key does not model.
+
+**How to avoid:**
+
+- **The epoch must be real and authoritative before group roles ship.** `perm_version` must be derived from a persisted, monotonic per-(user, app) — or per-(user, app, group) — permission epoch, not a default. The `= 0` default must be **removed**, not merely bypassed: a required parameter makes the omission a compile error.
+- **The cache must be in Redis, not in-process.** v1's AD-9 says all session state is in Redis; the RBAC cache violates that today. Move it to Redis with the epoch in the key, so a bump is visible to every pod immediately.
+- **Bump the epoch; don't scan-and-delete.** The epoch-in-key design exists exactly so revocation is a single write. The cache entries become unreachable by construction rather than by deletion. This is the right shape and it is already there — it just needs a real epoch and a real store.
+- **Define the fan-out unit explicitly.** Two candidate semantics, and the choice must be made before implementation:
+  - *per-user epoch* — bumping invalidates that user's entries across all apps; simple, and the blast radius is one user.
+  - *per-(user, app) epoch* — finer, but a group-scoped revocation must bump **N** epochs (one per member), which is a **write amplification** problem: revoking a 500-person group's rights is 500 writes (batched, but still).
+  - Prefer **per-user epoch with a group-membership epoch folded in**: the user's epoch is a composite of their identity epoch and the max epoch of the groups they are in. One write invalidates everything for that user, and a group revocation bumps **one** group epoch that **all members' composite epochs inherit**.
+- **Never rely on cache expiry for revocation.** The 60-second TTL is a *performance* bound, not a *security* bound. A revocation that only takes effect when a TTL expires is a finding, not a rollout.
+- **Never cache a "granted" answer across a revocation without an epoch.** If the epoch is missing or stale, deny.
+
+**Warning signs:**
+
+- A user who was removed from a group still has access for "a little while" — the tell is that the window varies by pod.
+- `PermissionCheckService.check` called without a `perm_version` argument anywhere in the new code (grep for `check(` with 3 args).
+- `RbacCacheService` still holding a `Map` after group roles ship.
+- A revocation that required "restarting the pods" to take effect — always a bug, never a deployment note.
+
+**Phase to address:** Phase 14 (Directory & Group RBAC Sync) — but the **real epoch and the Redis move are Phase 10/13 prerequisites**, because group RBAC cannot be correct on top of the current stub.
+
+---
+
+### Pitfall 12: Directory sync has three different failure vocabularies, and one platform has no member source at all
+
+**What goes wrong:**
+
+Each directory source fails in its own way, and a single sync engine that assumes one shape will corrupt data on all three.
+
+**Slack — read-only, and it is a mirror, not a control surface.**
+`usergroups.list` needs the `usergroups:read` scope (**Tier 2, ~20 requests/min**) and `include_users=true` to expand members. `usergroups:write` exists, but Slack only permits a bot token to use it when the workspace setting is `"everyone"`, and **`usergroups.users.update` replaces the entire member list** and **cannot remove all members** (an empty list is rejected). Creating a usergroup needs `admin.usergroups.create`, which is **Enterprise Grid only**. Usergroups also require a **Standard-or-above plan** (otherwise `plan_upgrade`). The usable incremental events are read-scope: `subteam_created`, `subteam_members_changed`, `subteam_self_added`, `subteam_self_removed`, `subteam_updated`.
+→ **Slack group membership is an inbound source of truth. Never write it back.** Attempting to write is both mostly impossible and, where possible, destructive (full-list replace).
+
+**Microsoft Graph — delta tokens expire in 7 days, and two different errors mean "resync from scratch."**
+Directory delta tokens are valid for **7 days** (reduced from 30 in 2020). When one expires the next request fails with **HTTP 400 and error code `syncStateNotFound`** ("The delta token is expired and data must be synchronized again"). Separately, **HTTP 410 Gone** whose `Location` header carries an **empty `$deltatoken`** signals a tenant reset/maintenance — also a full resync. Neither is a transient error; both are "your cursor is gone."
+On top of that: **`members@delta` does not detect members removed by the deletion of the member object**, so stale membership accumulates silently. A narrow **`$select` silently suppresses changes to unselected properties**. `$expand`, `$top` and `$orderby` are unsupported on delta queries. Scoping filters accept at most **50 ids**. The required role is `microsoft.directory/groups/members/read` (Directory Readers, Group Administrator).
+→ **Treat `syncStateNotFound` and `410 + empty $deltatoken` as one terminal state: discard the cursor and do a full resync.** They are not retryable.
+
+**Zalo — the permission scope is the gate, and the page size is 5.**
+`GET https://openapi.zalo.me/v3.0/oa/group/listmember?group_id=…&offset=0&count=5` (header `access_token`) **does** exist and returns `data.{offset,count,total,member_count}` and `members[]` with `oa_id`, `name`, `avatar`, `user_id`. Three constraints: (a) the app must be granted the **"quản lý thông tin nhóm"** (group-management) permission scope, which an OA admin applies in the Zalo portal — **not granted by default**; (b) the **default `count` is 5**, so full enumeration requires explicit paging; (c) the OA can only enumerate groups **it manages**. A sibling endpoint (`listpendingmember`) returns members **still pending approval** — the two lists must not be conflated, or pending members silently become active members.
+→ Zalo group RBAC is possible but **permission-gated and pagination-heavy**, and it is not a general "enumerate any group" API.
+
+**Why it happens:**
+
+Because all three are usually assumed to be "a list of members" and each is something else: a **mirror** (Slack), a **cursor-based delta with two terminal states and a blind spot** (Graph), and a **scoped, paged, permission-gated enumeration** (Zalo). A unified abstraction that flattens these differences will hide the one behaviour that matters per platform.
+
+**How to avoid:**
+
+- **Model the three sources explicitly** in one `DirectorySource` interface with per-platform semantics visible in the type:
+  ```
+  interface DirectorySource {
+    readMembers(scope): AsyncIterable<MemberPage>          // paged, resumable
+    pollCursor?(): Cursor | null                            // Graph only
+    writeMembers?(...): never                              // Slack: absent by construction
+    capabilities: { canWrite, eventDriven, cursorExpiryDays }
+  }
+  ```
+  Make "this source cannot be written to" a **type-level fact**, not a runtime check.
+- **A `syncStateNotFound` / `410`-with-empty-`$deltatoken` handler that discards the cursor and restarts a full resync**, with a bounded rate, and a *distinguishing* log reason. Retrying the expired token is an infinite loop; treating it as transient will hammer Graph.
+- **Never `$select` narrowly on a delta query** unless you are certain the unselected properties are irrelevant — the suppression is **silent**, and you will discover it as "the sync says nothing changed" months later. Prefer `$select` on the *initial* resync only.
+- **Compensate for the `members@delta` blind spot**: periodically (not only on delta) reconcile group membership with a full member read for groups that are security-relevant, or accept and document the stale-membership window.
+- **Respect Graph throttling**: the app+tenant limit is **3,500 / 5,000 / 8,000 ResourceUnits per 10 s** by tenant size, and the app limit is **150,000 per 20 s**; responses are **429 with `Retry-After`**. Group list page size defaults to **100**, caps at **999**; `transitiveMembers` and `members@delta` can require multi-page merge, and **groups can reappear anywhere in the `@odata.nextLink` sequence** — so the merge must be order-independent.
+- **Slack: enumerate `usergroups.list` with `include_users=true`, and reconcile with the `subteam_*` events.** Do not write. Handle `plan_upgrade` and `missing_scope` as *configuration* errors surfaced to the admin, not as silent empty results — an empty usergroup list and an unauthorised one look identical otherwise.
+- **Zalo: page with an explicit `count` well above 5**, request the group-management scope during onboarding, and keep pending-member and active-member lists separate.**
+- **Every source must be able to say "I could not read this" distinctly from "there is nothing here."** A failed read that yields an empty set is the most dangerous possible outcome in an RBAC system: it revokes everyone, or, if merged rather than replaced, grants everyone.
+
+**Warning signs:**
+
+- A sync that "succeeds" with zero members after a Graph token expiry.
+- Slack usergroups that the platform can read but not write to, with a `plan_upgrade` error swallowed.
+- Zalo group member lists that always contain exactly 5 members.
+- A pending Zalo member who suddenly has production access.
+- Graph 429s handled by a fixed sleep rather than `Retry-After`.
+
+**Phase to address:** Phase 14 (Directory & Group RBAC Sync).
+
+---
+
+### Pitfall 13: An open-ended AI guard that can *act* — the model must never be able to invoke a tool
+
+**What goes wrong:**
+
+"Permission-first open-ended AI" is the most dangerous feature in the v2 scope, because it replaces a **closed** decision (pick one of N enumerated, permission-filtered tools) with an **open** one. The failure mode is not "the model picks the wrong tool." It is **"the model calls something it was never granted."**
+
+The v1 `RoutingOrchestrator` is *structurally* safe: the provider receives `tools: ToolDescriptor[]` (D-23) and returns a `choice`; the orchestrator then checks the choice against the **platform-side** `permitted` set. The model cannot widen that set — it can only propose, and a proposal outside `permitted` is rejected.
+
+An open-ended guard breaks that if it is implemented as "let the model decide and call the tool." Then:
+
+- the model can propose a **tool the user is not permitted to use**, and if the guard trusts the proposal, the action happens;
+- the model can be **prompt-injected** through user text, a form submission, a document fetched by a connector, or a chat message — every one of which is attacker-influenced content;
+- the model can **loop** (call a tool, read the result, call another tool) and burn budget unboundedly;
+- the model can **exfiltrate** — a connector tool that writes to an external system becomes an exfiltration channel if the model can choose its arguments.
+
+**Second trap — LLM "confidence" is a soft number and it is already load-bearing.**
+
+The v1 orchestrator's gate is:
+```
+result.choice.verified === true
+  && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1
+  && Number.isFinite(gate) && gate >= 0 && gate <= 1
+  && confidence >= gate
+  && !alternatives.some(alt => permitted.has(alt.tool_id))
+  && await canOpenNow(id)
+  && Date.now() < deadlineEpochMs
+```
+The `confidence` field comes from the **model**. It is a **self-reported**, uncalibrated number with no units — the same `0.9` from two different providers, or from the same provider before and after a prompt change, means nothing comparable. **Using it as a security threshold is a category error**: it is a *ranking* signal, not a *permission* signal.
+
+The v1 code gets this right by construction: the confidence gate is a **quality** gate layered *under* an authoritative permission check. An open-ended guard that reuses "confidence" as the *permission* signal inherits the category error at a much higher stakes.
+
+**Third trap — the fallback chain is a permission surface.** If the primary provider times out and the guard falls back to a **weaker** provider (or to a heuristic, or to "guess the most likely tool"), the fallback must not be *more permissive* than the primary. A fallback that returns a tool without the `verified === true` check is a bypass.
+
+**Fourth trap — tool-count bounds.** D-23's `tools: ToolDescriptor[]` is a **list the platform sends to the model**. As the tool catalogue grows (more apps, more connectors, more group-scoped actions), the prompt grows, the latency grows, the cost grows, and the model's selection accuracy **degrades**. There is no bound on `tools.length` in the contract today.
+
+**Why it happens:**
+
+Because "open-ended" and "permission-first" are in tension, and the natural implementation resolves the tension in the model's favour. The v1 architecture already contains the correct pattern (a **closed** enumeration plus a **platform-side** gate); extending it to an open-ended surface tempts a redesign that loses the gate.
+
+**How to avoid:**
+
+- **The model proposes; the platform disposes.** Keep the v1 shape exactly: the guard returns a **proposal** (`tool_id`, `arguments`, `confidence`), and a **platform-side** gate decides whether it may proceed. The gate is code, not prompt, and it is not negotiable by the model.
+- **The permitted set is computed before the model is called** and is intersected with the model's proposal — exactly as the v1 orchestrator does with `permitted`. Never let the model's output *define* the candidate set.
+- **Structural, not instructional, tool prohibition.** If the open-ended guard must be able to call tools at all, the tool invocation must go through the **same** `canOpenNow` / `PermissionCheckService.check` path, with the `perm_version` epoch evaluated **at execution time**, not at proposal time. A model that proposes a tool and a user whose permission was revoked 200 ms ago must be denied.
+- **Treat all model-visible content as untrusted.** User chat text, form field values, connector responses, and document contents are inputs to be escaped and schema-validated, never concatenated into a system instruction. Structured outputs (a strict JSON schema for the proposal) rather than free text.
+- **`temperature = 0`** and a **fixed seed** where the provider supports one — for reproducibility of a decision that will be audited, not for determinism of the prose. Note that temperature 0 does **not** make a provider deterministic; the audit story must not rest on it.
+- **Bound the tool count.** Cap `tools.length` in the D-23 request (a concrete number, chosen after measuring accuracy-vs-catalogue-size on the v1 fixture set) and **rank/filter** the catalogue to the permitted set before sending. If the permitted set exceeds the cap, the guard must **narrow** it by relevance, not truncate arbitrarily — a truncated catalogue silently removes capabilities.
+- **Bound the loop.** A hard cap on tool-call rounds per request (the v1 orchestrator already has an **absolute deadline epoch** — `deadlineEpochMs` — and a per-attempt budget derived from it: `min(remaining, providerCap)`). Extend that, don't replace it: one absolute epoch for the whole request, per-provider caps inside it.
+- **The fallback chain must be monotonically *less* capable and identically *constrained*.** Every fallback goes through the same gate, with the same permitted set, and must require `verified === true` or it must return "clarify". A fallback that answers directly on a timeout is a bypass.
+- **Cost is a security property.** Per-provider budget, per-request budget, and a global daily budget — plus a **circuit breaker** that opens to "clarify" rather than to "guess".
+- **Reuse the existing clarification outcome.** `state.force_clarification` and the `clarify` result already exist in the v1 orchestrator. An open-ended guard that is unsure should **return `clarify`**, not pick the top-ranked tool. Every "we were not sure" path in v1 is already shaped; reuse it.
+- **Audit what the guard decided, not what the model said.** Log the proposal, the permitted set size, the gate outcome (closed enum), and the confidence **as a number** — all within the D-16 allowlist (`action`, `status`, `reason`, `decision`, `provider`, `duration_ms` are allowlisted; `confidence` is **not**, and adding it needs the D-16 written justification).
+
+**Warning signs:**
+
+- Any code path where a tool is invoked with arguments that came straight from a model response, without a platform-side check.
+- A "confidence" value compared against a threshold that is described in a prompt or a config as a *security* control.
+- A fallback provider that does not implement the same `verified` semantics as the primary.
+- `tools.length` in a request exceeding a few dozen, and no ranking step.
+- A guard that, on provider error, returns *something* rather than `clarify`.
+- A retry loop around the provider with no absolute deadline.
+
+**Phase to address:** Phase 15 (Permission-First Open-Ended AI Guard).
+
+---
+
+### Pitfall 14: The v2 features collide with two **frozen** contracts (D-21 read-link claims, D-23 JEV request) and with the D-16/D-18 allowlists
+
+**What goes wrong:**
+
+Four frozen or closed surfaces sit exactly where v2 needs to change, and each change has a blast radius that is invisible until deploy.
+
+| Frozen surface | What it is | What v2 wants | Blast radius of a careless edit |
 |---|---|---|---|
-| 1 | Role revoked from the user | ✅ Yes — the bump | 403 |
-| 2 | App `archived` | ❌ No | FR-LC-3 says archived apps are read-only but *"existing view links still work"*. **Archive is explicitly not a security control.** |
-| 3 | App `purged` | ❌ No | Link validates; query runs against a soft-deleted collection (FR-LC-5). Either stale rows render, or — after hard delete at the 30-day grace — an empty page. |
-| 4 | The *record* was deleted at source | ❌ No | Link validates, target is gone. For **query** links (FR-L-4, fresh execution) this is worse: the link returns a *different result set* than the one the user saw when it was issued. |
-| 5 | The collection was re-shared to a different app | ❌ No | FR-X-4 executes under the *consumer app's* identity. Revoke the grant (FR-X-6, *"takes effect immediately"*) and the consumer app's links keep working, because the grant has no version counter of its own. |
-| 6 | `perm_version` bumped on a *different* app | ❌ By construction | Per-app scoping means **there is no way to revoke a user's read access across all apps in one operation.** During an incident ("this account is compromised") you would have to bump 200 counters across N apps. Not operationally viable. |
-| 7 | Clock skew | ❌ No | `exp` is checked against local time. A link is rejected up to ±skew early. Not a leak, but it generates "link expired" reports that read as outages. §18 has no NTP requirement and §9 has no skew NFR. |
-
-And then the one the PRD does not name at all:
-
-> **There is no revocation mechanism for a read link.** AD-11 chose stateless read links with *"no Redis storage"* (FR-L-3) precisely because that is what makes them scale. The cost is that a leaked link — forwarded in a chat channel, pasted into a ticket, sitting in browser history, in a corporate proxy log, in a Slack link unfurling preview — **cannot be revoked.** The only invalidation levers are role change, `perm_version` bump, and expiry (up to 90 days away).
-
-For a platform that will hold leave requests, expense claims, and HR submissions, "we cannot withdraw a link we know was leaked" is not an acceptable answer, and the PRD's architecture currently gives that answer.
+| **D-21 `ReadLinkClaimsSchema`** | The read-link JWT claim set. `.strict()`. `READ_LINK_CLAIMS_VERSION = '1.0'`. `MAX_READ_LINK_TTL_SECONDS = 90 days`. Actions: `create, edit, view, query, notification, draft` (`draft` reserved, never emitted). `notification` has **`target_id` absent**. | A notification link with a **shorter TTL**; possibly a claim identifying the destination conversation. | **Every read link already in a user's clipboard breaks silently** — a `400` on links issued months earlier, with no error at issuance time. A `notification`-bound-to-conversation claim would also change what `notification` means, which changes D-21's semantics. |
+| **D-23 JEV request** | `tools: ToolDescriptor[]`, `state.force_clarification`, `spec_version: '1.0'`. | An **open-ended** guard; a **bounded** tool catalogue; possibly a new request field. | Changing `spec_version` **invalidates every provider** that was built against `1.0`. A provider that returns a decision for a request shape it does not recognise may route to an unintended tool. |
+| **D-16 `LOG_FIELD_ALLOWLIST`** | The closed field set of every structured log line. `chat_user_id`, `group_id`, `chat_id`, `telegram_user_id`, `zalo_user_id`, `group_name`, `channel_title` are **not** on it. | Group and member identifiers in logs and audit. | **Silently dropped.** A log line that "should" have `group_id` has no `group_id` — with no error. Diagnosing a group RBAC incident becomes impossible. |
+| **D-18 `SPAN_ATTRIBUTE_ALLOWLIST` + `FORBIDDEN_SPAN_ATTRIBUTES`** | The closed attribute surface of every exported span. `submission_id`, `actor_ref`, `user_email`, `email` are **forbidden**. | Trace continuity across the new hops. | Adding a forbidden attribute is a **spec failure**, not a lint warning — the fixture test asserts the forbidden list. |
 
 **Why it happens:**
-`perm_version` was designed to answer one question — *did this user's permissions for this app change since the link was issued?* — and then treated as if it answered the broader question of *is this link still authorised*. Those are different questions, and the gap is invisible until someone tries to revoke a specific link.
+
+Because each of these was frozen **specifically to make later changes loud**, and v2 is exactly the "later" they were frozen for. The friction is the control (both files say so explicitly): *"Adding a field requires a written justification in the same commit; that friction is the control."* The failure mode is a developer hitting the friction, feeling it as an obstacle, and routing around it — by logging the field under a name already on the allowlist, by hashing it, or by putting it in a `reason` string.
 
 **How to avoid:**
-Four changes, in order of value:
 
-1. **A read-link epoch, one Redis key per app and one per user.** This is the reconciliation between AD-11's scalability and operability, and it costs exactly one extra Redis `GET` per link access:
-   - `readlink_epoch:app:{app_id}` — bumped on *any* change to the app's RBAC definitions, role assignments, `shared_with` grants, connector refs, or lifecycle state.
-   - `readlink_epoch:user:{real_user_id}` — bumped on any change to the user's app memberships across all apps, and by an admin action for incident response. **This is the kill switch that closes leak #6.**
-   - The epoch value is a claim in the read-link JWT (an opaque integer, consistent with NFR-SEC-2's "no PII in JWTs"). On access, compare against Redis. Mismatch → 403.
-   - **Memory property preserved**: this is one key per app (≤200) and one per user (≤1,000), not one per outstanding link. The "millions of read links without memory pressure" property that justified AD-11 survives intact.
-   - **The permission path for read links is not the hot path**: NFR-P-8 targets <1.5 s for view/query rendering, and NFR-P-2 budgets RBAC aggregation at <30 ms cached. One Redis GET is already inside that budget (the fresh RBAC check the PRD already mandates is at least as expensive).
-2. **An explicit app-status gate on the read path**, evaluated before anything else: `status ∈ {published, deprecated, archived}` → allowed; `draft` / `purged` → 410 Gone with an explicit message. This closes leaks #3 and #5-adjacent, is one line, and is required regardless of epochs because "purged" is not a permission event.
-3. **Shorten the default read-link TTL.** 90 days is the *ceiling* (FR-L-3 "up to 90 days"), not a requirement. Default to **7 days**, with 90 available only as a per-app opt-in (FR-L-6 already makes TTLs configurable per app). This reduces the exposure window of an unrevocable link by 13× at zero cost. If a stakeholder asks for 90 days, the honest framing is: "that link cannot be withdrawn for 90 days if it leaks."
-4. **State the unrevocable-link limit in the security design and in the admin UI.** A per-app flag `read_links_revocable: false` when the app opts into 90-day TTLs, surfaced in the App Builder at publish time, plus documentation that a leaked long-lived link can only be neutralised by bumping every affected user's epoch.
+- **Decide the D-21 and D-23 questions in Phase 10, in writing, before any adapter ships.** They are *design decisions*, not implementation details:
+  - **D-21 notification TTL.** The `MAX_READ_LINK_TTL_SECONDS` ceiling is a **maximum**, enforced by `.refine()` on `exp - iat`. A **shorter** notification TTL is **already expressible** — it is a per-link issuance decision, not a schema change. **Use that.** Do not add a claim, do not change the schema, do not touch `READ_LINK_CLAIMS_VERSION`. If a *hard* cap on notification TTL is wanted, it belongs in the **issuer**, not in the contract.
+  - **D-21 notification destination.** `target_id` is absent for `notification` **by design** — "the link is bound to the original submitter instead." That is exactly the right model for a chat notification: the link identifies the **recipient**, and the **destination conversation** is resolved at delivery time from the conversation reference. **Do not add a claim.** Add a `conversation` lookup to the delivery path (Pitfall 10) instead.
+  - **D-23 tool catalogue bound.** If a bound is needed, add it as a **provider-side or platform-side precondition** (reject a request whose `tools.length` exceeds the cap, with a typed error) rather than as a schema change. `spec_version` stays `1.0` unless the **wire format** actually changes.
+- **For D-16/D-18, the correct move is to widen the allowlist — with the written justification, in the same commit.** The allowlist is the control; bypassing it destroys the control. Concretely: propose `group_id` and a *platform-scoped* member identifier as new allowlisted fields, with the justification "the group id is an opaque platform-scoped identifier, not a name, an email, or a handle" — mirroring the existing reasoning for `app_id`/`form_id`. **Never** put a group id in `reason` (a free-text field) to dodge the allowlist — that is worse than no logging, because it looks like logging.
+- **Do not put group/member identifiers in spans unless they are opaque and platform-scoped.** The D-18 file's own reasoning (traces have no erasure path) applies with full force to group membership: a trace attribute that names a group **and** a user is a correlatable activity map. Prefer `group_id` (opaque) with **no** user identifier in the same span.
+- **Add the frozen-set assertions to the new features' test suites.** The v1 discipline (a mechanical key-set assertion, because "a comment cannot stop a schema edit") must be extended to every new consumer of the claim set.
 
 **Warning signs:**
-- Add `read_link_denied_total{reason}` with reasons `perm_version | epoch_app | epoch_user | app_archived | app_purged | grant_revoked | signature`. The PRD has **no metric for read-link denials at all** — §16.2 covers token issue/consume (write links) but nothing for the read path. That is the observability hole that lets a read-link leak go unnoticed.
-- `read_link_denied_total{reason="app_purged"} > 0` ⇒ **a bug**: the read path is serving links against purged apps. Alert Critical.
-- `read_link_denied_total{reason="epoch_*"} > 0` after any RBAC change ⇒ **the epoch mechanism is working**; any value is fine. This is the healthy-signal metric.
-- Ratio of read-link accesses with `epoch_user` mismatch during an incident ⇒ the kill switch's actual reach. Measure it during a game day.
-- Age distribution of read-link accesses. If the p99 age is near the TTL, the 7-day default is wrong for your traffic and you should find out now rather than after a leak.
 
-**Severity if ignored:** HIGH — this is a security surface, and events #2–#6 plus the absence of revocation are all live under the PRD as written.
+- A commit that adds a field to `LOG_FIELD_ALLOWLIST` with the message "needed for debugging" and no justification.
+- A log line where `group_id` is expected and absent — no error, just a gap.
+- A span attribute named `telegram_user_id` or `zalo_user_id`.
+- `READ_LINK_CLAIMS_VERSION` bumped to `'1.1'` in a feature commit.
+- `spec_version` bumped as part of an adapter change.
+- A `reason` field containing something that looks like an identifier.
 
-**Phase to address:** Read links ship in **PRD Phase 4**, but the epoch mechanism and the app-status gate are **link-service design decisions and must be built in Phase 1**. Retrofitting a new JWT claim after links with a 90-day TTL are in circulation means every outstanding link breaks on deploy. This is the clearest example of the PRD's sequencing working against itself.
+**Phase to address:** Phase 10 (v2 Foundations) — this is the **highest-leverage phase in the whole roadmap**, because every later phase inherits its decisions.
 
 ---
 
-### Pitfall 5: Ack-then-enqueue has an unobservable gap, and the PRD has no metric for it
+### Pitfall 15: The boundary lint will fail the build on any new package, and the failure mode is "looks fine, is inert"
 
 **What goes wrong:**
-The committed constraint is: *"Webhooks ack in <200 ms and enqueue; all logic runs in the consumer."* The failure is the space between those two actions:
 
-1. The receiver verifies the signature, does its work, calls `queue.add()`, and returns 200.
-2. **If the response is written before `queue.add()` resolves** — a `void queue.add()` without `await`, a response written in an interceptor/filter that runs before the handler, an `ack()` in a `finally`, or a NestJS exception filter that has already sent the response — the platform has told Slack "200, I got it" and then lost it.
-3. Slack does not retry. The message is gone. No error, no exception, no metric.
-4. The user's request simply never produces a link. From the platform's view everything is healthy.
+`tooling/boundaries.config.mjs` is the single source of truth for the modular-monolith boundary graph, and it has **four** properties that bite new v2 code:
 
-This is the PRD's stated mechanism for not losing submissions, and it has a failure mode with **no detection at all**, because §16.2's metric list contains **no webhook receive or enqueue counter**. `active_im_connections{im_platform}` (§16.2) is the closest thing and it is structurally incapable of detecting this (see Pitfall 8).
+1. **`default: 'disallow'`.** An edge not listed is a **build failure**, not a convention. A new package — a Zalo client, a directory-sync module, a Telegram adapter — has **no** element type until one is declared.
+2. **The `domain` root is deliberately NOT an element type.** `DOMAIN_ELEMENT_TYPES` enumerates 15 subdirectories explicitly. A new `packages/domain/src/directory/` is an **explicit config change**, not an automatic inheritance.
+3. **Policies are last-match-wins, and `checkAllOrigins: true` is required.** Without `checkAllOrigins`, R2 and R3 evaluate **nothing** for `jose`/`mongodb` imports (they resolve to `node_modules`, so `isLocalDependency` is false) — the tree looks byte-identical to a compliant one while the rules are dead. The config file documents this in detail; **do not remove the flag**.
+4. **`partialMatch: false` on every element descriptor.** With the default `true`, a pattern like `packages/platform/src/**` also suffix-matches `apps/api/src/platform/**`, silently promoting an app-local directory to the `platform` element type.
 
-Related but distinct: the `<200 ms` budget itself. The receiver must complete signature verification (HMAC over the raw body), identity resolution, enqueue, and the HTTP write in under 200 ms. Any of these can blow the budget — a cold TLS handshake, a slow KMS decrypt, a Redis blip — and a slow 200 ms response is *still* a failure from Slack's perspective (3 s limit, 3 retries), which means a partial outage presents as duplicate deliveries.
+And the file-category rules that v2 will hit:
+
+- **R1 entrypoint exclusivity** — only `apps/api` may import `inbound-adapter` or `http` categories; only `apps/worker` may import `outbound-adapter` or `bullmq-worker`; only `apps/scheduler` may import `scheduler-job`. **A Worker or a controller in the wrong process breaks the <200 ms ack budget** (the rule's own message).
+- **R2 secret containment** — only `packages/platform/src/crypto/**` and `packages/domain/src/connectors/**` may reach `jose` / `@aws-sdk/client-kms` / `@google-cloud/kms`. **Per-tenant IM credentials (Zalo OA Secret Key, Telegram bot token, Graph client secret) are exactly what R2 exists to contain.**
+- **R3 no direct Mongo** — only `packages/platform/src/mongo/**` and `packages/domain/src/**/data-access/**` may import `mongodb`.
+
+The category patterns are also fixed: `inbound-adapter` is `packages/domain/src/adapters/**/inbound/**` and `outbound-adapter` is `packages/domain/src/adapters/**/outbound/**`. **A new adapter that does not live under `packages/domain/src/adapters/<platform>/{inbound,outbound}/` is not categorised at all** — so R1 will not fire for it, and it may quietly end up in the wrong process.
 
 **Why it happens:**
-Ordering bugs are invisible in code review because `queue.add()` returning a promise that is never awaited *looks* like it enqueued. And the ack-then-enqueue shape is easy to arrive at accidentally when the HTTP layer is a decorator, a middleware, or an exception filter rather than an explicit statement in the handler.
+
+Because v2 adds **two whole adapters plus a directory-sync module**, and the boundary model is deliberately explicit — every new placement is a decision the config file must record. The natural mistake is to create `packages/domain/src/adapters/zalo/` (one directory, mixed inbound/outbound) because that is what the existing Slack adapter looks like, and to discover that R1's `inbound-adapter` / `outbound-adapter` categories no longer match.
 
 **How to avoid:**
-- **Make the ordering a lintable code rule, not a convention.** One `WebhookIngestService.ingest(rawBody, headers)` method that (a) verifies the signature, (b) dedupes, (c) enqueues, (d) returns the parsed job id. The HTTP layer's *only* job is `res.status(200).json({ ok: true })` after that method resolves. No logic, no `await` on anything else, in the controller.
-- **Add the two counters that make the gap observable**, from Phase 1:
-  - `webhook_received_total{platform, outcome}` — incremented at the top of the receiver, `outcome ∈ {accepted | rejected_signature | rejected_replay | rejected_oversize | error}`.
-  - `webhook_enqueued_total{platform}` — incremented only after `queue.add()` resolves.
-  - **The invariant `received{accepted} − enqueued` must be flat.** A monotonically growing difference with no matching rise in `queue_depth` (§16.2) is the ack-without-enqueue signature. Alert on a 5-minute positive drift > a small constant.
-- **`queue_depth` is the wrong signal for the ack path.** Depth rises for legitimate reasons (backlog) and is only sampled. The counter *difference* is the signal.
-- **Never ack a signature failure.** §16.4's runbook row "IM webhook failing → Verify signing secret rotation" only makes sense if non-2xx on failure causes a platform retry. Return 401 and let them retry.
-- **Bound the body before doing any work**: reject oversize bodies with 413 before signature verification, so a 10 MB payload cannot consume the 200 ms budget.
-- **Startup-time dependency gate**: if Redis is unreachable, `/health/ready` must fail *and* the receiver must return 503 rather than 200 (NFR-O-7 already splits liveness from readiness — use it).
+
+- **Place every new adapter as `packages/domain/src/adapters/<platform>/inbound/**` and `.../outbound/**`** from the first commit. Check the *existing* Slack/Teams layout before copying it — if v1's Slack adapter does not follow the category pattern, that is a v1 inconsistency to fix, not a precedent to follow.
+- **Declare every new domain subdirectory in `DOMAIN_ELEMENT_TYPES`** (e.g. `directory`) **and** add its edges to `ALLOWED_EDGES` in the same commit. The `domain` root is not an element type, so omitting this is a **build failure**, not a silent inheritance.
+- **Put per-tenant IM secrets behind R2's owners.** The IM credentials must live in the `connectors` element (which is a `connector-owner` category) or in `packages/platform/src/crypto/**`. A Zalo client that reads its OA Secret Key from a plain config map violates R2 **and** NFR-SEC-3.
+- **Keep the `app-worker` out of the inbound path.** Inbound adapters are `apps/api`-only (R1). The receiver enqueues; the **worker** consumes. The Slack controller being a placeholder (`return { ok: true }`) is fine *as a placeholder* — it becomes a violation the moment a Zalo/Telegram receiver is written into the worker.
+- **Do not weaken `checkAllOrigins: true`, do not relax `default: 'disallow'`, do not remove `partialMatch: false`.** Each is load-bearing and each has a documented failure mode that is **silent** (the rules simply stop firing).
+- **Run the boundary fixture test** (`boundaries.fixture.spec.ts`) in the same commit as any boundaries-config change. The config file says the fixture re-uses the frozen objects verbatim, so a mutation makes the lint gate and the test disagree.
 
 **Warning signs:**
-- `webhook_received_total{outcome="accepted"}` − `webhook_enqueued_total` drift.
-- `webhook_received_total{outcome="rejected_signature"}` rising after a signing-secret rotation ⇒ the keyset rotation gap (Pitfall 6).
-- The PRD's existing "Token consume failure >10/min" alert is unrelated to this and should not be mistaken for coverage.
 
-**Severity if ignored:** HIGH — silent, unrecoverable loss of user requests. This is the only pitfall in the document where the *default* failure mode is "the user asked for something and nothing happened, ever, and we cannot prove it."
+- A new package created without a corresponding `DOMAIN_ELEMENT_TYPES` entry — the build fails at the lint step with a generic default-deny message that says nothing about the missing declaration.
+- A Zalo/Telegram client placed at `packages/domain/src/adapters/zalo/client.ts` (not under `inbound/` or `outbound/`) — **uncategorised, so R1 does not apply**.
+- A `default: 'allow'` or a `checkAllOrigins` removal in a diff — review must reject it.
+- A secret read from `process.env` inside an adapter — R2's owners are the only ones allowed to touch the KMS surface, and NFR-SEC-3 forbids plaintext env secrets.
 
-**Phase to address:** **Phase 1** — before the Slack adapter ships. The metrics must exist when the first receiver does.
-
----
-
-### Pitfall 6: Signature verification drifts — verifying twice, on the wrong body, or with one key
-
-**What goes wrong:**
-Slack's scheme (verified against Slack's docs) has three properties that generate three distinct bugs:
-
-**(a) The raw body is mandatory.** The v0 signature is HMAC-SHA256 over `v0:{timestamp}:{raw_body}` where `raw_body` is *"without headers, before it has been deserialized from JSON or other forms"*. NestJS/Express `bodyParser` consumes the request stream by default. Without a `verify` hook or `express.raw()` on the webhook route, every signature check fails. The two common "fixes" are both worse: disabling verification with a log line, or re-serialising the parsed body (which never reproduces Slack's byte-for-byte payload because of key ordering, unicode escaping, and whitespace). This is a security-relevant pitfall, not just a bug, because the natural response to a broken verification is to turn it off.
-
-**(b) Verifying twice breaks under queue delay.** The obvious reading of "all logic runs in the consumer" plus "defense in depth" is: verify in the receiver *and* verify in the consumer. Slack's docs require rejecting requests whose timestamp differs from local time by more than **five minutes** (*"The request timestamp is more than five minutes from local time. It could be a replay attack, so let's ignore it."*). Under any queue backlog over 5 minutes — which is exactly what happens when Redis is degraded, i.e. exactly when you most need the backlog — **every request fails verification in the consumer**. A performance problem converts into a total outage with a misleading error (`invalid signature`) that sends the on-call to the wrong system. This one is subtle, easy to introduce during a security review, and produces an incident signature that points nowhere near the cause.
-
-**(c) Single-secret verification breaks rotation.** The signing secret rotates — by Slack's own lifecycle and by enterprise policy. Single-secret verification drops every in-flight request signed with the previous secret for the length of the rotation, and platforms retry on 5xx, so a rotation becomes a burst of 401/403-induced retries. The PRD has `webhook_secret_ref` (§10.3) — a *single* ref, no keyset, no `previous_ref`, no overlap window. Compare NFR-SEC-9, which explicitly requires a **90-day zero-downtime dual-key rotation window** for JWT signing keys. The same mechanism already exists in the design; the webhook path just was not wired to it.
-
-**Why it happens:**
-Each platform's signature scheme is a slightly different recipe, and the recipe lives in the platform's docs rather than in an abstraction. Teams uses JWT bearer validation against the bot registration rather than an HMAC; Zalo's OA callback model has its own constraints; Telegram uses a `secret_token` header. Four verification implementations that each look like "verify the signature" and are each subtly different is the definition of drift.
-
-**How to avoid:**
-- **Verify exactly once, at ingress. Never in the consumer.** Stamp the enqueued envelope with `{ verified_at, key_id, platform, native_event_id, raw_body_sha256 }` and have the consumer trust the envelope. If you want the consumer to be defensive, it re-verifies *the envelope's own signature* (platform-signed, platform-independent), not the platform's.
-- **A raw-body-preserving hook registered before any global body parser**, applied only to the webhook routes, and covered by a test that asserts the raw bytes for a known fixture.
-- **Keyset-based verification with an overlap window**, mirroring NFR-SEC-9: `kms://secrets/slack:{kid}` resolving to an active set plus a previous set, with an overlap of **at least 1 hour** — long enough to cover the platform's full retry horizon (Slack's 3 retries span tens of minutes; Teams' jittered retries longer). Refuse a `kid` outside the set rather than falling back to "try all secrets", because try-all is how you get an oracle.
-- **Rotation is a scheduled job, not a runbook step.** The same BullMQ Job Scheduler that rotates JWT signing keys rotates webhook secrets, because an in-memory per-instance rotation silently not running on one pod is a security failure (PROJECT.md already makes this argument for JWT keys — extend it).
-- **A synthetic signed probe.** A canary that signs a valid request with the *current active key* and posts it to the live endpoint every hour, asserting a 2xx. This catches "verification was disabled and nobody noticed" — which no metric catches, because a disabled verifier produces a *success* rate of 100%.
-
-**Warning signs:**
-- `webhook_signature_invalid_total{platform, reason}` with `reason ∈ { hmac_mismatch | expired_timestamp | unknown_kid | missing_raw_body }`. **This metric does not exist in the PRD.** The `expired_timestamp` reason is the double-verify bug's fingerprint: in healthy operation this must be exactly zero, because ingress verification happens within milliseconds.
-- `unknown_kid` spiking during a rotation ⇒ the overlap set is too small or the rotation job ran without draining.
-- The hourly probe result. This is the only mechanism that detects a *disabled* verifier.
-- Count of receiver 401/403 responses vs `webhook_received_total` — during normal operation this ratio is zero.
-
-**Severity if ignored:** HIGH — an outage whose logs point at cryptography when the cause is queue depth, or a silently disabled verifier that turns signature checking into a no-op.
-
-**Phase to address:** **Phase 1** (Slack adapter). The keyset abstraction is shared with NFR-SEC-9's JWT rotation, so it should be built once and reused by Pitfall 14's rollback-invalidation.
-
----
-
-### Pitfall 7: IM platforms deliver at-least-once and out of order; the consumers assume exactly-once, in-order
-
-**What goes wrong:**
-Slack retries up to 3 times when it does not get a 2xx within 3 seconds. Teams returns 429/502 with retry-with-jitter. Telegram redelivers on non-2xx. Zalo's OA callback retries on failure. Every one of these means the platform's contract is **at-least-once delivery with no ordering guarantee**, and jitter specifically guarantees that a retried event can *overtake* its successor.
-
-Concretely, in this system:
-
-- **Duplicate link issuance.** A duplicate inbound event runs the whole pipeline again: RBAC aggregate, JEV decide, link mint. The user gets **two** create links in chat, both valid, both live for 30 minutes. They click one; the other expires unused. Not a data bug — but it inflates `token_issued_total` (so the issued/consumed ratio becomes useless as an anomaly signal unless you dedupe on event id), doubles JEV spend, and produces a support question that has no answer.
-- **Duplicate identity creation.** Two concurrent onboarding flows for the same email (FR-I-2 lazy onboarding) race on `chat_user_id → real_user_id`. Without a unique index on `(im, chat_user_id)` you get two mappings, two RBAC identities, and a user whose submissions split unpredictably.
-- **Duplicate notifications.** FR-N-3 notifies the original submitter on inbound webhook; duplicate inbound webhooks (Pitfall 13's external counterpart) send duplicate IM messages with duplicate links.
-- **Out-of-order conversation context.** FR-J-7 sends `previous_turns` and §11.1 sends `turn_count`. If turn 4 arrives before turn 3 (jittered retry), the context the model receives is wrong — and it is wrong *silently*, producing a confidently mis-routed request. FR-J-7's "conversation context (last N turns)" has no ordering or freshness contract at all.
-- **Duplicate RBAC cache invalidation is harmless; missing one is not.** Duplicate pub/sub invalidation is idempotent. A *dropped* pub/sub message is not — see Pitfall 19.
-
-**Why it happens:**
-Queue consumers are written as if they will see each message once, in order, because in development they do. The duplication only appears under exactly the conditions you care about (retries during degradation), and it compounds with the failure it is responding to.
-
-**How to avoid:**
-- **Carry the platform's native event id in the normalized `InboundEvent`.** FR-IM-2 requires normalization but does not require an idempotency key. Add `native_event_id` (`event_id` for Slack, `activity.id` for Teams, Telegram `update_id`, Zalo's callback id) and make it mandatory in the schema — a normalized event without one is a schema violation, which makes the gap visible in review.
-- **Dedupe at enqueue, not in the consumer.** `SETNX ingest_dedup:{platform}:{native_event_id}` with a TTL ≥ the platform's maximum retry horizon (use **1 hour**; Slack's 3 retries plus Teams' jitter can span tens of minutes). Doing it inside the same enqueue operation means dedupe and enqueue are one logical step, so there is no window where a dedupe hit drops a message that was never enqueued. **A dedupe hit must still return 200** — the platform must not retry a message we deliberately deduplicated.
-- **Consumers must be idempotent anyway.** `submission_id`, `jti`, and `mapping_id` are natural keys; make every consumer's write path a single upsert keyed on one of them.
-- **Unique indexes on the identity edge**: `unique: { im: 1, chat_user_id: 1 }` on mappings, and `unique: { email: 1 }` (or the corporate id) on real users. FR-I-2's two onboarding paths racing is a realistic first-week production bug.
-- **Order conversation context explicitly.** Key the turn buffer on `(conversation_id, turn_count)` or the event timestamp, store the max-seen `turn_count` per conversation, and **drop** out-of-order turns rather than appending them. A missing turn is a small UX cost; a wrong context silently mis-routes a request, which is a data-quality cost.
-- **Treat the delivery-failure path as first-class**: verify that a duplicate-suppressed event still produces the user-visible response (the link is already in chat from the first delivery — do not re-send it, and do not send nothing).
-
-**Warning signs:**
-- `ingest_duplicate_total{platform, stage}` as a first-class counter — **not in the PRD metric list.** The stage label matters: `stage=received` (platform retried us) vs `stage=consumer` (our own pipeline re-ran) have completely different causes.
-- Ratio `token_issued_total` / unique `native_event_id` — anything > 1.0 is a duplicate-issuance bug. This is the cleanest single check.
-- `jev_decision_total` rising without a matching `im_event_received_total` rise ⇒ the pipeline is re-running on its own (cache expiry, consumer retry, or a retry loop).
-- `mapping_created_total` exceeding the number of distinct `(im, chat_user_id)` pairs ⇒ the unique index is missing.
-- A "duplicate rate" that is *exactly zero* in production is itself a signal the dedupe counter was never wired, not that Slack never retried.
-
-**Severity if ignored:** MEDIUM-HIGH — no direct data corruption once the `submission_id` unique index is in place, but duplicate link issuance and duplicate identity rows are user-visible and confusing, and duplicate JEV spend is a real line item.
-
-**Phase to address:** **Phase 1** — `native_event_id` in the `InboundEvent` schema (FR-IM-2) and the unique indexes on mappings (FR-I-2) are Phase 1 identity work.
-
----
-
-### Pitfall 8: "No silent failures" during an IM outage is unobservable as specified
-
-**What goes wrong:**
-FR-IM-7: *"If an IM platform is unreachable, messages MUST be queued and retried. Users MUST NOT see silent failures."* Two halves of that promise are both false under the design as written, in different ways.
-
-**Inbound:** if Slack is down, no messages arrive — there is nothing to queue. Queuing our outbound does nothing for requests we never received. The platform's view is silence; the user's view is "I typed a request and Slack itself swallowed it". Neither the PRD's metrics nor its alerts distinguish this.
-
-**Outbound — the case that actually bites.** The user gets a create link, fills the form, submits. The internal MongoDB write succeeds (FR-D-4: internal write must succeed). The confirmation IM message (§12.1 step 17) is enqueued and cannot be delivered. The user has **no idea the submission worked.** They will submit again, get "already submitted", and conclude the system is broken. FR-N-6's 3-attempt retry applies to *notifications*; the PRD never states a delivery policy for the *confirmation* message, which is the one message every user depends on.
-
-Now compound it: the user also cannot use a link they did not save, because link delivery failed. So a 30-minute Slack outage produces: requests lost inbound, confirmations lost outbound, and links that were delivered once and are then unreachable because the user's client could not render the message. The 30-minute create-link TTL is measured from issuance, so a link delivered at the start of an outage may have materially less usable life than 30 minutes by the time the user sees it.
-
-**Why it happens:**
-"Queue and retry" is implemented as an internal queue concern. The user-facing state — *did the user learn the outcome?* — is never modelled as a first-class thing, so it is never measured.
-
-**How to avoid:**
-- **Delivery status is part of the submission's state, not a side effect.** Every outbound IM message (confirmation, notification, error) gets a `delivery` record with `{ status: pending | delivered | failed, attempts, last_attempt_at, platform_message_id }`. FR-D-9's `partial` status is about the *external* leg; this is a separate axis and the data model in §10.4 has no place for it. Add it.
-- **The read link is the fallback channel, so make it work when the IM is down.** The Submission Viewer's read link (§12.2) and a `submission_status` view must show the confirmation outcome. If the user cannot get a read link (because the link message was lost), they can request one from IM later — FR-L-9's expired-link flow already does this. **Widen it**: a user with no outstanding link can always ask "status of my last request" via slash command, and the response goes through the same (broken) IM — so the honest answer is a **web fallback at a stable URL that does not require an IM-delivered link**. This is a real product requirement the PRD does not have.
-- **Age, not depth, is the alerting metric.** §16.3 alerts on `DLQ depth > 50`. A queue holding 40 items that are 4 hours old is a far worse incident than 500 fresh items. Add `queue_oldest_item_age_seconds{queue_name}` and alert on age (e.g. >15 min for the notification/confirmation queue, >5 min for the connector queue). This is the single highest-value metric addition in this document: it is the only one that correlates with *user-visible* harm rather than with internal resource pressure.
-- **Extend FR-N-6's 3-attempt retry to confirmations**, and add exponential backoff with jitter (the current "3 attempts" with no backoff spec means three immediate retries).
-- **Extend create-link TTL to start from delivery, not issuance** where the platform supports it — or simply issue with a longer TTL and rely on `exp` for security, since the TTL is a UX convenience, not a security control.
-
-**Warning signs:**
-- `im_delivery_failed_total{platform}` (after all retries) — **not in the PRD metric list.**
-- `queue_oldest_item_age_seconds` — **not in the PRD metric list.**
-- `submission_confirmation_unseen_total` — submissions created while the corresponding delivery is still `pending` after 5 minutes. This is the only metric that directly measures "the user does not know it worked".
-- `active_im_connections{im_platform}` — see below; this metric is structurally wrong for webhook platforms and its absence is telling.
-
-**Severity if ignored:** MEDIUM-HIGH. Not a security or integrity issue, but it is the failure mode most likely to generate the "the system is broken" reports that kill adoption — and it is invisible to the PRD's entire alerting scheme.
-
-**Phase to address:** **Phase 1** for the delivery-status model and the age metric (the metric must exist before the first queue does); **Phase 4** for the multi-IM breadth where this actually bites.
-
----
-
-### Pitfall 9: JEV's ">90% accuracy" and "p95 <500 ms" are not jointly achievable as specified
-
-**What goes wrong:**
-NFR-P-3 sets the JEV decision budget at p95 < 500 ms. §11.4 configures the primary provider with `timeout_ms: 500`. **The configured timeout equals the entire SLA with zero headroom** for prompt construction, TLS, and response parsing. If the provider's p95 is above 500 ms — which for any tool-selection workload of this size is likely — then the primary provider *always* trips its own timeout and the fallback chain serves production traffic. §11.4's fallback is `rule-based` at `min_confidence: 0.5`. The platform silently degrades from a model to regex matching, and the only signal is a confidence drop that NFR-O-4 alerts on at <0.6 — i.e. the alert fires *after* the damage.
-
-Now the accuracy number. FR-J-6 sends **only the user's authorised tool subset** (AD-1's permission-first routing — correct, and it does reduce cost and exposure). The problem is the size of that subset and the shape of the catalog:
-
-- 200 apps (NFR-S-6) × 3–5 tools each (create/view/list/query per form, §10.3) ⇒ **600–1,000 platform-wide candidate tools**.
-- Per-user, RBAC filtering does not shrink this to a handful. A department admin who belongs to 15 apps, or a platform engineer who is `admin` on several, sees **50–150 tools** in their filtered set. A line employee sees a handful — which is why average-case accuracy can look fine while the worst-case user is broken.
-- Every candidate costs tokens in the `tools` array of §11.1. A `ToolDescriptor` (id + description + parameters) is 40–80 tokens. 150 tools is 6k–12k tokens of pure tool definition before the user's question, the locale, and `previous_turns` (FR-J-7). That is a large prefill and it is inside the 500 ms budget's scope or outside it depending on provider — which is the point.
-
-And the accuracy number is measured two incompatible ways in the PRD:
-- §17.3: **85% minimum** on **50 predefined intents**.
-- §21: **>90%** JEV accuracy, measured by *"conformance tests + production sampling"*.
-
-A 50-intent suite cannot cover a 600-tool catalog — it is roughly one intent per twelve tools. It is also trivially overfitted by whoever tunes the prompt against it, because the same 50 intents are the tuning set. **The conformance number and the production number are not measuring the same thing, and the roadmap should not treat §17.3 as evidence for §21.**
-
-**The failure mode that matters most is not "doesn't understand" — it is "confidently picks the sibling."** The tool set in §11.1 already contains `hr-leave-request:create_leave` and `hr-leave-request:view_leave`. Add `cancel_leave`, `extend_leave`, and any *other* app's leave tool (IT's "leave request for laptop return", Finance's "leave budget") and you have near-identical descriptions. For near-identical tools, the model's confidence is high for whichever it picks. **High confidence and wrong coincide**, which means:
-
-> **FR-J-5's confidence threshold cannot catch the dominant failure mode.** The threshold is the right mechanism for a *low-confidence* guess; it is structurally incapable of catching a *high-confidence* wrong answer.
-
-**Named conflict — which requirement loses:**
-> **NFR-P-3 / NFR-P-5 (p95 <500 ms, end-to-end <2 s) vs FR-J-7 (send the full filtered tool list + last N turns) vs NFR-S-6 (200 apps).** At 200 apps these three cannot all hold. One of them loses.
-
-**The honest resolution — narrow the JEV's job.** Tiered routing:
-
-1. **Stage 1: app disambiguation.** The candidate input is a compact catalog of *apps*, not tools: `{ app_id, name, one-line purpose, 3 trigger examples }` ≈ 15–25 tokens each. 200 apps ≈ 3k–5k tokens. Fast, and app-level decisions are much easier than tool-level ones because app names are distinctive.
-2. **Stage 2: tool disambiguation within the winning app.** 3–8 tools, ~500 tokens. Near-trivially reliable, sub-100 ms, and — critically — `create_leave` and `view_leave` are only ever compared *against each other*, never against a similarly-named tool in another app. This structurally eliminates the dominant failure mode rather than trying to detect it.
-
-This is the only structure that satisfies both numbers. It also composes with AD-1 (the permission filter still runs first, feeding both stages) and with FR-J-11 (slash commands bypass both stages).
-
-**Why it happens:**
-The PRD treats "JEV picks a tool" as one operation because that is the simplest thing to spec. Nobody asked how many tools there would be at the PRD's own stated scale until the catalog was full. The answer — 600–1,000 — is an order of magnitude past where flat tool selection is comfortable.
-
-**How to avoid:**
-- Ship the two-stage design as the JEV request schema (the `tools` array in §11.1 becomes `apps` + a second call). **This is a Phase 1 architecture commitment** — it determines the wire contract that §11.1 already fixes — even though JEV itself ships in Phase 4.
-- **Make `description` and `triggers[].examples` first-class routing metadata with a publish-time floor.** The App Definition schema (§10.3) already has `examples`; make them mandatory, minimum-count, and reject publish when an app's description is too generic to disambiguate or collides with another app's. This is the same publish-time check family as FR-X-5's circular-share rejection.
-- **Slash commands are the deterministic escape hatch and must be documented as a first-class path**, not a hidden v1 feature. FR-J-11 is P1 and buried; for a departmental app with 500 users, `/leave request` should be *the* advertised path in the app's deprecation/trigger text.
-- **Measure per app, never globally.** `jev_confidence` is already labelled `app_id` (§16.2) — use that label. A global average is dominated by easy traffic.
-
-**Warning signs:**
-- Per-app `jev_confidence` p10 and p50 (not mean). One app's p10 collapsing while the global mean holds is the early signal.
-- `jev_timeout_total{provider}` — if the primary provider's timeout rate is nonzero, the `timeout_ms: 500` budget is wrong and the platform is silently running on the fallback chain. **This metric is not in the PRD.**
-- `jev_provider_used_total{provider}` — the share of decisions served by `rule-based` in production. A nonzero steady-state share means the model layer is decorative. This is the most honest single number for whether JEV works at all, and it does not exist.
-- Fraction of decisions served by `openai-compatible` (dev/staging per §11.3) in production ⇒ a misconfiguration, not a design outcome.
-- `app_tool_unused_total` — apps that never win a routing decision. Invisible to the PRD's whole alerting scheme and extremely diagnostic.
-
-**Severity if ignored:** HIGH — the AI routing layer is the product's front door. If it confidently mis-routes, users conclude the platform is broken, and no amount of form quality recovers that.
-
-**Phase to address:** **Phase 1** for the wire-contract decision (tiered routing), **Phase 4** for the provider integration itself.
-
----
-
-### Pitfall 10: You cannot tell a wrong pick from an ambiguous one with the instruments the PRD defines
-
-**What goes wrong:**
-This is a separate failure from Pitfall 9's scale problem, and it is what makes ">90% accuracy" a number rather than a fact.
-
-The PRD's instruments are: a confidence score (FR-J-8), a configurable per-app threshold (FR-J-5), top-3 alternatives (FR-J-8), a *"within 10% of top"* disambiguation rule (FR-J-9), and a global confidence-drop alert (NFR-O-4). Four problems:
-
-1. **Confidence is not calibrated probability.** A correct decision and a confidently wrong decision both return 0.94. Averaging confidence (§16.3) is dominated by easy traffic — slash commands, unambiguous one-liners — so the global average stays comfortably above 0.6 while a specific hard subset is broken. **The alert can only fire on collapse, never on drift.** "JEV confidence average drop below 0.6" is a fire alarm, not a smoke detector.
-2. **FR-J-9's relative rule is backwards for the case that matters.** Two tools at 0.30 and 0.28 trigger a clarification even though *both* are wrong — the user is asked to choose between two bad options. One tool at 0.95 with everything else at 0.02 does not trigger, even though the 0.95 is confidently wrong. There is **no absolute floor** on the alternatives and no absolute floor on the choice, only a relative comparison.
-3. **`clarification_needed` has to come from the model.** The wire spec (§11.2) makes it a `JevResponse` field. That means the platform's most important safety lever — *ask instead of guess* — depends on the model's self-assessment. The platform cannot force a clarification based on its own knowledge (terse input, unfamiliar locale, a tool set it has seen change).
-4. **There is no ground-truth collection mechanism.** §21 claims the accuracy measurement method is *"conformance tests + production sampling"* — but no sampling mechanism, no feedback channel, and no labelled set is specified. Without one, ">90%" is not measurable, and any number reported is an estimate of an estimate.
-
-**Why it happens:**
-Confidence thresholds are treated as a proxy for correctness, which they are not. The metric was available (FR-J-8 asked for it) so the threshold was built on it, and the gap between "the model said 0.94" and "it was right 94% of the time" was never closed.
-
-**How to avoid:**
-- **Add an explicit `abstain` to the wire spec.** `choice.verified: boolean | null`. `false` = the provider is confident and choosing. `null` = the provider is out of its depth (terse input, unfamiliar locale, unfamiliar token). The platform routes `null` to a clarification **regardless of the confidence score**, because abstention is a different signal from low confidence. This is a small spec addition to §11.1/§11.2 that materially improves the failure profile, and it is a conformance-suite requirement (§17.3) so every provider must implement it.
-- **Make `clarification_needed` settable by the platform**, not only by the provider. Add it to the request as a hint (`state.force_clarification`) so the platform can force a clarification when *it* has a reason: non-`en`/`vi` locale, input under N characters, or the filtered tool set changed in the last hour (see Pitfall 11).
-- **Collect ground truth from two free signals that already exist in the flows:**
-  - *Positive*: the user picks an alternative from a clarification prompt. That is a labelled example of a decision the model got wrong.
-  - *Negative*: the user issues a corrected message immediately after receiving a link (§12.1 step 11 → a follow-up message within ~2 minutes). That is a labelled example of a wrong pick.
-  - Neither requires any UI work. Both need `jev_feedback_total{label, app_id}` and a store. Without them, ">90%" is unfalsifiable.
-- **Build the regression gate before the second app is published.** A labelled set, run offline on every app publish and every provider/prompt change, with a **per-app accuracy floor** — a change that drops any individual app below its floor is blocked. This is the mechanism that catches Pitfall 11, and it is also the only way ">90%" becomes a property of the system rather than a number in a dashboard.
-- **Report accuracy on the labelled set with a per-app breakdown and a confidence interval**, not as a single aggregate. A single number over a heterogeneous catalog hides exactly the failures that matter.
-
-**Warning signs:**
-- `jev_feedback_total{label="correction", app_id}` — **not in the PRD metric list.** A rising correction rate on one app is the earliest available signal that routing is subtly wrong for that app's vocabulary, and it precedes any confidence shift by hours.
-- Share of decisions where the user selects `alternatives[0]` rather than `choice` — a per-app "model override rate". High override on one app = that app's descriptions are ambiguous or its examples are poor.
-- `jev_abstain_total / jev_decision_total` — the abstention rate. Near-zero means providers are never abstaining (the capability is decorative). Very high means the model is out of its depth on real traffic.
-- `jev_clarification_shown_total / jev_decision_total` — the user-friction rate. High values mean the platform is punting to users; this is a product-health metric disguised as a routing metric.
-- Distribution of the *margin* between choice and runner-up, not just the choice's value. A bimodal margin distribution is the signature of near-duplicate tools (Pitfall 9).
-
-**Severity if ignored:** HIGH — without this, the accuracy KPI is unfalsifiable and the team will discover the routing is broken from user complaints rather than from a metric.
-
-**Phase to address:** **Phase 4** (JEV ships there) — but the wire-spec additions (`verified`, `force_clarification`) must be in the §11.1 contract from Phase 1, and the labelled-set store must exist before the second app is published in Phase 3.
-
----
-
-### Pitfall 11: A newly published app silently steals traffic, and publish is not a gate
-
-**What goes wrong:**
-§12.4 step 8: publishing an app *"registers triggers"*. Trigger registration (§10.3: `intent` + `examples`) is what makes the app visible to JEV. **Nothing in the PRD requires any evaluation of the routing consequence of publishing.**
-
-So: an HR coordinator publishes a new app called "Expense Claims" whose trigger is `intent: expense` with examples `["expense", "claim", "money request"]`. From the next message onward, that app competes for every expense-shaped message from every user who has a role in it. The existing Finance app — which was correctly picking those — now loses volume. **No error occurs. No alert fires. No metric moves on the Finance side.** The Finance app owner notices in the monthly submission count and has no mechanism to diagnose it.
-
-This is not only a quality problem. A department admin with a broad `intent` description and a permissive role assignment has effectively **inserted themselves into every user's routing path**, and nothing in the publish flow notices. FR-R-1 makes apps independent, but AD-1's tool filter is per-user, not per-app — so a broadly-intentioned app is a cross-app traffic acquisition vector.
-
-**Why it happens:**
-Publishing is treated as a configuration event, not as a **change to a shared routing surface**. Every app's owner reasons about their own app; nobody owns the global catalogue's behaviour. The App Builder's UX-5 (publish confirmation dialog with a summary of changes) summarises *that app's* changes — the wrong scope for the risk.
-
-**How to avoid:**
-- **A publish-time routing dry run, mandatory, blocking.** Before an app goes `draft → published`, evaluate the candidate trigger set against the labelled intents of every *other* app and report: "publishing this app is expected to change routing share by app X: −7pts, app Y: −2pts, this app: +9pts." Block on a threshold (say, any existing app losing >5 points on the overlap set) unless a global admin overrides with a recorded reason.
-- **Require specific triggers.** A minimum number of distinct `examples` (the schema has the field; make it mandatory and validated), a minimum description length, and a **cross-app description-collision check at publish** — the same family of check as FR-X-5's circular-share rejection. Two apps whose descriptions are near-duplicates is a publish-time error, not a routing-time mystery.
-- **Canary publish using lifecycle states that already exist.** FR-F-5 already has `draft → published → deprecated → archived`. Add a `published_canary` state (or a `traffic_percentage` field) so a new app receives 10% of routing decisions for a week before full exposure. The comparison infra for this already exists as a byproduct of the Pitfall 10 regression gate.
-- **Ship `routing_share{app_id}` as a first-class gauge from day one.** This is the metric the platform is missing most obviously: current share of decisions per app, and its week-over-week delta. Without it, no diagnosis of a routing regression is possible at all — you cannot tell "traffic moved" from "traffic fell" from "traffic was always low".
-- **A weekly routing digest to app owners**: "your app's routing share fell 6% this week; the likely cause is app `expense-claims-v2`, published 2026-10-14." This converts an invisible regression into an actionable message and is the difference between a self-service platform and an orphan-support burden.
-
-**Warning signs:**
-- `routing_share{app_id}` week-over-week delta — **the single most useful missing metric.**
-- New app's first-week share vs. its share at day 30 (does it hold, or does it decay as the model relearns?)
-- `jev_confidence{app_id}` shifting on the *losing* app (the losing app's decisions get harder as the boundary blurs).
-- Count of published apps with `routing_share == 0` over 14 days ⇒ dead apps, which are an adoption problem (Pitfall 12) and a routing-surface cost.
-
-**Severity if ignored:** MEDIUM-HIGH. It degrades silently, it degrades *other people's* apps, and the App Builder is exactly the phase that starts generating new apps.
-
-**Phase to address:** **Phase 3** — must exist before the first non-developer app is published, which is Phase 3's own success criterion.
-
----
-
-### Pitfall 12: App Builder adoption dies at three specific walls, one of which is an org-chart dependency
-
-**What goes wrong:**
-The platform's self-sustaining premise (PROJECT.md: *"Department admins build and own their own apps … without engineering tickets"*) collapses if a departmental admin cannot get a working app published. Three domain-specific walls, in order of severity:
-
-**Wall 1 — The connector dependency is an org-chart dependency, and it is invisible until publish.**
-FR-C-2: connectors are managed **globally by platform admins**. FR-C-10: apps **cannot** create connectors — only reference them. So a department admin building a hybrid or external app must, before their app works, have a **platform admin** create a connector. The builder's happy path (§12.4) walks through app → RBAC → form → data routing → publish with no mention of this. The admin configures `connector_ref: hr-api-prod`, clicks publish, and hits a wall they cannot climb.
-
-This is the highest-leverage pitfall in the App Builder class. It means the two most valuable use cases — anything writing to Redmine, HR, ERP, or procurement — are **structurally blocked** for the platform's primary non-engineering persona, while the one mode that works self-serve (internal-only MongoDB) is the one with the least business value. A department admin's realistic reaction is to go back to the spreadsheet, permanently.
-
-*Prevention:* (a) **`internal` mode is the default and is genuinely complete** — a first app must be publishable with zero platform-admin involvement, so the admin's first win does not depend on anyone else. (b) A **"request connector" flow inside the builder** that generates a pre-provisioning request for the platform admin (with the app's required operation, the target system, and the expected field mapping pre-filled) instead of failing with an error. The admin gets an app that works in `internal` mode today and a ticket that resolves the connector later. (c) Explicit UI copy distinguishing **app roles** (this app's `owner/admin/manager/user`, FR-R-3) from **platform admins** (who own connectors, identity mappings, and the audit log) — with a glossary link on the RBAC tab. The confusion between these two layers is the root cause. (d) Connector *provisioning templates* for the common systems (Redmine, Jira-style ticketing, an HR REST endpoint) so the platform admin's work is configuration rather than engineering — §19.3's connector onboarding table lists "Implement connector interface → Developer" as a developer step, and for a self-service platform that step needs to stop being required for the top 3 systems.
-
-**Wall 2 — The first app takes hours; the adoption cliff is ~30 minutes.**
-§12.4 is nine steps including RBAC definition, form design, routing configuration, and preview. UX-1 says *"App creation MUST be completable in ≤ 5 steps"* — but UX-1 describes *creating an app*, not *publishing a working one*. A first-time departmental admin authoring a 12-field form, defining two roles, assigning users, configuring routing, and previewing takes 2–4 hours; the second takes 90 minutes. Published-tool adoption curves are brutal below ~30 minutes to first value: below the cliff, adoption is near-zero and the admin never returns. The spreadsheet they were avoiding is *already finished*.
-
-*Prevention:* (a) **A first-run template gallery** — leave request, expense claim, IT ticket, procurement request — with the form, roles, and routing pre-configured. The first app becomes "personalise a template", which is 20 minutes. (b) Make the *wizard* (UX-1) cover **publish**, not just creation: form fields, one role, one trigger — everything else defaults and is refined later. (c) **The connector wall (Wall 1) must be resolved before the template can be published**, so templates that need a connector should ship in `internal` mode or be explicitly marked as needing a platform-admin step. (d) Instrument **time-to-first-published-app** and treat a p50 above 30 minutes as a product defect.
-
-**Wall 3 — Permission-model comprehension by non-technical owners, and the single-admin bottleneck.**
-An app has per-app roles and permissions (`leave:view_team`, `leave:approve`), a global-admin layer, and platform service accounts for connectors. Three distinct authority concepts, and the app owner must model their department's actual permission structure on top of them. Two concrete failure shapes:
-
-- **FR-D-7's auto-injected filter is invisible.** Queries auto-inject a `real_user_id` filter unless the user holds `view_all` (§10.3's roles show `user`, `manager`, `admin` with no `view_all`). A manager who should see their team's submissions sees **nothing** — no error, zero rows — because the role they assigned lacks `view_all`. The app owner concludes "the app is broken". This is a support incident that looks like a bug and is a configuration-semantics gap.
-- **The single-admin bottleneck.** One admin's app serves 500 people. When the shared connector starts failing at 09:00, the app owner cannot fix it (FR-C-10) and the platform admin cannot tell which of 200 apps is affected. §12.4 step 9 says the owner *"monitors via submission viewer and audit dashboard"* — that is watching, not triage. Meanwhile ambiguous requests come back as clarification prompts the *end user* cannot answer, so users DM the admin directly and the IM channel becomes the admin's personal help desk.
-
-*Prevention:* (a) **A reachability check on publish and on every role change**: for each role, run the actual RBAC-filtered query as a synthetic user in that role and show the admin the resulting row count. "As `manager`, this query returns 14 rows. As `user`, 1 row. `view_all` is not granted to `manager` — do you intend that?" This is the same idea as the permission-reachability check in mature low-code platforms and it is the single highest-value App Builder feature nobody has specified. (b) **A named human escalation path in the clarification prompt** — "if none of these are right, ask @owner in #channel" — so the admin's triage queue is visible and countable rather than an invisible DM stream. (c) **Connector-failure alerts must fan out to referencing apps' owners**, using the `connector_ref` index that already exists in the app definition. The platform admin gets "connector `hr-api-prod` unhealthy — 14 apps affected, owners: …"; the app owner gets "your app's external routing is failing". (d) **App-owner delegation.** FR-R-5 requires exactly one `owner` at all times and FR-R-6 gates transfers on global admin approval — meaning a departing admin's app is stuck until a platform admin acts, and the app keeps serving 500 people with a dead owner. Add co-ownership or a platform-admin-initiated reassignment path for the departure case.
-
-**Warning signs:**
-- **Apps in `draft` for >7 days.** The clearest adoption-failure signal available, and it needs an index on `app_last_transition_at` plus an alert. A draft that never publishes is a person who tried and gave up.
-- **Published apps with zero submissions in 14 days.** Same meaning, later stage.
-- **Median time from app creation to first publish**, and p90. Above 30 minutes is a product defect (Wall 2).
-- **Admins with exactly one published app** — the "tried once" cohort. This is the single best predictor of App Builder adoption and **it is not measurable today**, because §10.2's `Real User Profile` has no flag distinguishing an engineer from a domain admin. Add `is_platform_engineer: boolean` to the real-user profile; §21's ">10 apps built by non-developers" cannot be computed without it.
-- **Admin week-4 retention** — admins who published in week 1 and edited nothing in week 4. Publishing once is not adoption.
-- **Role assignments concentrated in one `real_user_id`** per app (the single-admin risk).
-- **Clarification rate per app** (`jev_clarification_shown_total / jev_decision_total`) — an app with a high rate is generating user confusion that lands on its owner.
-- **App owners with no responding activity** (owner deactivated per FR-I-7 while the app is still `published`).
-
-**Severity if ignored:** HIGH for Wall 1 (it blocks the use cases that justify the product), MEDIUM-HIGH for Walls 2 and 3 (they cap adoption and convert adoption into support load).
-
-**Phase to address:** **Phase 3**, with the `is_platform_engineer` flag and the time-to-publish instrumentation landing in **Phase 1** (identity profile) so the Phase 3 KPI is measurable from day one.
-
----
-
-### Pitfall 13: Hybrid routing has an unrepresentable window, and the idempotency guarantee lives on the wrong side of the wire
-
-**What goes wrong:**
-FR-D-4 makes the internal write synchronous and mandatory; the external call is enqueued (FR-D-10, §12.1 step 16). FR-D-9 says a failed external call leaves the submission `partial` with a retry queued. FR-D-8 says store both `internal_ref` and `external_ref`. FR-D-12 says a `submission_id` *"cannot be routed twice to the same external system (idempotency)"*.
-
-**Window A — the call succeeded, the record was not written.**
-The worker calls the external API. The API creates the record (Redmine issue #4711 exists). The worker then crashes — a deploy, an OOM kill, a Redis connection loss that stops the BullMQ lock renewal. Per BullMQ's own docs, a job whose worker stops renewing its lock is **moved from active back to waiting and a `stalled` event is emitted** (default `maxStalledCount: 1`, default stalled check 30 s). The job re-runs. Second external call. **BullMQ is at-least-once and its docs are explicit that idempotency is the application's responsibility** (*"it should not make the final state of the system different if a job successfully completes on its first attempt, or if it fails initially and succeeds when retried"*). So this is a designed-in duplicate path, not a rare race.
-
-Now the honest part: **FR-D-12 is a request, not a guarantee.** The idempotency key is `X-Submission-ID` / `submission_id` (§13.2, FR-C-5). Whether the duplicate is prevented depends entirely on the downstream honoring it — and Redmine's REST API, most ERP endpoints, and the majority of internal enterprise APIs ignore unknown headers. The PRD phrases FR-D-12 as a platform MUST while the enforcement point is on someone else's server. **Where a downstream is not idempotency-aware, "write-once semantics" is not implementable as specified, and the PRD does not say what happens instead.**
-
-The resulting state is the worst possible one: the internal MongoDB write is correct, so the **user sees success**, and the external system now has two records, so the **downstream team sees duplicates**. Neither party can reconcile.
-
-**Window B — the call succeeded, the response was lost, and a human "fixes" it.**
-If the worker dies between the HTTP response and the `external_ref` write, the submission stays `pending_external` / `partial`. A human sees `partial` and retries (FR-C-12: DLQ items are *"manually retryable by global admins"*). **A manual retry of an item that actually succeeded is the single most likely source of production duplicates in steady state** — because `partial` cannot distinguish "never sent" from "sent, response lost". The PRD gives the admin exactly one button and no state to make that button safe.
-
-**Window C — the field mapping silently resolves to nothing.**
-`{{form.field}}` (FR-D-3). Suppose the form is version 3 and `start_date` was renamed to `startDate`. The app definition's `data.field_mapping` still says `start_date: "{{form.start_date}}"`. FR-D-10 validates the submission against the form schema — but the mapping is resolved **after** validation, against a different object. An unresolvable path yields empty/null. The external system receives a record with a missing required field and either 400s (recoverable) or **accepts a partial record** (a Redmine issue with no dates, silently created, which the user never sees). The template engine has no defined "unresolved path" behaviour and no resolution-time validation requirement anywhere in the PRD.
-
-**Window D — the downstream is up and returning garbage.**
-`getCapabilities()` exists on the connector interface (FR-C-1) and is used nowhere else in the PRD. There is no requirement to assert the shape of a successful response. A 200 with `{"status":"error"}`, a 200 with an empty body, a 200 with a nested `errors: [...]` — all recorded as success by any implementation that checks `res.ok`. `external_ref.system_id` is then `undefined`, the submission is marked `completed`, and the record may or may not exist downstream. FR-C-7 logs a *"response summary"* — logging is not asserting.
-
-**And the reconciliation story does not exist.** §17.1 has no reconciliation test. §16.3 has **no alert on `partial` at all** — the state that means "your data is in two systems and one of them is wrong" is entirely unmonitored. §16.4's runbook has no "submission stuck in partial" scenario. Nobody owns it.
-
-**Why it happens:**
-A synchronous/async split is a distributed transaction, and the PRD treats it as a queue and a status field. The two-system commit problem is real, has no atomic solution, and must be handled by *representing* the uncertain state explicitly — which is a design decision, not an implementation detail.
-
-**How to avoid:**
-1. **Three states, not two.** Model the external leg as `not_sent | sent_unconfirmed | confirmed`:
-   - Write `sent_unconfirmed` to the submission **and durably commit it before the outbound HTTP request leaves the process.** This is the whole trick: the uncertain state becomes representable.
-   - On a parsed, asserted response → `confirmed` with `external_ref.system_id`.
-   - On a transport failure → leave `sent_unconfirmed` (do **not** mark `not_sent`; you cannot distinguish "request never arrived" from "response never arrived").
-   - `not_sent` only when the job never reached the send step (e.g. rate-limited before send).
-   **Only `not_sent` is automatically retryable.** `sent_unconfirmed` goes to reconciliation.
-2. **A reconciliation job on BullMQ Job Schedulers** (durable, not `@nestjs/schedule` — PROJECT.md's own argument about a rotation silently not running on one pod applies exactly here) that periodically selects submissions in `sent_unconfirmed` older than the connector timeout and either performs a **read-only lookup** by idempotency key or natural key, or marks them `partial_needs_review` and raises an alert. **Never auto-resend.** Set an age threshold: 30 s default connector timeout (FR-C-11) means anything `sent_unconfirmed` beyond 10× that is anomalous.
-3. **Declare connector capabilities and act on them.** Extend `getCapabilities()` (§10.5's connector definition) with `supports_idempotency_key: boolean`, `supports_lookup_by_key: boolean`, and `response_schema` (Zod). Then:
-   - If `supports_idempotency_key: false`, the connector **must** implement a natural-key pre-check (query-before-create). Publish-time UI copy must say so: *"This connector cannot guarantee write-once semantics; the platform will check for an existing record before creating."* Make the honesty visible at the point of configuration, not in a design doc.
-   - §19.3's connector onboarding gains a row: **"Does this API honor `Idempotency-Key`? Provide evidence (docs link or a test request)."** That is a five-minute question that prevents a class of production duplicates.
-   - A 2xx whose body fails `response_schema` is a **failure**, not a success.
-4. **Template resolution is validated, not evaluated-and-hoped.** Resolve every `{{form.x}}` / `{{real_user.y}}` against a Zod schema derived from the **pinned** `form_version`. An unresolvable path is a **routing error** that fails the submission with an actionable message (UX-6), never an empty value. Add a **publish-time static check**: every `field_mapping` key resolves against the pinned form schema, and every field the connector requires is mapped. This is the same publish-time check family as FR-X-5 and Pitfall 11.
-5. **Make manual DLQ retry safe.** The retry UI must show the current external state, the connector's `supports_idempotency_key`, and require explicit acknowledgement for `sent_unconfirmed` items ("this may already have been created externally — confirm before resending").
-
-**Warning signs:** (all new; the PRD has none of these)
-- `submission_status_total{status="partial"}` as a **gauge with an alert**. Its absence from §16.3 is the biggest single observability hole in the document.
-- `submission_external_sync_lag_seconds{connector_id}` histogram; alert `> 300s` (10× the default connector timeout).
-- `submission_reconciliation_total{result}` counter (`resolved | still_unconfirmed | escalated`).
-- `connector_mapping_error_total{app_id}` counter — template resolution failures. Currently completely invisible; a spike means a form was edited and a mapping broke (Pitfall 14).
-- `connector_response_assertion_failed_total{connector_id}` — 2xx with an unparseable body.
-- DLQ **oldest item age**, not just depth (see Pitfall 8).
-- A scheduled check: count of `completed` submissions with `external_ref == null` in `external`/`hybrid` mode. Any nonzero value is a data-integrity bug by construction.
-
-**Severity if ignored:** HIGH — duplicate records in the system of record, invisible to the user, with no monitoring and no reconciliation path. This is the highest-consequence pitfall in the connector half of the platform.
-
-**Phase to address:** **Phase 2** (external + hybrid modes and BullMQ are Phase 2 deliverables), with `getCapabilities()` extension and the `not_sent/sent_unconfirmed/confirmed` model designed in Phase 1 alongside the submission schema.
-
----
-
-### Pitfall 14: Version drift — the pin is specified as a submission property and never carried through the link
-
-**What goes wrong:**
-The PRD versions three things: forms (FR-F-2, `form_version`), app definitions (FR-F-6, last 20 kept, rollback supported), and submissions store *both* `app_version` and `form_version` (§10.4). FR-F-12: *"Published form changes MUST NOT affect in-progress submissions (version pinning at link creation)."*
-
-**But §12.1 step 12 — the actual link-resolution path — says only: "Server validates JWT, checks TTL, pre-fills from user profile."** The version pin appears in FR-F-2 (a submission property) and FR-F-12 (a link property) and **nowhere in the flow**. Three concrete breakages follow:
-
-**(a) Edit link issued at version N, form re-versioned to N+1 before submit.** With the pin correctly implemented, the submission validates against N — correct. But the **renderer must also be served version N**. If link resolution fetches "the current form", the user fills a v(N+1) form whose payload is validated as v(N), or vice versa. A field renamed between the two produces a validation error the user cannot act on ("field `start_date` is required") when they are looking at a form that says `Start date`. This is a pure spec gap, not an implementation risk: the pin has to be a claim inside the link JWT (`form_id`, `form_version`, `app_version` — all opaque integers, fully consistent with NFR-SEC-2's "no PII in JWTs").
-
-**(b) Rollback to a prior app definition while old links are live.** FR-F-6 keeps 20 versions and supports rollback. Rollback restores `triggers`, `rbac` (roles *and* assignments), `data.field_mapping`, `data.connector_ref`, and `lifecycle`. **Rollback silently restores old RBAC.** A rollback is not a permission change by definition, so `perm_version` is unchanged, so **every read link minted under the newer — correct — definition continues to resolve under the older one.** Combined with Pitfall 4's absence of revocation, rollback is a way to change what data a live link exposes without invalidating anything. Fix: **a rollback is a security event.** Bump `perm_version` for every user of the app *and* bump the read-link epoch (Pitfall 4) as part of the rollback transaction — as a property of the rollback operation, not something a developer remembers to do.
-
-**(c) Field-mapping breakage on every form edit that renames a field.** A v3 rename breaks every mapping that still references the v2 name, silently (Window C in Pitfall 13). The mapping lives in the **app definition**, the form lives in the form document; nothing couples them at edit time.
-
-**(d) Schema retention is unspecified and the direction of the mistake is bad.** §10.3 stores `schema_ref: forms/leave-create-v2.json`. Historical submissions reference `form_version` forever (3-year audit retention, up to 1M submissions per app). **Nobody specified a retention policy for old form schemas.** The tempting cleanup — delete schemas older than N versions to keep the app definition small — destroys the ability to render, export, or audit a historical submission. Schemas are immutable versioned documents retained under the app's retention policy and referenced by the *pinned* `form_version`, never by "latest". Add `form_version` to the compound index on every submission collection so historical export is a single indexed query rather than a scan.
-
-**Why it happens:**
-Version pinning was specified on the artifact (the submission) rather than on the *link*, which is the thing that carries identity across time. Once the pin is a submission field, nothing forces the renderer and the validator to agree.
-
-**How to avoid:**
-- Carry `app_id`, `app_version`, `form_id`, `form_version` **in every link JWT** (write and read links). The renderer requests exactly that version; the validator validates against exactly that version. One source of truth.
-- **Publish-time impact preview, blocking.** Before publishing, report: "N links are currently live against forms other than the one you are publishing (12 create links, 340 edit links). M links against the previous app version. Continuing will not affect them." This is the same publish-gate pattern as Pitfalls 11 and 12, and it makes an expected consequence visible instead of surprising.
-- **Renames are explicit.** The Form Builder must warn on rename/delete: *"3 field mappings reference `start_date`. Publishing this change will break them."* With a **field-reference index** (which app fields are referenced by mappings, prefill, notification templates, conditional logic, and query projections) this is a single lookup. Given the `{{form.field}}` template appears in at least four places in the app definition (§10.3: `prefill`, `data.field_mapping`, `notifications.topics[].template`, and query projections), that index is worth building early.
-- **Rollback bumps the epoch and `perm_version`** (Pitfall 4).
-- Never delete a form schema that any submission references; garbage-collect only schemas with no submissions AND older than the retention floor.
-- **Prefer additive changes.** Warn (not block) on removing or renaming a field that has ever been submitted against; allow it with a migration note recorded in the version's metadata.
-
-**Warning signs:**
-- `submission_form_version_mismatch_total` — submission version ≠ app version at submit time. Non-zero is *expected* (that is what pinning means); the **rate** is the signal. A spike means heavy publish activity, not a bug.
-- `form_schema_ref_missing_total` — a submission referencing a schema that no longer exists. Should be structurally impossible; if nonzero, a cleanup job deleted something it should not have.
-- Publish-time count of live links pinned to older versions — surfaced in the confirmation dialog (UX-5).
-- A per-version submission histogram — a spike at one version means the app has not been edited in a while, which for a departmental app means it has not been maintained.
-- `connector_mapping_error_total{app_id}` (Pitfall 13) is the practical detector of (c).
-
-**Severity if ignored:** MEDIUM-HIGH — user-visible validation failures with confusing messages, silent mapping breakage into external systems, and a rollback path that changes what live links expose.
-
-**Phase to address:** **Phase 2** (edit links) and **Phase 3** (versioning UI, publish gate, rollback). The link-claim pin is a **Phase 1** decision because it fixes the link JWT payload shape.
-
----
-
-### Pitfall 15: Compliance and observability collide — and the honest answer is that NFR-O-1 loses
-
-This section names the conflicts rather than papering over them.
-
-**Conflict 1 — `submission_id` as trace ID vs. immutable 3-year audit vs. erasure.**
-
-NFR-O-1 requires the trace ID to **be** `submission_id`, propagated IM → API → Form → Data Router → Connector. NFR-O-5 requires `trace_id` in structured logs. §16.1 exports to Jaeger/Tempo. FR-AU-1/3/5 require an append-only, immutable, 3-year audit log whose entries (per §10.6) include `actor`, `metadata.ip`, `metadata.user_agent`, `trace_id`.
-
-The problem: `submission_id` is a **persistent pseudonymous identifier linking a specific employee to a specific record in a specific external system.** Making it the trace ID means it lands in every span, every log line, every Prometheus exemplar, and every trace-backend index — **including the 1-year cold archive and the 3-year immutable audit store.**
-
-That is a much larger exposure than the submission data itself, and it is a *worse-governed* one:
-- Submissions live in per-app collections with **per-app RBAC** (FR-R-1) and a **purge path** (FR-LC-4/5).
-- Trace and log stores have **no per-app RBAC, no purge path, and no app boundary at all.** A single operator with log access can query "all submissions by `usr_42` across all apps, all time" by searching one field. That capability does not exist anywhere else in the system.
-
-**Named conflict — which requirement loses:**
-> **NFR-O-1 loses as written.** "Trace ID = `submission_id`" is not a technical requirement; it is a naming convenience. The actual requirement is *one correlated trace per user action across five services*, which is achievable with an opaque correlation id.
-
-The replacement:
-- Use an opaque `trace_id` (W3C `traceparent`, from the OTel SDK) for the trace, propagated end to end.
-- Carry `submission_id` as a **span attribute on spans that are already inside an authorised request context** — that is, on the API/worker spans, never on the inbound-webhook span where the actor is not yet resolved.
-- **Exclude `submission_id` from trace/log attribute indexing** at the collector and log-pipeline level. The field is present for debugging inside a trace; it is not indexed and not searchable across submissions.
-- If the business insists on `submission_id` as the trace ID (the operational convenience of grepping one identifier is real), then **the trace backend must be brought inside the compliance boundary**: same 3-year immutable retention, same no-deletion property, and erasure formally scoped to exclude it. That must be a written decision to the DPO, not an accident discovered during an audit. **State this trade-off explicitly; do not leave it implicit.**
-
-**Conflict 2 — a 1-year cold log store makes the right-to-erasure promise unachievable.**
-
-PROJECT.md already states the half of this: *"Erasure is broken by construction unless PII is excluded from logs before serialisation via a field allowlist — a denylist regex always misses, and a 1-year cold log retention makes the right-to-erasure promise unachievable."* The full statement:
-
-- §15.4 promises GDPR-aligned erasure. FR-AU-3 requires 3-year audit retention. FR-AU-5 forbids deletion. NFR-O-6 keeps logs 1 year hot/cold (30 d hot + 1 y cold).
-- `real_user_id`, `chat_user_id`, IP address, user agent, and `submission_id` are all personal identifiers under GDPR. They are all in the log and audit schemas.
-- **Therefore: erasure cannot be delivered against the log and audit stores. Full stop.** Not "is hard", not "requires care" — it is structurally impossible while an immutable 3-year store exists, and that store is itself a FR-AU MUST.
-
-**Named conflict — which requirement loses:**
-> **FR-AU-3 / FR-AU-5 (3-year immutable append-only audit) wins. The §15.4 erasure promise must be narrowed to what can actually be delivered.**
-
-The honest, deliverable promise, which should replace the §15.4 language:
-
-> *Erasure removes PII from MongoDB submissions, identity records, role assignments, and cached mappings in Redis. PII does not enter logs, spans, or traces by construction — enforced by a field allowlist applied before serialisation, not by filtering afterwards. The immutable audit trail retains a pseudonymous `actor_ref`; erasure replaces the mapping from `actor_ref` to a real user with a tombstone, so the record of *that an action occurred* survives while the link to a person does not.*
-
-That is a defensible, commonly-used design and it is achievable. "Erasure including 3 years of immutable audit logs" is **not** achievable and must not be claimed. Two sub-pieces make it real:
-- **The audit actor becomes a tombstoneable `actor_ref`**, not a live `real_user_id`. Erasure breaks the pointer; the accountability record survives on a different legal basis (legitimate interest in accountability for state-changing actions) than the submission data (contractual/legal obligation).
-- **The allowlist is applied in the logger's serialisation path in Phase 1**, not retrofitted. Retrofitting means auditing every call site in the codebase *and* every historical log line — and you cannot retroactively delete what a denylist missed. **This is the highest-value one-week investment in the entire roadmap** and it is Phase 1 or it is not done.
-
-**Conflict 3 — the trace must cross the form boundary, and the form boundary is a URL.**
-
-NFR-O-1 requires the trace to survive IM → API → Form → Router → Connector. The form renderer is a static web app authenticating via **JWT in the URL** (§13.3, FR-L-3). A JWT in a URL is a bearer credential that lands in: browser history, `Referer` headers on any navigation, corporate proxy logs, any analytics or error-reporting script on the page, and **Slack's link unfurling preview** — i.e. a link pasted into a channel gets its credential rendered to everyone in the channel. §13.3's CSP (`default-src 'self'; script-src 'self'`) prevents exfiltration *by script*, which is good and necessary, but `Referrer-Policy` is **not specified anywhere in the PRD**, and that is the specific control for this leak. Same for `Cache-Control` on link responses — a cached link response is a cached credential.
-
-Prevention: `Referrer-Policy: no-referrer` and `Cache-Control: no-store` on the form-renderer origin, asserted by a test; plus an explicit rule that the form-renderer origin serves **zero third-party resources** (no fonts, no analytics, no CDN, no error reporter) — PROJECT.md already rejects CDN builds of FormIO for a related reason, and the same rule applies here.
-
-**Conflict 4 — `metadata.user_agent` in the audit log is a fingerprint.**
-
-§10.6 stores `metadata.user_agent` (e.g. `"Slack/2026.09"`) and `metadata.ip`. Browser user agents are pseudonymous persistent identifiers. `Slack/2026.09` is low-risk; a real browser UA is not. The audit schema should classify fields by identifiability and apply the retention policy per class, rather than treating the whole `metadata` blob as one category.
-
-**Warning signs:**
-- **A CI test asserting no disallowed field name appears in any serialised log line.** Note the direction: a denylist in a *test* is acceptable as a guard **only if the runtime behaviour is allowlist-driven**. The runtime must be an allowlist; the test is the tripwire.
-- **Schema-drift detection on the logger**: alert if the count of distinct field names emitted by any service exceeds the declared allowlist size. A new `req.body` or `err` serialisation into a log line is the single most likely accidental PII leak in a NestJS codebase (`err` in particular — stack traces routinely carry request context).
-- A scheduled sample of the cold archive (say 0.1%) validated against the allowlist schema.
-- An audit of `err`/`context`/`meta` serialisation call sites before the first production deploy — the only moment it is cheap.
-
-**Severity if ignored:** HIGH — and uniquely, this is the one pitfall where being wrong is **not recoverable by fixing a bug**. Log content that leaked cannot be un-leaked. The Phase 1 gate is therefore non-negotiable.
-
-**Phase to address:** **Phase 1**, for the allowlist-in-serialisation-path decision and the `Referrer-Policy`/`no-store` headers (link rendering is Phase 1). The `submission_id`-as-trace-ID amendment must be made in the first OTel wiring in Phase 2, and the audit tombstone design in Phase 2's audit log deliverable.
-
----
-
-### Pitfall 16: One shared connector, N apps, no per-app budget — the blast radius is every app at once
-
-**What goes wrong:**
-AD-5 (adopted, marked ✓): *"Shared connector credentials (one service account, many projects)"* — kills credential sprawl, mirrors the Redmine model. FR-C-2: connectors are global. FR-C-4: rate limits are *"per connector instance, shared across all apps referencing it."* §10.5 shows one `hr-api-prod` with one `credential_ref` and `requests_per_minute: 60`.
-
-**The defining property: one misconfiguration, one expired token, one rate-limit policy, or one compromise takes down every referencing app simultaneously, with no app-level error anywhere.** Four concrete mechanisms, in likelihood order:
-
-**1. Shared rate-limit budget exhaustion (most likely).** 60 req/min across N apps. App A's legitimate burst consumes the budget and app B's submissions go to `partial`. `connector_call_total` is labelled `connector_id, status` — a 429 looks like connector health degradation and trips the §16.3 "connector failure >5%" Critical alert — **while the cause is one app's traffic, not the connector's health.** The platform admin investigates the wrong system. And the app that breaks is whichever is unlucky, which makes it look non-deterministic.
-
-**2. Credential expiry — and a health check that cannot see it.** §10.5's connector definition has **no `expires_at`, no refresh block, and no credential lifetime field at all.** One expiry → every app referencing it fails at once, and the failure presents as "the HR API is down" rather than "our token expired on Tuesday". Worse: FR-C-9's health check runs *"every 60 seconds"* against the connector's configured `health_check.endpoint` (§10.5: `/health`). **A conventional `/health` endpoint is unauthenticated and returns 200 regardless of credential validity.** So the health check reports `healthy` while every real call 401s. This is a concrete spec gap: *a health check that does not exercise the credential cannot detect credential failure*, and the one the PRD specifies is exactly that shape.
-
-**3. Compromise or over-broad scope.** The service account spans many projects. A leaked token grants access to all of them, and **there is no per-app boundary on the external side** — the platform cannot constrain what the token can reach, only which token it uses. Blast radius is every project the account touches, not every app.
-
-**4. Silent repointing during maintenance.** `connector_ref` is a string inside the app definition. Changing a connector's `base_url` or `operation` silently repoints **every** app referencing it, and that change rides along in a generic app-definition update — so it inherits the permissions of *whoever can edit an app*, not of *whoever manages connectors* (FR-C-2). A department admin with app-edit rights could repoint the HR connector for the whole platform. **The permission boundary between "edit my app" and "change a shared integration" is not enforced anywhere.**
-
-**How to avoid:**
-- **Per-`(connector_id, app_id)` rate limiting with a configurable share**, or at minimum a per-app counter so the dashboard can attribute exhaustion. FR-C-4's wording should change from "shared across all apps" to "budgeted per app within a shared connector envelope". The App Builder must display: *"your app is consuming 78% of this connector's budget"* — a departmental owner needs to know they are the problem.
-- **Model credential lifetime in the connector definition**: `expires_at`, `credential_type: static | oauth2_client_credentials`, and a refresh path for the latter. Add `connector_credential_expiry_days_remaining{connector_id}` as a gauge with alerts at T-30/T-7/T-1.
-- **Make the health check exercise the credential.** Either a connector-declared authenticated probe (`health_check.authenticated: true`, hitting an endpoint that requires the token), or have the platform issue a real low-cost call on a slow cadence (e.g. hourly) and alert on its failure. **An unauthenticated `/health` check must not be the sole signal.** Alert text should say "credential rejected (401/403)" separately from "endpoint unreachable" — different owners, different runbooks.
-- **Connectors are immutable in identity.** A change to `base_url`, `operation`, or auth type creates a **new connector version**; apps reference a version. A `connector_ref` change is a separate, permission-checked, audited mutation — not a field inside a generic app-definition edit.
-- **Ship the blast-radius view.** A connector → referencing-apps → owners index, in the Connector Manager (§14.1), so "how many apps go down" is answerable in one query. Every connector-failure alert states the affected app count and the owners. This is also the fix for Pitfall 12 Wall 3.
-- **Keep the AD-5 trust-domain argument honest.** AD-5 is right for credential sprawl and wrong for blast radius. The resolution is **one service account per trust domain, not one per platform**: one Redmine token for Redmine, one HR token for HR — sharing within a domain where the projects genuinely need shared access, never across domains. Record *why* a broader scope was needed, in the connector definition.
-- **Rotate on a schedule with overlap**, using the same keyset mechanism as Pitfall 6 / NFR-SEC-9.
-
-**Warning signs:**
-- `connector_call_total{connector_id, status="429"}` share by app — attribution, which the current label set cannot provide. **Add `app_id` to the connector metric labels** (§16.2 currently has `connector_id, status` only).
-- Per-app share of connector budget: `connector_budget_used_ratio{connector_id, app_id}`.
-- `connector_credential_expiry_days_remaining` — **new metric.**
-- "Connector unhealthy — N apps affected" where N comes from the reference index, in the alert text itself.
-- `connector_call_total{status="401|403"}` — the credential-failure signal that a `/health`-only check structurally cannot produce.
-- Alert distinction: `credential_rejected` vs `endpoint_unreachable`. Conflating them is how a token expiry becomes a 40-minute investigation.
-
-**Severity if ignored:** HIGH — an unannounced, platform-wide, single-token failure mode, plus a genuine authorisation-boundary gap (app editors can repoint shared integrations).
-
-**Phase to address:** **Phase 2** (connector interface and the REST connector are Phase 2 deliverables), with the `app_id` metric label and the connector-definition schema changes landing in Phase 1.
-
----
-
-### Pitfall 17: Redis pub/sub invalidation is fire-and-forget, and every "immediate" cache invalidation in the PRD depends on it
-
-**What goes wrong:**
-FR-I-6: mapping changes *"MUST invalidate Redis cache immediately via pub/sub"*. FR-R-9: RBAC resolution cached 5 minutes *"with immediate invalidation on change"*. FR-X-6: share revocation *"takes effect immediately"*.
-
-**Redis pub/sub has no delivery guarantee, no persistence, no replay, and no backpressure.** A subscriber that is mid-redeploy, on a flapping network, or briefly blocked is simply **missing the invalidation**, and it serves stale data until the TTL expires — up to **1 hour** for identity mappings (FR-I-4), 5 minutes for RBAC (FR-R-9). For a permission change, five minutes of stale authorization is a security window; for an identity deactivation (FR-I-7: user leaves the company), an hour of stale mapping means a leaver can still act through an old mapping — and the OTP lockout, the 3-attempt limit, and the 10-minute expiry (FR-I-8) offer no protection once a mapping exists.
-
-Worse, the failure is invisible and one-directional: **duplicate invalidations are harmless** (idempotent), **dropped invalidations are silent**. A rehash of the RBAC cache key would fix it; there is no such mechanism.
-
-**Why it happens:**
-Pub/sub invalidation is the standard pattern and it is correct *most of the time* — which is exactly the problem, because the failure only appears during deploys and network events, which is when you are least able to diagnose it.
-
-**How to avoid:**
-- **Version-stamped reads instead of relying on invalidation alone.** Store a monotonic version alongside each cache entry and check it on read (a single Redis `GET` for the version key, or a version field in the cached value validated against the authoritative store's version at a coarser cadence). This is the same pattern as `perm_version` (FR-R-8) and the read-link epoch (Pitfall 4) — **apply it uniformly: every cached authorization decision carries a version, and staleness is detected by comparison rather than by the absence of a message.**
-- **Key identity cache entries by the version** (`mapping:v{version}:{chat_user_id}`) so a version bump makes every stale entry unreachable by construction. Old entries expire by TTL. This is the cheapest correct implementation and it removes the pub/sub dependency from the *correctness* path — pub/sub becomes a latency optimisation (it lets you skip the version read), not the mechanism.
-- **The authoritative permission check must never be served from cache without a version comparison.** FR-R-7's two enforcement points (pre-JEV filter, pre-execution re-check) both do RBAC aggregation; the pre-execution one is the security-relevant one and it must consult the version.
-- **Log every invalidation publish and every subscriber receipt** with the version. A mismatch count is the detector. `invalidation_missed_total{service}` — a new metric.
-
-**Warning signs:**
-- `invalidation_missed_total{service}` (new) — non-zero means stale authorization is being served.
-- `cache_version_mismatch_total{cache}` (new) — the detector for stale reads.
-- Cache hit rate that steps *up* during a deploy window (a restarted subscriber warms slowly, so hit rate dips — an inversion is the tell).
-- Deactivated users still resolving: FR-I-7 deactivation must immediately invalidate; if a leaver can act, that is a security incident.
-
-**Severity if ignored:** MEDIUM-HIGH — a five-minute-to-one-hour stale-authorization window, silent, on the two hottest paths the architecture was specifically designed to keep fast.
-
-**Phase to address:** **Phase 1** (identity mapping cache and RBAC cache are Phase 1 deliverables). The pattern must be established in Phase 1 because retrofitting versioned cache keys after the App Builder exists means invalidating every deployed app's cache semantics.
-
----
-
-### Pitfall 18: Auto-injected filters leak soft-deleted rows, and the Query DSL is an authorisation surface with no test
-
-**What goes wrong:**
-Two related issues in the read path, both of which are *silent data exposure* rather than failures:
-
-**Soft-delete leakage.** FR-LC-5: purge is *"soft-delete first (mark as deleted, exclude from queries); hard delete after 30-day grace period."* FR-D-7: queries auto-inject a `real_user_id` filter unless the user holds `view_all`. **Nothing says the auto-injected filter also excludes soft-deleted documents.** Soft-deleted rows continue to consume index space and query time for 30 days (a real operational cost at 1M submissions per app), and — if `deleted_at` is not in the filter — they **appear in read-link results and in exports** for 30 days after a user requested deletion. The export path (FR-LC-6, §14.1 Submission Viewer) is the worst case: FR-LC-9 keeps archived data *"queryable by global admins for compliance"*, so an admin export that does not filter `deleted_at` produces a file containing data the user asked to have erased, delivered to a third party. **That is a compliance failure, not a UX annoyance.**
-
-**The Query DSL has no negative tests.** FR-D-6: a Query DSL is provided for reading internal data and *"Raw MongoDB queries MUST NOT be exposed to app builders."* That is the right call and it is the right security boundary — but the PRD has **no test requirement, no lint, and no structural guarantee** that every DSL path produces a query whose filter provably contains the user filter. The DSL will grow (filters, joins across shared collections per FR-X-*, aggregation pipelines, sort/paginate) and every growth point is an opportunity to lose the injected filter. FR-X-7 makes it worse: shared-collection access must respect **the consumer app's RBAC**, so there are now two permission contexts to compose and either can be dropped.
-
-**Why it happens:**
-The auto-injected filter is added once, in one place, in an early version. Nothing forces every subsequent DSL feature to preserve it, and no test asserts it. Soft-delete is added later (FR-LC-5) as a *new field*, and nothing prompts anyone to add it to the existing filter.
-
-**How to avoid:**
-- **`deleted_at: null` is part of the injected filter, in the same code path as `real_user_id`.** One builder function produces both. Never two places.
-- **Make the invariant testable structurally:** a test that, for every DSL construct in the grammar, asserts the compiled query plan contains the injected filter. Better: the DSL compiles to an **explicit query plan object**, and the filter injection is a property of the plan builder — the DSL author *cannot* construct a plan without passing through it. Never string-concatenate a Mongo filter; build a plan and validate its shape.
-- **Reject a DSL construct that cannot be expressed with the injected filter** (e.g. a cross-collection `$lookup` that bypasses the consumer app's RBAC) with an explicit error at author time, not a runtime leak.
-- **Exports use the same plan builder as queries.** An export is not a privileged operation. Today §14.1's Submission Viewer has "filter, export" and FR-LC-9 says admins can query archived data — those two together are the leak path. Exports must run the same injected-filter pipeline with an explicit `include_deleted` flag that is **audited**.
-- Index `deleted_at` alongside the existing indexes (FR-D-5 creates declared indexes at publish — make `deleted_at` a default index member).
-
-**Warning signs:**
-- Query results count vs. the count the admin expects — the classic signal, but nobody is watching.
-- `submission_export_total{include_deleted}` counter (new) — any `include_deleted=true` export by a non-admin should alert.
-- A scheduled invariant check: `count(documents where deleted_at != null AND appears in a recent read-link result)` — structurally awkward, but a periodic sample comparison against a soft-deleted-id set is cheap and catches it.
-- Export row counts trending above the app's live submission count.
-
-**Severity if ignored:** MEDIUM (read path) escalating to **HIGH compliance** for the export case specifically.
-
-**Phase to address:** **Phase 1** for the injected-filter builder (internal storage mode and the first read paths are Phase 1/4); the export path with **Phase 3** (Submission Viewer).
-
----
-
-### Pitfall 19: "Already submitted" as an error-shaped response, and submission IDs pasted into chat transcripts
-
-**What goes wrong (two small, high-frequency UX/security items):**
-
-**(a) The duplicate submit returns an error.** §12.1 step 14: if the token is already consumed → *"already submitted" message*. For a user who double-clicked, that is indistinguishable from data loss. The submission **succeeded** and the platform is telling them it did not. Users respond by resubmitting (blocked by the same mechanism), asking in the channel, or filing a ticket. This is a self-inflicted support burden created entirely by choosing the wrong response shape — and Pitfall 2's "make the duplicate a success" recommendation removes the class.
-
-**(b) `submission_id` in the chat transcript.** §12.1 step 17: the confirmation includes `submission_id` *"for reference"*. That message is then retained by **Slack, Teams, Zalo, or Telegram under their own retention and export policies** — outside the platform's 3-year/1-year boundary, outside its purge workflow, outside its access control, and outside its data-residency configuration. You have just exported a per-employee activity record into a system you do not govern, on a platform whose governance posture is set by the enterprise's IT department, not by you. **No amount of log allowlisting fixes this**, because it is not in your logs — it is in someone else's.
-
-**How to avoid:**
-- Return **HTTP 200 with the original confirmation payload** when the duplicate is from the same `real_user_id` and the payload is unchanged; reserve 409 for a genuinely conflicting write. Render it as the same confirmation message.
-- Put the submission reference **behind the read link** rather than in the chat text. The user clicks to see status; the identifier lives in the platform, not in the IM transcript. If a plain-text reference is genuinely needed for support workflows, use a short opaque handle, not `submission_id`.
-- State the IM-transcript boundary explicitly in the compliance design and in the admin documentation: *"content delivered to the IM platform is governed by the IM platform's retention and access model."* This is a scope limitation to disclose, not a bug to fix.
-
-**Warning signs:**
-- `token_consumed_total{result="already_submitted"}` rate (same metric as Pitfall 2) — high values mean users are being told a lie about their own submissions.
-- Count of confirmation messages containing a `submission_id` pattern in outbound payloads — assertable in a test.
-
-**Severity if ignored:** MEDIUM — pure user-experience and disclosure, but the frequency is high and it is the first thing every user encounters.
-
-**Phase to address:** **Phase 1** (confirmation message formatting is a Phase 1 deliverable).
+**Phase to address:** Phase 10 (v2 Foundations) — the boundary graph must be extended **before** the adapters land, or Phase 11 starts by fighting the linter.
 
 ---
 
 ## Technical Debt Patterns
 
+Shortcuts that seem reasonable but create long-term problems. The "v1 reality" column is what is in the repo **today**; the v2 feature that forces the issue is named.
+
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |---|---|---|---|
-| Consume the create token with `GETDEL` only, no Mongo backstop | One Redis call, ~1 ms, satisfies NFR-SEC-1 on paper | Double submissions after any Redis failover; the PRD's own runbook becomes the only defence and it is post-hoc | **Never** — the `link_consumptions` unique index is ~3 days of work (Pitfall 1) |
-| Mark failed external sends as `partial` and auto-retry | Simple state machine, two states | Indistinguishable from "never sent"; manual retry of a succeeded call duplicates records downstream; no reconciliation possible | **Never** — the three-state model is ~2 days (Pitfall 13) |
-| Send the full tool list to JEV and raise `timeout_ms` until p95 passes | Simple, one call, matches §11.1 as written | Prompt grows past the latency budget at 200 apps; near-duplicate tools become indistinguishable; p95 is met by *serving the regex fallback* while reporting success | **Never** — tiered routing is the only structure that meets both targets (Pitfall 9) |
-| Use Redis pub/sub for cache invalidation without versioned reads | Standard pattern, simple, fast | Silent stale authorization for up to 1 h (identity) / 5 min (RBAC) during deploys and network events | **Only** as a latency optimisation on top of versioned reads (Pitfall 17) |
-| Default read-link TTL to 90 days | One number, matches FR-L-3's ceiling, "best UX" | 13× wider exposure window for a link that cannot be revoked at all | **Never** as the default — 7 days, 90 as opt-in per app (Pitfall 4) |
-| Let the App Builder publish without a routing impact check | Fast publish, maximal autonomy | New apps silently steal traffic from existing apps; no diagnosis possible without `routing_share` | **Never** — the check is a few hundred ms against a labelled set (Pitfall 11) |
-| Build the connector's health check against the conventional `/health` endpoint | Standard, what every API documents | Reports `healthy` while every real call 401s; credential expiry presents as "the external system is down" | **Never** — the probe must exercise the credential (Pitfall 16) |
-| Add `app_id` as a high-cardinality Prometheus label after launch | Easy to add early | `connector_call_total` needs `app_id` **at Phase 1** or the Phase 2 dashboards are unusable and retro-fitting labels into a live metrics pipeline is disruptive | **Never** — decide label cardinality before the first dashboard |
-| Log the full request/response body for connector calls during debugging | Fast diagnosis | PII in logs, unerasable, and — per Pitfall 15 — the one class of leak that cannot be undone | **Only** in a local-only, field-scrubbed dev mode |
-| Support `internal` mode only for the first App Builder release | Much smaller scope | The self-service promise is hollow for exactly the use cases (Redmine/HR/ERP) that justify the platform | Acceptable **only** if Wall 1 of Pitfall 12 is addressed simultaneously — internal-first *plus* a connector-request flow |
+| **Keep `RbacService.hasPermission` returning `true`** and add group logic elsewhere | No migration; the v1 flow keeps working | Group RBAC is unenforceable — the authoriser is a no-op and every downstream check is theatre. The stub is exactly where a reviewer will look and will be blamed for every incident. | **Never** for group-scoped permissions. It must be replaced with a real implementation before Phase 14 ships. |
+| **Keep the RBAC cache as an in-process `Map`** | Fast; no network hop | Breaks horizontal scaling (AD-9) and makes revocation per-pod and non-deterministic. Phase 14's fan-out becomes un-diagnosable. | **Only** while there is exactly one replica and no group roles. |
+| **Keep `perm_version = 0` as a default parameter** | Existing call sites keep compiling | A missing epoch silently reads epoch-zero state. The default is the mechanism by which a revocation is bypassed. | **Never.** Make it required; the compile error is the point. |
+| **Dedupe with an in-memory `Set` or a `SET NX` with a TTL** | No schema change; fast to ship | A `Set` dies with the pod. A Redis key expires and lets a duplicate through. Neither makes the side effect atomic with the dedupe record. | **Never** for anything with a side effect. Use a unique index. |
+| **Key Slack dedupe on `event_id`** | The field already exists in `InboundEventSchema` | Slack delivers the same message with **different** `event_id`s. Duplicate bot replies in production. | **Never** for Slack message events. |
+| **Hash the payload to derive a dedupe key** instead of a native id | No contract change | Brittle: any field reorder, timestamp drift, or vendor-added field changes the hash. | Only as a **secondary** guard, never as the primary key. |
+| **Keep `ConversationReferenceRecord.reference` as `unknown`** | No schema to maintain | Unvalidated, un-loggable, un-portable. It is the payload that decides *where a reply goes*. | **Never** once two-way sync ships. |
+| **Keep the conversation-reference key un-prefixed** (`${channelId}::${chatUserId}`) | Backwards-compatible with v1 records | A Slack channel id and a Telegram chat id can collide into one record. | **Never** with two platforms. Migrate the v1 records. |
+| **Log a new identifier under an existing allowlisted name** (e.g. pack `group_id` into `reason`) | No allowlist change, no D-16 justification | The data is unstructured, unqueryable, and the *bypass* is invisible — the audit trail looks compliant and is not. It also puts an identifier into a free-text field, which is the exact thing the allowlist exists to prevent. | **Never.** Widen the allowlist with the written justification. |
+| **Hand-roll the Zalo OA client over `undici` and keep it in an adapter directory** | No unmaintainable third-party dependency | Undocumented API surface with no changelog; the hand-rolled client is an *ongoing* maintenance liability, not a one-time cost. | **Acceptable** — it is the best available option — but it must live in **one** module with a recorded test vector, not spread across call sites. |
+| **Use the `formiojs` 4.x / `@formio/js` 5.x renderer as-is for a Telegram inline keyboard** | Fast | FormIO is a **web** renderer. A Telegram inline keyboard is not a form. Do not try to render a FormIO form in a chat message; the constraint is a UX decision, not an engineering one. | **Never.** The chat surface is a link, by design. |
+| **Fan out a group revocation by deleting cache keys per member** | "Explicit" | Write amplification (N members × M apps), a race with in-flight reads, and partial failure leaves a **partial revocation**. | **Never.** Bump a group epoch; let members inherit it. |
+| **Treat a Graph `syncStateNotFound` as a transient 4xx and retry** | Simple retry loop | Retries forever against a dead cursor, hammering Graph and burning the throttle budget. | **Never.** It is a terminal state: discard the cursor, full resync. |
+| **Read Zalo group members with the default `count=5`** | One request | Silently truncates membership to the first 5 — **and looks successful**. | **Never.** Page explicitly. |
+| **Use the model-reported `confidence` as a permission signal** | One number, easy to threshold | Uncalibrated self-report used as a security control. A prompt-injected or merely unlucky response flips a gate. | **Never.** Confidence is a *ranking* signal; permission comes from the platform-side gate. |
+| **Let the open-ended guard fall back to "guess the most likely tool" on provider failure** | Better UX than an error | A bypass: the fallback path is less constrained than the primary path. | **Never.** Fall back to `clarify`. |
+| **Add a new `packages/domain/src/<thing>/` without touching `DOMAIN_ELEMENT_TYPES`** | Fast | The lint gate fails with a generic message (annoying) or, worse, a `partialMatch` accident promotes it to the wrong element type (silent). | **Never.** Declare it in the same commit. |
+| **Put the Slack/Telegram/Zalo receiver in `apps/worker`** | The worker already has the queue | Breaks the **<200 ms ack** contract — R1 says so. | **Never.** Receivers are `apps/api`-only. |
 
 ---
 
@@ -776,57 +656,101 @@ The auto-injected filter is added once, in one place, in an early version. Nothi
 
 | Integration | Common Mistake | Correct Approach |
 |---|---|---|
-| **Slack** | Verifying the signature against the parsed body, or with JSON re-serialised | HMAC over the **raw** bytes, `express.raw()` or a `verify` hook registered **before** any global body parser. Test with a known raw fixture (Pitfall 6) |
-| **Slack** | Verifying the signature again in the consumer | Verify **once**, at ingress; carry `{verified_at, key_id, native_event_id, raw_body_sha256}` in the enqueued envelope. A second verification fails on any backlog >5 min and turns a perf problem into an outage with a misleading error |
-| **Slack** | Assuming a 200 means processed | 200 means *enqueued*. Slack retries only on non-2xx; an ack-then-lose bug is unrecoverable and unobservable without the Pitfall 5 counters |
-| **Slack** | Single signing secret | Keyset with an active + previous set and an overlap ≥ the full retry horizon (≥1 h). Same mechanism as NFR-SEC-9's JWT dual-key window — build it once |
-| **Microsoft Teams** | Assuming ordered delivery | Jittered retries mean activity N+1 can arrive before N. Key conversation context on `(conversation_id, turn_count)` and **drop** out-of-order turns (Pitfall 7) |
-| **Microsoft Teams** | Assuming each activity arrives once | 429/502 with retry-with-jitter ⇒ at-least-once. `activity.id` is the dedupe key; dedupe at enqueue; a dedupe hit must still return 2xx |
-| **Microsoft Teams** | Treating the bot as a long-lived connection | Teams pushes; there is no inbound connection. `active_im_connections{im_platform}` (§16.2) is structurally meaningless for Slack/Teams/Zalo/Telegram — redefine or delete it (Pitfall 8) |
-| **Zalo OA** | Assuming the official Node SDK exists | It does not (PROJECT.md). ~200 lines over `undici`. Confirm whether the OA callback carries any signature/HMAC field at all before designing a verification path — if it does not, the webhook endpoint is **unauthenticated by design** and must be constrained by source IP allowlist + a per-app unguessable callback path, plus replay protection. **Verify this against Zalo's current docs during the Phase 4 adapter spike** — the answer changes the security model |
-| **Zalo OA** | Assuming webhook verification challenges behave like Slack's | The Teams "token validation" and Slack "URL verification" patterns (§FR-IM-6) are platform-specific. Each adapter's challenge/validation flow is its own implementation — that is exactly why the four adapters drift (Pitfall 6) |
-| **Telegram** | Assuming polling and webhook are interchangeable | `getUpdates` polling and webhooks are mutually exclusive per bot and switching is disruptive. Pick one; if polling, the "receiver" is a long-poll loop with its own backoff semantics and its own "IM platform unreachable" story |
-| **Any inbound webhook source (Redmine, HR)** | Assuming the source sends a stable idempotency key | FR-N-2 maps `external entity ID → submission_id`, but many sources send the same event twice with different delivery ids. Key the dedupe on the source's event/delivery id, and treat the *entity ID* as the business key. Out-of-order status changes ("approved" then "cancelled") need a source-side sequence or timestamp comparison before applying, or notifications will arrive backwards |
-| **Redmine / ERP / HR APIs** | Assuming `Idempotency-Key` / `X-Submission-ID` is honored | Most internal enterprise APIs ignore unknown headers, so FR-D-12's write-once guarantee is unimplementable against them. Declare `supports_idempotency_key: false` per connector, require a natural-key pre-check, and disclose it at App Builder publish time (Pitfall 13) |
-| **Redmine / ERP / HR APIs** | Treating any 2xx as success | Assert the response against a per-connector Zod schema exposed via `getCapabilities()`. 200-with-`{"status":"error"}` is the classic enterprise failure (Pitfall 13, Window D) |
-| **External systems (outbound)** | Verifying outbound HMAC with the same secret and no key rotation | Outbound webhook signing has the same rotation problem as inbound (Pitfall 6) but no NFR covers it. Give it the same keyset treatment when §8.9 is built |
+| **Zalo OA webhook** | Implementing HMAC-SHA256 because a tutorial said so | `sha256(app_id ‖ rawBody ‖ timeStamp ‖ oaSecretKey)`, hex, `timingSafeEqual`. One module. Frozen test vector. |
+| **Zalo OA webhook** | Hashing `JSON.stringify(parsedBody)` | Hash the **raw bytes**. NestJS `rawBody: true` / `@RawBody()`. Any re-serialisation breaks the digest. |
+| **Zalo OA webhook** | Using the **App** Secret Key | The **OA Secret Key**. Two different portal values. |
+| **Zalo OA webhook** | Doing a DB read or a KMS decrypt before responding | Ack in <2 s. Verify → validate shape → enqueue → 200. Warm the credential cache. |
+| **Zalo OA webhook** | Returning 4xx/5xx for a business-level rejection | Always 200 after logging. A non-200 burns one of five retry stages. |
+| **Zalo OA webhook** | Assuming a failed delivery is visible somewhere | It is not. Zalo disables the webhook silently; re-enrolment is a **manual portal action**. Ship an event-freshness probe. |
+| **Zalo OA OAuth** | Refreshing from more than one worker | Single-flight under a Redis lock. Rotation is **single-use**; the loser re-reads the stored token. |
+| **Zalo OA OAuth** | Treating the refresh token like a renewable credential | It is a **crown jewel**: 90 days, single-use, and losing it needs a **human** in the Zalo portal. Persist it encrypted, alert on refresh failure. |
+| **Zalo OA API** | Calling from a non-Vietnam egress and treating an empty user profile as "unknown user" | A VN egress is a **deployment requirement**. Detect the empty profile and raise a typed error (`ZALO_PROFILE_EMPTY_OUTSIDE_VN`). |
+| **Zalo OA API** | Registering production egress IPs ad hoc | Register every egress IP in the Zalo portal; keep the list in the deployment runbook. Error `-7` = unregistered IP. |
+| **Zalo ids** | `z.coerce.number()` on `user_id` / `app_id` | Ids are **19-digit** — beyond `Number.MAX_SAFE_INTEGER`. Keep them as `z.string()`; `BigInt(v).toString()` if a number arrives. `JSON.parse` rounds them **silently**. |
+| **Zalo group members** | Calling `listmember` without the group-management scope | The scope is an admin grant in the Zalo portal. Missing it returns an error that must be surfaced, not swallowed. |
+| **Zalo group members** | Using the default `count=5` | Page explicitly with a larger `count`; the default silently truncates. |
+| **Zalo group members** | Merging `listmember` with `listpendingmember` | Pending members are **not** active members. Two lists, two roles. |
+| **Telegram** | Packing a form id / role name into `callback_data` | An opaque handle only. `callback_data` is **1–64 bytes** (UTF-8); exceeding it fails the whole `sendMessage` with `BUTTON_DATA_INVALID`. |
+| **Telegram** | Forgetting `answerCallbackQuery` | The spinner hangs 10–30 s, then "took too long". Call it **first**, in a `finally`, before any slow work. |
+| **Telegram** | Treating the command as authorisation | Telegram states the scope is not in the update. **Re-validate permission on every command**, with `perm_version`, at execution time. |
+| **Telegram** | Assuming the bot sees group messages | Privacy mode is on by default. Disabling it requires **removing and re-adding** the bot. Admins always see everything — which makes the gap easy to miss in testing. |
+| **Telegram** | Omitting `allowed_updates` | The default excludes `chat_member` (and reactions). Set it explicitly and **assert it at boot** via `getWebhookInfo`. |
+| **Telegram** | Using `update_id` as a strict monotonic cursor | It is **randomised** after a week of inactivity. Use it as an opaque dedupe key only. |
+| **Telegram** | Running `getUpdates` alongside a webhook | Mutually exclusive. One mode. |
+| **Telegram** | Expecting `chat_member` without being a group admin | The bot must be an **administrator**. Assert it in onboarding. |
+| **Slack** | Writing back to `usergroups` | Read-only in practice: `usergroups:write` needs workspace permission, the call **replaces** the whole member list and **cannot empty it**, and creation needs Enterprise Grid. Slack membership is a **mirror**. |
+| **Slack** | Treating an empty usergroup list as "no members" | `plan_upgrade` and `missing_scope` look identical to empty. Distinguish "could not read" from "nothing there". |
+| **Slack** | Dedupe on `event_id` | Slack can re-send the same message with **different** `event_id`s. Key on the message `ts` as well. |
+| **Slack** | Assuming Slack always retries | Retries are 3 attempts (~immediately, +1 m, +5 m) with `x-slack-retry-num`/`x-slack-retry-reason`; **duplicate sends without those headers also occur**. Handle both identically. |
+| **Slack** | Ignoring the 95% failure window | >95% failed deliveries in 60 minutes **disables the event subscriptions** and emails the app owner. Monitor the delivery success ratio, not just uptime. |
+| **Microsoft Graph** | Retrying a `syncStateNotFound` delta token | It is expired. **Discard the cursor, full resync** (HTTP 400 + `syncStateNotFound`). |
+| **Microsoft Graph** | Treating `410 Gone` as transient | A `410` whose `Location` carries an **empty `$deltatoken`** means tenant reset — **full resync**. |
+| **Microsoft Graph** | Using a narrow `$select` on a delta query | Changes to unselected properties are **silently suppressed**. Use `$select` on the initial resync only. |
+| **Microsoft Graph** | Relying on `members@delta` to detect removals | It **does not** detect members removed by deletion of the member object. Stale membership accumulates. Reconcile periodically. |
+| **Microsoft Graph** | Sleeping a fixed amount on 429 | Honour **`Retry-After`**. Limits: 3,500/5,000/8,000 ResourceUnits per 10 s (by tenant size) and 150,000 per 20 s per app. |
+| **Microsoft Graph** | Merging pages in sequence order | Groups can reappear **anywhere** in the `@odata.nextLink` sequence. The merge must be **order-independent**. |
+| **All platforms** | Assuming the webhook fires once | **At-least-once** everywhere. Unique-index dedupe; idempotent side effects by construction. |
+| **All platforms** | Doing real work in the receiver | The ack budget is 2 s (Zalo) / 3 s (Slack). Receiver = verify → validate → enqueue → 200. Everything else is in the consumer. |
+| **All platforms** | Trusting `process.env` for per-tenant IM credentials | R2 confines the KMS/signing surface to `crypto/**` and `connectors/**`. Plaintext env secrets violate R2 and NFR-SEC-3. |
+| **All platforms** | Widening the log/span allowlists informally | D-16/D-18 friction **is** the control. Widen it deliberately, with the written justification, in the same commit. |
 
 ---
 
 ## Performance Traps
 
+Scale anchors: the v1 NFR target is **1,000 concurrent users** and the v2 target is **group-scoped** access for organisations of tens to low hundreds of people (up to ~200 apps × ~20 forms per NFR-S-6/S-7). Nothing below requires over-engineering — each trap is about a *specific* threshold.
+
 | Trap | Symptoms | Prevention | When It Breaks |
 |---|---|---|---|
-| **Flat JEV tool selection over the whole catalogue** | `jev_decision_duration_ms` p95 approaches/exceeds 500 ms; the primary provider's timeout rate goes nonzero and traffic silently shifts to `rule-based`; `jev_confidence` drifts down | Two-stage routing (app → tool); publish-time description-collision checks; measure `jev_provider_used_total` | **~100+ candidate tools per user.** NFR-S-6's 200 apps × 3–5 tools hits this in normal operation, not at some future scale |
-| **Session/turn context growing without bound** | `jev_decision_duration_ms` p95 climbs over weeks; token costs per decision climb | Cap `previous_turns` to a token budget, not a turn count (FR-J-7 says "last N turns" — N must be budget-derived); expire a conversation buffer after inactivity | **Weeks of continuous use by a power user.** Invisible in a load test because tests do not run for weeks |
-| **Unbounded `active_im_connections` / per-connection state** | Not applicable — this is an anti-pattern | Keep the platform stateless (AD-9); all session state in Redis; no sticky sessions | N/A — prevented by the committed constraint |
-| **Per-form collections in Mongo** (200 apps × 20 forms) | Collection count explodes; `collStats` and catalog operations slow; backup and restore times grow; index count per DB balloons | One collection per app (§10.3 is correct), document `form_id` and `form_version` as indexed fields; create collections and indexes at **publish** (FR-D-5), never on first write | **~200 collections × 5 indexes.** Visible well before 1M submissions — this is a design-time trap, not a runtime one |
-| **Auto-created collections on the write path** (FR-D-2: *"auto-created on first write"*) | A typo or user-derived collection name creates a production collection; collection-count drift alerts | Derive the collection name from `app_id`, validate against a strict pattern at publish, and create at publish; alert on collection-count drift | Immediately — this is a correctness issue with a performance symptom |
-| **Soft-delete without `deleted_at` in the index** | 30 days of deleted documents in every index; query latency degrades after any purge cycle; at 1M submissions/app this is measurable | Include `deleted_at` in the default index set; partial indexes (`deleted_at: null`) where the driver supports them; hard-delete on a schedule rather than only on read | **After the first purge cycle**, not at any particular submission count |
-| **Log volume with `real_user_id` on every line** | 1-year cold store becomes a large, expensive, permanently retained map of employee activity — and a privacy exposure (Pitfall 15) | Field allowlist before serialisation: log `submission_id`, `app_id`, `real_user_id` only on state-changing and authorisation-failure events, not on every line | Immediately, and it grows linearly |
-| **Long-running synchronous work inside the receiver** | p99 receiver latency creeps toward 200 ms; Slack starts retrying; duplicate volume rises | Receiver does exactly three things: verify, dedupe, enqueue. Everything else is a job | **At any scale**, whenever a dependency gets slow. This is the trap that turns a 5 ms slowdown into a duplicate storm |
-| **JEV decision on the render path** | p95 for view/query link rendering (NFR-P-8, <1.5 s) is consumed by the LLM | The read path must not call JEV for rendering — JEV runs in the IM path (step 7 of §12.2) and only *selects* the tool; rendering is Mongo + FormIO | Immediately if implemented naively |
-| **`prev`/full-collection reads for the Submission Viewer** | Admin viewer times out once an app has meaningful volume | The Submission Viewer must go through the same DSL with the same injected filters and indexed projections (§10.3 declares them for this reason); paginate from day one | **~100k submissions per app**, well below the 1M ceiling |
+| **The Slack webhook controller is still a placeholder** (`return { ok: true }`) | Any "Slack works in staging" claim is unfounded — nothing is verified, nothing is enqueued | Implement the real receiver (raw body → HMAC verify → envelope → enqueue) as the first task of Phase 10/11, not as a follow-up | Immediately. This is the **highest-value** defect to fix, because every later Slack-phase verification depends on it. |
+| **In-process RBAC cache + group fan-out** | Revocation takes effect per pod, at a random moment within the TTL | Redis-backed cache, epoch in the key, composite (user + group) epoch | As soon as the deployment has **2+ replicas** — which AD-9 requires |
+| **Redis round-trips per request** (throttler tiers + session + cache) | p99 latency climbs linearly with the number of Redis hops | Pipeline where possible; keep the number of per-request hops constant and **measured** | Around **100 req/s** sustained per pod, once throttler tiers are stacked |
+| **3 named throttlers = 3 Redis calls per request** | Latency triples; the rate limiter becomes the bottleneck | One `ThrottlerStorage` implementation that **pipelines** the three keys in one round-trip; or one composite key | Measurable from the first load test — the v1 stack already flagged this as unmeasured |
+| **Graph `transitiveMembers` expansion per group** | Sync takes hours; the 429 budget is exhausted | Cache membership; use `members@delta`; **never** expand transitively for every group on every cycle | **~50 groups** in one tenant, with a naive per-group transitive expansion |
+| **Graph delta resync every 7 days (token expiry)** | A periodic load spike every week that competes with interactive traffic | Make the full resync **incremental and resumable**; throttle it below the interactive budget; run it in the scheduler, not the API | The **first** expiry — ~7 days after go-live |
+| **Zalo `listmember` with `count=5`** | A 500-member group takes 100 sequential requests; the sync never completes | Explicit paging with a larger `count`, concurrent within the rate budget | Any group over ~50 members |
+| **Slack `usergroups.list` at Tier 2 (~20 req/min)** | A 200-usergroup workspace takes 10 minutes to enumerate | Cache with a long TTL; **incremental via `subteam_*` events** rather than full enumeration; request a higher rate tier for a production app | **~20 usergroups** per full enumeration |
+| **A full directory resync overlapping the interactive path** | Users see permission errors during the resync window | Resync into a **shadow set**, then swap; interactive reads never hit a half-built index | Any resync larger than ~1,000 memberships |
+| **Webhook receivers doing work synchronously** | Ack p99 climbs; the Zalo 2 s / Slack 3 s cliff is crossed | Enqueue-only receivers; measure **time-to-200**, alert at p99 > 1.2 s | The **first** traffic spike |
+| **Unbounded tool catalogue in the JEV request** | Prompt size, latency, cost, and **selection accuracy** all degrade | Cap `tools.length`; rank the permitted set before sending; never truncate arbitrarily | Measurable past **~30–50 tools** in one request |
+| **An LLM retry loop with no absolute deadline** | A hung provider burns the request budget and the daily quota | One absolute `deadlineEpochMs` per request (v1 already has this); per-provider caps derived from it (`min(remaining, providerCap)`) | The first provider timeout |
+| **Per-member cache invalidation on a group revocation** | A 500-person revocation issues 500×M writes and takes seconds | One group epoch; members inherit it | Any group over **~50 members** |
+| **Zalo access-token refresh storm on deploy** | All pods refresh at once; the rotation race (Pitfall 4) fires | Jitter the refresh schedule; single-flight the exchange | Every deploy that scales out from zero |
+| **Group membership cached without an epoch** | Permission checks read a pre-revocation grant | Epoch in the key, always | Any revocation |
 
 ---
 
 ## Security Mistakes
 
+Domain-specific security issues, beyond general web-security hygiene. Risk: **Critical** / **High** / **Medium**.
+
 | Mistake | Risk | Prevention |
 |---|---|---|
-| **`submission_id` as the OTel trace ID** (NFR-O-1 as written) | A pseudonymous per-employee identifier indexed across a store with **no per-app RBAC and no purge path** — a cross-app activity map for anyone with log access, retained 1–3 years, erasable by nobody | Use an opaque W3C `traceparent`; carry `submission_id` as an unindexed span attribute only inside authorised contexts; if the business insists, move the trace backend inside the compliance boundary and write the erasure exclusion down. **NFR-O-1 loses this conflict** (Pitfall 15) |
-| **1-year cold logs + 3-year immutable audit vs. right-to-erasure** | The §15.4 erasure promise is unachievable as written | Narrow the promise: erasure covers MongoDB, identity records, role assignments, and Redis; logs and spans contain no PII **by construction** (allowlist before serialisation, built in Phase 1); the audit trail retains a tombstoneable `actor_ref`. **FR-AU-3/5 win** (Pitfall 15) |
-| **JWT in a URL with no `Referrer-Policy`** | The link credential leaks into `Referer` headers, corporate proxy logs, browser history, and Slack link-unfurling previews | `Referrer-Policy: no-referrer` + `Cache-Control: no-store` on the form-renderer origin, asserted by a test; zero third-party resources on that origin |
-| **Denylist regex over log fields** | Always misses something. `err` serialisation is the usual culprit — stack traces carry request context | Allowlist in the serialisation path; a denylist in a **test** is an acceptable tripwire, never the runtime mechanism |
-| **No revocation for stateless read links** | A leaked 90-day link cannot be withdrawn. Forwarded links, browser history, proxy logs, IM unfurl previews | Per-app and per-user read-link epoch in Redis (one key each, preserving AD-11's memory property); 7-day default TTL; explicit disclosure of the unrevocable-link limit for 90-day apps (Pitfall 4) |
-| **`perm_version` treated as a general authorization version** | Only role changes bump it. Lifecycle changes, grant revocations, app rollbacks, and cross-app revocation do not — and there is **no cross-app kill switch** | App-status gate + read-link epochs; bump `perm_version` and the epoch as part of every rollback and every grant revocation (Pits 4, 14) |
-| **Per-IP rate limiting on shared corporate NAT** | One IP block disables an entire office across all apps. NFR-SEC-10 as written guarantees this under benign failures | Split the failure taxonomy; move the replay counter to `real_user_id` + `jti`; alert on "blocked but no attack signal"; **NFR-SEC-10 loses as written** (Pitfall 3) |
-| **App-definition edits can change `connector_ref`** | Anyone who can edit an app can repoint a **globally shared** connector for the whole platform | Separate, permission-checked, audited `connector_ref` mutation; connector identity is immutable (Pitfall 16) |
-| **Verifying a webhook signature with a denylisted/best-effort basis, or disabling it after a failure** | The webhook endpoint becomes unauthenticated | Raw-body HMAC as the only accepted implementation; a failure is a hard 401; an hourly synthetic signed probe is the detector (Pitfall 6) |
-| **Trusting `X-Forwarded-For` without a trusted-proxy list** | Per-IP rate limiting keys on an attacker-controlled header, so it is simultaneously bypassable and mis-triggering | Explicit trusted-proxy configuration; without it, fall back to `real_user_id` + `jti` for replay control |
-| **Auto-injected query filter not covering `deleted_at`** | Soft-deleted (user-erased) rows appear in read-link results **and exports** for 30 days | One plan builder emits both filters; the export path uses the same builder with an audited `include_deleted` flag (Pitfall 18) |
-| **Outbound messages carrying `submission_id` into IM transcripts** | Per-employee activity exported into a system outside the platform's governance, retention, and residency control | Put the reference behind the read link; disclose the IM-transcript boundary in the compliance design (Pitfall 19) |
-| **Connector credential with no modelled lifetime and an unauthenticated health probe** | Token expiry looks like an external outage; up to N apps fail simultaneously and the alert points at the wrong system | `expires_at` + refresh in the connector definition; an authenticated probe; `credential_rejected` distinguished from `endpoint_unreachable` in the alert (Pitfall 16) |
+| **Implementing the Zalo digest as HMAC-SHA256** (per third-party guides) | **Critical** — every inbound Zalo event rejected; a silent availability outage with a misleading "signature mismatch" error | Implement the documented plain hash exactly, in one module, with a frozen test vector. Add a **guard test** that asserts the algorithm shape (a digest of a known body against a recorded expected value). |
+| **Hashing a re-serialised body** | **High** — 100% rejection, or an intermittent 1–5% rejection rate that is dismissed as "flaky network" | Raw-body capture only; a test using a **captured** request, not a synthesised one. |
+| **Using the App Secret Key instead of the OA Secret Key** | **High** — total rejection, with a security-adjacent misconfiguration that invites "let's just try the other key" debugging habits | One named constant per credential type; the credential store records **which** key it holds. |
+| **Trusting the model-reported `confidence` as a permission signal** | **Critical** — a prompt-injected or unlucky model response can flip an authorisation gate; the gate becomes non-deterministic | The model **proposes**; the platform-side gate **decides**. `confidence` is a quality signal only. `verified === true` and the authoritative permission check are non-negotiable. |
+| **Letting the model define the candidate tool set** | **Critical** — the model can propose a tool the user is not permitted to use | Compute the permitted set **before** the call; intersect. The model's output never widens the candidate set. |
+| **A provider fallback that answers on timeout** | **Critical** — a bypass path with weaker constraints than the primary | Every fallback goes through the same gate and returns `clarify` on uncertainty. |
+| **Executing a model-proposed tool without a fresh permission check** | **Critical** — a permission revoked between proposal and execution still executes | Re-check permission **at execution**, with the current `perm_version`. |
+| **Trusting a Telegram command as a scope/authorisation signal** | **High** — any user can invoke any command; Telegram documents that the scope is not in the update | Re-validate on every command via `PermissionCheckService.check` with the epoch. |
+| **Granting group membership = granting permission** | **High** — presence in a chat becomes authority | Group membership is an **input to** RBAC, never a substitute for it. |
+| **Caching a granted permission without an epoch** | **High** — revocation is ineffective for the TTL window, per pod | Epoch in the cache key; Redis-backed; revocation = epoch bump. |
+| **Storing Zalo ids as JS numbers** | **High** — silent float rounding can **merge two users into one identity**, and the identity layer upserts on `(platform, chat_user_id)`, so one user inherits the other's permissions | Ids are strings end-to-end; a big-int-safe parse path; a fixture with the real 19-digit values. |
+| **Not verifying the Zalo signature, or verifying it after enqueueing** | **Critical** — anyone who learns the endpoint URL can inject events as any user | Verify **before** enqueue, against the raw body; the receiver is the only place a request becomes trusted. |
+| **Replaying a captured Zalo request** | **Medium** — the digest is over `app_id ‖ data ‖ timeStamp ‖ secret`; if the timestamp check is weak, a captured request replays | Enforce a **timestamp window** (mirror the v1 `NonceStoreService` ±300 s skew rule) **and** a `GETDEL`-class one-time nonce. |
+| **Replaying a captured Slack/Telegram request** | **High** — duplicate side effects; on Slack, duplicate bot replies | The v1 `NonceStoreService` pattern (`SET NX EX`) plus the native-id dedupe index. |
+| **Putting a Telegram `secret_token` in a log or a span** | **Medium** — it authenticates your webhook | Never log it; it is a credential, not an identifier. |
+| **Putting a Slack bot token or a Zalo OA secret in a `reason` field** | **High** — a free-text field is not an allowlist | Credentials are in the KMS-backed credential store (R2's owners only). |
+| **Widening the log allowlist without the written justification** | **Medium** — the D-16 control is bypassed; group identifiers start appearing in logs that were reviewed against a narrower surface | Widen deliberately, in the same commit, with the justification. The friction is the control. |
+| **Adding a group id and a user id to the same span** | **Medium** — a correlatable activity map in a store with **no erasure path** (D-18's own reasoning) | Group id only, opaque, no user identifier in the same span. `submission_id` stays forbidden. |
+| **Leaving per-tenant IM credentials in env vars or config files** | **High** — violates NFR-SEC-3 and R2 | KMS-backed credential store; only `crypto/**` and `connectors/**` may touch the KMS surface. |
+| **Trusting `allowed_updates` implicitly on Telegram** | **Medium** — membership events never arrive; the platform believes it is synced | Set it explicitly; assert it at boot via `getWebhookInfo`; assert admin status in onboarding. |
+| **Treating a failed directory read as "no members"** | **High** — either revokes everyone or (if merged) grants everyone | Distinguish "could not read" from "nothing there"; merge only complete reads. |
+| **Silently degrading Zalo identity resolution outside VN** | **Medium** — the platform proceeds with no identity, or with the wrong one | A typed error (`ZALO_PROFILE_EMPTY_OUTSIDE_VN`) and a boot-time egress self-check. |
+| **Exposing the webhook endpoint without rate limiting** | **Medium** — an unauthenticated flood; a Zalo flood burns retry stages against **your** endpoint | The v1 per-user / per-app / per-connector throttlers apply to the receivers too, plus an IP-level guard at the edge. |
+| **Leaking raw user text into logs** | **High** — user-authored content inherits the submission retention window | The D-16 allowlist excludes free text; `reason` is a closed enum-ish token, never prose. |
+| **Leaving the Slack webhook controller as a placeholder in production** | **High** — the app "works" and does nothing | Implement it; add a test asserting the receiver enqueues. |
 
 ---
 
@@ -834,146 +758,207 @@ The auto-injected filter is added once, in one place, in an early version. Nothi
 
 | Pitfall | User Impact | Better Approach |
 |---|---|---|
-| "Already submitted" after a double-click | The user is told their submission failed when it succeeded — the worst possible message | Return the original confirmation (HTTP 200) for same-user, identical-payload duplicates; reserve 409 for genuine conflicts (Pitfalls 2, 19) |
-| A 20-field form rendered behind a link with no save state | Phone users lose everything to a lock screen, a call, or a battery death — and a 30-minute TTL means the reissued link is often already dead | Draft autosave keyed to the link `jti` (server-side, 24 h, independent of the link TTL), plus a visible "saved" indicator. The common gateway expectation; absent from the PRD |
-| Clarification prompts with no human fallback | The end user cannot answer, so they DM the app owner directly and the IM channel becomes an invisible help desk | Name the escalation path in the prompt ("ask @owner in #channel") and count it as a queue (Pitfall 12) |
-| A manager who should see team submissions sees zero rows | Silent, looks like a broken app, generates a support ticket | Publish-time and role-change-time reachability check showing row counts per role (Pitfall 12 Wall 3) |
-| Form field renamed while an edit link is live | "Field `start_date` is required" on a form that says "Start date" — the user cannot fix it | Pin `form_version` in the link JWT and serve that exact version to the renderer (Pitfall 14) |
-| JEV confidently picks the wrong app | The user is sent to a form for the wrong department, and the error surfaces as "this form is broken" | Two-stage routing to eliminate near-duplicate comparison; abstention output; slash commands as a documented first-class path (Pits 9, 10) |
-| Confirmation lost during an IM outage | The user resubmits, hits "already submitted", and concludes the platform is broken | Delivery status as first-class state; a non-IM way to check the outcome; age-based (not depth-based) queue alerting (Pitfall 8) |
-| App Builder: publish fails on a connector the admin cannot create | The admin's first app is blocked by an org-chart dependency they cannot climb, and they return to the spreadsheet | `internal` mode as the default; in-builder "request connector" flow; a first-run template gallery; time-to-first-publish as a tracked metric (Pitfall 12) |
-| An expired link shows only "expired" | The user has to go back to the IM channel and start over, with no context preserved | FR-L-9's re-request flow should pre-fill the conversation context so the user restates one thing, not everything |
+| **A Telegram button that spins for 30 seconds** | The user believes the bot is broken and taps again — producing duplicate side effects | `answerCallbackQuery` **first**, in a `finally`, before any slow work |
+| **A Telegram button that silently does nothing** (over-long `callback_data`) | The message was never sent; the user sees no button at all and no explanation | Enforce the 64-**byte** limit in one helper; use opaque handles; alert on `BUTTON_DATA_INVALID` |
+| **A bot that cannot see the group** | The user types `/cmd` and nothing happens — no error, no reply, ever | Detect "bot was addressed but produced no output" and post a one-time hint naming the exact **remove-and-re-add** step |
+| **Group membership changes that take effect "in a minute"** | A removed member can still act for up to a minute; a joined member waits up to a minute | Revocation by **epoch bump** (immediate), not by cache expiry. Communicate the propagation window honestly in the admin console. |
+| **A user removed from a group still sees a stale permission** | They attempt a request and get a confusing permission error *after* they believe they were removed | Make the epoch bump visible: "access revoked at HH:MM" in the audit log, and the denial message says "your access to <app> changed" rather than "you are not allowed." |
+| **A notification link that opens the form but cannot return you to the chat** | The user completes the task in a browser and has no path back to the conversation | Resolve the destination from `real_user_id` → conversation reference at send time (Pitfall 10); make the notification message carry the destination explicitly. |
+| **A notification link that lives 90 days in a chat list** | Stale links accumulate in users' chat history; clicking one produces a confusing error | Issue notification links with a **shorter TTL** — the D-21 ceiling is a maximum, so this needs no schema change. Do not edit the frozen claim set. |
+| **A provider timeout that produces "I don't know" instead of a helpful question** | The user gives up | The `clarify` outcome must be **useful**: name what was ambiguous and what the user can try. A clarification is a product surface, not an error path. |
+| **The AI guard answering confidently when it is unsure** | The user acts on a wrong tool and discovers the error downstream — possibly after a real-world consequence | Gate on the **permitted** set and the platform checks, not on model confidence. When in doubt, **ask**. |
+| **A Zalo identity that resolves differently inside and outside Vietnam** | Some users are recognised and others are not, with no visible reason | Detect the empty profile and surface a clear, non-technical message ("we could not verify your account — please contact support"), never a generic error. |
+| **A directory sync that revokes access because a read failed** | A transient Graph 429 wipes everyone's access for a moment | A failed read must **never** replace a good membership set. Quarantine the source and keep the last good state, with an admin alert. |
+| **A Slack workspace on a plan without usergroups** | The admin configures a group that will never sync, with no feedback | Surface `plan_upgrade` / `missing_scope` as an **admin-console configuration error**, not an empty list. |
+| **Duplicate bot replies** | The user sees the bot answer twice and loses trust in the whole system | Dedupe on the message `ts`, not `event_id`; make every side effect idempotent by construction. |
+| **The app builder offering a Telegram-only form** | A form designed for a web renderer presented as a chat form | The chat surface is a **link**, by design. FormIO is a web renderer; do not try to render a form inside a chat message. |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Token consumption:** atomic `GETDEL` exists — verify the `link_consumptions` unique index on `jti` **and** the `submission_id` unique index on submissions exist. `GETDEL` alone is not done.
-- [ ] **`token_consumed_total`:** verify the `result` label has a documented value set (`consumed | replayed | expired | conflict_mongo | already_submitted`) and that all five are emitted. A metric with an undefined label vocabulary detects nothing.
-- [ ] **Rate limiting:** verify failed link validations are split into credential-probing vs. consumption classes, and that the per-IP bucket counts **only** the former.
-- [ ] **Read links:** verify the app-status gate runs *before* the RBAC check, that `archived` is allowed and `purged` returns 410, and that the TTL default is 7 days rather than 90.
-- [ ] **Read-link revocation:** verify there is a `readlink_epoch` key per app **and** per user, and that an admin can bump the per-user epoch in one operation. If there is no cross-app kill switch, this is not done.
-- [ ] **Webhook receiver:** verify `queue.add()` is awaited *before* the response is written, in one place, with no logic in the controller. Then verify the handler cannot respond before the enqueue resolves.
-- [ ] **Webhook metrics:** verify `webhook_received_total{outcome}` and `webhook_enqueued_total` exist and their difference is monitored. Without them "no silent failures" (FR-IM-7) is an unbacked claim.
-- [ ] **Signature verification:** verify it runs exactly once, on the raw body, with a keyset. Then verify a second verification does **not** exist anywhere in the consumer.
-- [ ] **Form-renderer headers:** verify `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and that the origin serves zero third-party resources.
-- [ ] **Log serialisation:** verify a field allowlist is applied *before* serialisation, and that `err`/`context`/`meta` objects are not spread into log lines unfiltered. This cannot be fixed retroactively.
-- [ ] **Tracing:** verify the trace ID is **not** `submission_id`, or that the decision to make it so was documented and the trace backend brought inside the compliance boundary. This is a decision, not a default.
-- [ ] **External routing:** verify `sent_unconfirmed` exists as a distinct state, is committed *before* the outbound request, and that only `not_sent` auto-retries.
-- [ ] **Idempotency:** verify per-connector `supports_idempotency_key` is declared and that App Builder publish warns when it is `false`.
-- [ ] **Response assertions:** verify a 2xx with an unparseable body is treated as a failure, per connector.
-- [ ] **Reconciliation:** verify a scheduled job scans `sent_unconfirmed` and an alert exists for `submission_status{status="partial"}`. The PRD has neither.
-- [ ] **Field mappings:** verify an unresolvable `{{form.field}}` is a routing error, not an empty value, and that a publish-time static check validates mappings against the pinned form schema.
-- [ ] **Version pinning:** verify `form_id` / `form_version` / `app_version` are **claims in the link JWT** and that the renderer is served exactly that version.
-- [ ] **Rollback:** verify rollback bumps `perm_version` and the read-link epochs as part of the transaction.
-- [ ] **Form schemas:** verify old schemas are never deleted while submissions reference them, and that `form_version` is in the submission compound index.
-- [ ] **Cache invalidation:** verify cache keys are version-stamped (or version-checked on read), so correctness does not depend on pub/sub delivery.
-- [ ] **Injected query filter:** verify one builder emits **both** `real_user_id` (unless `view_all`) and `deleted_at: null`, and that exports use the same builder.
-- [ ] **Connectors:** verify the health probe **uses the credential**, that `401/403` alerts separately from `endpoint_unreachable`, and that `app_id` is a label on `connector_call_total`.
-- [ ] **Connector blast radius:** verify the connector → referencing apps → owners view exists and appears in the failure alert text.
-- [ ] **Publish gates:** verify a routing-impact dry run, a description-collision check, a field-reference impact warning, and a live-links-pinned-to-older-versions count — all four, before the first non-developer app is published.
-- [ ] **App Builder adoption:** verify `is_platform_engineer` exists on the user profile (§21's ">10 apps built by non-developers" is uncomputable without it) and that time-to-first-publish is instrumented.
-- [ ] **Queue alerting:** verify an **age** alert exists alongside every depth alert. Depth without age cannot detect a user-visible incident.
-- [ ] **Trace continuity:** verify a trace crosses IM → API → Form → Router → Connector in a staging run. This is the PRD's headline observability requirement and it crosses a browser boundary, which is where it will break.
+Run this before declaring any v2 phase complete. Each line names a concrete artefact in this repo.
+
+- [ ] **Zalo signature verification:** Is there a test using a **captured** Zalo request body (with a recorded expected digest), rather than a body synthesised in the test? — *verify:* the fixture's expected digest is a literal in the test file and was produced by Zalo, not by the implementation.
+- [ ] **Zalo signature:** Does the verifier hash the **raw bytes** from `@RawBody()`, not `JSON.stringify(req.body)`? — *verify:* grep the adapter for `JSON.stringify` in the verification path.
+- [ ] **Zalo signature:** Is the algorithm `sha256(app_id ‖ rawBody ‖ timeStamp ‖ oaSecretKey)` with the **OA** Secret Key, in **one** module? — *verify:* exactly one file in the repo contains `sha256` over a Zalo body.
+- [ ] **Zalo ack:** Does the receiver return 200 in **< 2 s** with no DB read, no KMS decrypt, and no outbound call? — *verify:* a test asserts the receiver's dependency set, or a load test reports the ack-duration p99.
+- [ ] **Zalo ack:** Is there a **per-OA event-freshness** health signal, distinct from process liveness? — *verify:* `/health/ready` (or an equivalent) exposes a last-event-age metric per OA.
+- [ ] **Zalo tokens:** Is the refresh **single-flight** under a Redis lock, with the rotation race tested? — *verify:* a test fires two concurrent refreshes and asserts exactly one exchange occurred.
+- [ ] **Zalo tokens:** Is the refresh token stored in the **KMS-backed credential store**, and is a refresh failure surfaced to an admin (not just logged)? — *verify:* grep for `zalo` in the credential repository's reference keys; check the admin surface.
+- [ ] **Zalo ids:** Do the fixtures use the real 19-digit ids (`8756287263669629130`, `360846524894903967`) and assert round-trip equality? — *verify:* grep the adapter fixtures.
+- [ ] **Zalo ids:** Is there **no** `z.coerce.number()` and no `Number(...)` on any Zalo identifier? — *verify:* grep the adapter for `coerce` and `Number(`.
+- [ ] **Zalo egress:** Does a boot-time self-check detect that the adapter is running outside Vietnam? — *verify:* a typed error `ZALO_PROFILE_EMPTY_OUTSIDE_VN` exists and is raised on an empty profile.
+- [ ] **Zalo group members:** Is the group-management scope checked at onboarding and surfaced as a configuration error? — *verify:* the admin console shows the scope status.
+- [ ] **Zalo group members:** Does pagination use an explicit `count` well above the default 5, and keep pending members separate? — *verify:* grep for `count=` in the Zalo client and for the pending-member endpoint.
+- [ ] **Telegram `callback_data`:** Is there a single builder that enforces the **64-byte** limit and throws on violation? — *verify:* grep for `Buffer.byteLength` in the Telegram adapter; a test asserts a >64-byte payload throws.
+- [ ] **Telegram `callback_data`:** Do payloads contain **only** opaque handles? — *verify:* no payload contains a form id, a permission name, or a user id.
+- [ ] **Telegram:** Is `answerCallbackQuery` called in a `finally`, **before** slow work? — *verify:* read the handler.
+- [ ] **Telegram:** Is `allowed_updates` set explicitly **and asserted at boot** via `getWebhookInfo`? — *verify:* a boot check compares the live value to the constant; a test covers it.
+- [ ] **Telegram:** Is `chat_member` in `allowed_updates`, and is bot-admin status checked in group onboarding? — *verify:* the constant lists it; the onboarding checklist names it.
+- [ ] **Telegram:** Is `update_id` used as a **dedupe key only**, never as a monotonic cursor? — *verify:* grep for `update_id` — it appears in the dedupe path, not in an offset comparison.
+- [ ] **Telegram commands:** Does every command handler call `PermissionCheckService.check` with an explicit `perm_version`? — *verify:* grep the command handlers.
+- [ ] **Slack:** Is the webhook controller still a placeholder? If so, the phase is **not** done — implement raw-body capture, HMAC verification, envelope construction, and enqueue. — *verify:* `apps/api/src/adapters/slack/slack-webhook.controller.ts` no longer returns `{ ok: true }`.
+- [ ] **Slack:** Does the receiver handle the **duplicate-without-retry-header** case? — *verify:* a test replays the same `event_id` with a different `ts` and asserts one side effect.
+- [ ] **Dedupe:** Is there a **unique index** on `(platform, native_event_id)` (and a second on the message `ts` for Slack)? — *verify:* the Mongo index exists in the repository's `createIndexes`.
+- [ ] **Dedupe:** Does `InboundEventSchema` carry `native_event_id`, and is the frozen key-set assertion extended to it? — *verify:* the claim/envelope key-set test includes the new field.
+- [ ] **At-least-once:** Is every consumer's side effect idempotent by construction (upsert / versioned transition), not by a "have I seen this?" check? — *verify:* re-running the consumer twice produces the same state.
+- [ ] **Two-way sync:** Is the conversation-reference key **platform-prefixed** and does it encode a scope kind (`direct` / `group` / `thread`)? — *verify:* `ConversationReferenceRepository.key` and a migration for the v1 records.
+- [ ] **Two-way sync:** Is the platform-specific continuation payload a **validated discriminated union**, not `unknown`? — *verify:* the `reference` field has a Zod schema per platform.
+- [ ] **Two-way sync:** Does the notification delivery path resolve the destination from `real_user_id` → conversation reference? — *verify:* the notification assembler resolves a destination before enqueue.
+- [ ] **Notification links:** Is the notification link's TTL **shorter** than the 90-day ceiling, issued by the issuer, with **no** change to `ReadLinkClaimsSchema`? — *verify:* `git diff` on `read-link-claims.ts` is empty for the notification feature.
+- [ ] **Frozen contracts:** Are `READ_LINK_CLAIMS_VERSION` and the JEV `spec_version` **unchanged** by v2 feature work? — *verify:* `git diff` shows no change to either constant.
+- [ ] **RBAC:** Does `RbacService.hasPermission` still return `true` unconditionally? If so, **group RBAC is not implemented**, regardless of what the phase reports. — *verify:* read the method.
+- [ ] **RBAC:** Is `perm_version` a **required** parameter (no `= 0` default)? — *verify:* the signature has no default.
+- [ ] **RBAC:** Is the RBAC cache **Redis-backed**, not an in-process `Map`? — *verify:* `RbacCacheService` has no `Map`.
+- [ ] **RBAC:** Does a group revocation take effect **immediately** (epoch bump) rather than by TTL expiry? — *verify:* a test revokes and asserts the very next check is denied.
+- [ ] **Directory sync:** Are Graph `syncStateNotFound` and `410 + empty $deltatoken` handled as **one terminal state** (discard cursor, full resync), not retried? — *verify:* the error handler has a distinct branch, and a test drives both.
+- [ ] **Directory sync:** Does a failed read **never** replace a good membership set? — *verify:* a test simulates a 429 mid-read and asserts the prior set survives.
+- [ ] **Directory sync:** Is the Slack path **read-only by construction** (no `writeMembers` on the Slack source)? — *verify:* the Slack source has no write method; the interface's `writeMembers` is `never`.
+- [ ] **AI guard:** Can the model **widen** the permitted tool set? If yes, this is a Critical defect. — *verify:* the permitted set is computed before the call and only intersected afterwards.
+- [ ] **AI guard:** Is the tool invocation path the **same** permission check with the same epoch, evaluated at execution time? — *verify:* the executor calls `PermissionCheckService.check`, not a model-supplied permission.
+- [ ] **AI guard:** Is the tool count **bounded**, with the bound enforced as a precondition rather than a truncation? — *verify:* a request exceeding the cap is rejected with a typed error.
+- [ ] **AI guard:** Does every provider fallback return `clarify` on uncertainty and pass the same gate? — *verify:* the fallback's code path is the same gate.
+- [ ] **AI guard:** Is `temperature = 0` set, and is the **audit** story not resting on determinism? — *verify:* the provider config sets it; the audit record captures the proposal and the gate outcome.
+- [ ] **Allowlists:** Were `LOG_FIELD_ALLOWLIST` / `SPAN_ATTRIBUTE_ALLOWLIST` widened **with a written justification in the same commit**, and are no identifiers smuggled through `reason`? — *verify:* the diff shows the justification; grep for identifiers in `reason` values.
+- [ ] **Boundaries:** Is every new package declared in `DOMAIN_ELEMENT_TYPES` **and** `ALLOWED_EDGES` in the same commit? — *verify:* the lint gate passes with `default: 'disallow'` still in place.
+- [ ] **Boundaries:** Are `checkAllOrigins: true`, `default: 'disallow'`, and `partialMatch: false` all still in place? — *verify:* `git diff` on `boundaries.config.mjs` shows no removal.
+- [ ] **Boundaries:** Do the new adapters live under `packages/domain/src/adapters/<platform>/{inbound,outbound}/` so R1 actually applies? — *verify:* the path matches the category pattern.
+- [ ] **Credentials:** Are all per-tenant IM secrets in the KMS-backed store, with no `process.env` secret in an adapter? — *verify:* grep the adapters for `process.env`.
+- [ ] **Observability:** Is trace context propagated across **every** new hop (IM → queue → worker → connector → IM), with no gap at the queue boundary? — *verify:* an end-to-end trace from a received event to a delivered message is one trace.
 
 ---
 
 ## Recovery Strategies
 
+What to do when a pitfall has already fired.
+
 | Pitfall | Recovery Cost | Recovery Steps |
 |---|---|---|
-| Duplicate submissions already in the external system | HIGH | Reconcile by `submission_id` header / natural key against the external record; deduplicate in the downstream by hand; identify which submissions were affected from `token_consumed_total{result="replayed"}` + the `link_consumptions` age distribution; add the backstop that was missing (Pitfall 1) before reopening |
-| Confidently mis-routed decisions discovered in production | HIGH | Switch to slash-command routing (FR-J-11) as the advertised path; disable the failing app's `intent` trigger (keep the slash command); rebuild the labelled set from user corrections and gate the trigger on per-app accuracy |
-| An app has silently stolen routing share | MEDIUM | Remove the new app's trigger or set it to `deprecated` (FR-F-5 — a trigger-only rollback that does not touch data); restore the original app's trigger; notify its owner. Then add the publish gate |
-| Connector outage taking N apps down | MEDIUM | Identify referencing apps from the connector reference index; notify owners with the blast-radius message; if credential, rotate via the keyset overlap; switch affected apps to `internal` mode temporarily (AD-4's value) so internal writes keep succeeding |
-| `sent_unconfirmed` backlog discovered | MEDIUM | Do **not** bulk-resend. Reconcile oldest-first with read-only lookups; for connectors without `supports_lookup_by_key`, escalate to manual review with the submission payload and the timestamp |
-| Stale read links served after a purge or revocation | HIGH (already leaked) | Bump the read-link epoch for the app (and the per-user epoch for affected users) — this is what the epoch is for; treat previously served data as disclosed and follow the incident-response workflow (§15.4 notes it is out of scope for v1, **which is why the preventive control matters more here**) |
-| PII found in logs | **HIGHEST — unrecoverable** | Treat as a disclosure. You cannot delete what a denylist missed from a 1-year cold archive. The only real control is the Phase 1 allowlist; after that, the recovery is: rotate nothing, purge what is reachable, document, and fix the allowlist |
-| A leaked signing secret | MEDIUM | Rotate with a keyset overlap (≥1 h); requests signed with the old secret are rejected only after the overlap; expect a burst of platform retries during the window and pre-scale the receiver |
-| An admin-owned app with a deactivated owner | MEDIUM | Platform admin initiates reassignment (FR-R-5 requires exactly one owner, so this must be a deliberate operation with an audit entry); in the meantime the app keeps serving its users with a dead owner — this is why co-ownership or a fast reassignment path matters |
-| `partial` submissions never reconciled | MEDIUM-HIGH | Stand up the reconciliation job, run it oldest-first, and report to the affected department. Then fix the alerting so it is caught within minutes next time. If `external_ref` cannot be established, **the internal record is authoritative** and the external side must be corrected manually — say so explicitly in the communication |
+| **Zalo signature rejected in production** | LOW–MEDIUM | 1. Compare the computed digest against the **captured** request fixture. 2. Check the raw bytes are byte-identical (add a temporary length + hash log of the raw body — never the body itself). 3. Confirm the **OA** Secret Key. 4. If the formula is right but digests still differ, compare against Zalo's own sample from the docs — the field **order** may differ from your reading. 5. Roll back the receiver to ack-without-verify **only** as a measured, time-boxed stopgap, and fix forward. |
+| **Zalo webhook disabled by Zalo** | **MEDIUM–HIGH** (needs a human) | 1. Confirm via event-freshness probe, not via logs. 2. Re-enable the webhook **manually in the Zalo OA portal** — there is no API. 3. Check whether the disable was preceded by a burst of non-200s or an ack-latency spike. 4. Backfill from Zalo's message APIs if the gap matters. 5. Fix the ack path **before** re-enabling, or it will be disabled again. |
+| **Zalo refresh-token race** | MEDIUM | 1. Stop all refreshers (single-flight lock + a kill switch). 2. Read the credential store; if **two** refresh tokens exist, keep the **newest** (highest issue time) and discard the other. 3. Force one refresh, verify the access token works, then re-enable. 4. If the newest is unusable, re-run the OA authorisation flow (admin in the portal). |
+| **Zalo identity resolution empty (non-VN egress)** | MEDIUM | 1. Verify egress IP (must be VN). 2. Register the IP in the Zalo portal if production. 3. Re-run the affected user's profile fetch. 4. If identities were merged during the outage, audit `IdentityMapping` for affected `chat_user_id`s and re-resolve — **assume user-identity contamination until proven otherwise**. |
+| **Slack usergroups out of sync / plan error** | LOW | 1. Read the API error: `plan_upgrade` → the workspace plan is the blocker (raise to the admin). 2. `missing_scope` → add `usergroups:read` and reinstall the app. 3. Otherwise run a full `usergroups.list?include_users=true` reconciliation. 4. Confirm **read-only** — never write back. |
+| **Graph delta token expired / 410** | LOW (expensive, not complex) | 1. Discard the cursor. 2. Run a **full resync** into a shadow set. 3. Swap atomically. 4. Resume delta from the new `deltaLink`. 5. **Do not** retry the expired token. |
+| **Graph `members@delta` stale membership** | MEDIUM | Detect by reconciling a full member read for security-relevant groups on a schedule; remove memberships that the full read does not confirm. Treat `members@delta` as an *accelerator*, not the source of truth. |
+| **Telegram membership events never arriving** | LOW | 1. `getWebhookInfo` → confirm `allowed_updates` contains `chat_member`. 2. Confirm the bot is an **administrator** of the group. 3. If `allowed_updates` was changed recently, run a **full group resync** — the change is not retroactive. 4. Re-add the bot if privacy mode needs changing. |
+| **Telegram `BUTTON_DATA_INVALID`** | LOW | 1. Find the offending payload via the error log (never log the payload if it contains user data). 2. Replace it with an opaque handle. 3. Add the 64-byte guard so it cannot recur. |
+| **Duplicate bot replies (Slack)** | MEDIUM | 1. Identify the class: retry (`x-slack-retry-num` present) vs duplicate send (absent). 2. Add the `ts`-based unique index. 3. Replay the captured duplicates in a test. 4. Audit what the duplicates *did* — if the side effect was a submission, duplicates may have created duplicate records. |
+| **Duplicate side effects already caused** | **HIGH** | 1. Identify the affected records. 2. Decide per side effect class: submissions (dedupe by natural key / human review), outbound messages (acceptable), permission grants (audit). 3. Fix the dedupe **first**, then clean up — cleaning up first just re-accumulates. |
+| **Notification links 400 because the claim set changed** | **HIGH** | 1. Revert the claim-set change **immediately** — the blast radius is every outstanding link, not just new ones. 2. Re-issue only the affected links if the TTL still allows. 3. If the change is genuinely required, it is a **new claim-set version**: ship it as a *new* action or a new `READ_LINK_CLAIMS_VERSION`, accept that old links break, and communicate it. **Never** mutate the frozen set in place. |
+| **Group revocation did not take effect** | MEDIUM | 1. Determine whether the epoch was bumped (audit log) or the cache merely expired. 2. If expired: the epoch is not real — fix it before shipping more group roles. 3. Purge the affected users' cache entries explicitly as a stopgap. 4. Verify across **all** pods, not one. |
+| **Stale permission after removal (Graph)** | MEDIUM | 1. Run a targeted full read for the affected group. 2. Reconcile membership. 3. Confirm the delta blind spot is the cause and schedule periodic full reconciliation. 4. Audit the window — a security incident is a reportable event if the exposure crossed a policy threshold. |
+| **AI guard routed a forbidden tool** | **CRITICAL — treat as a security incident** | 1. **Disable the open-ended path** (feature flag) and fall back to the closed v1 router. 2. Preserve the prompt, the proposal, the permitted set, and the gate outcome — these are the audit record. 3. Determine whether the model widened the set or the gate was bypassed. 4. Fix the **gate**, not the prompt. 5. Add the failing case as a regression test before re-enabling. |
+| **AI guard stuck in a tool-call loop** | MEDIUM | 1. Confirm the absolute deadline fired (it should have). 2. If it did not, the deadline was not enforced — fix that first. 3. Add a round cap. 4. Review the daily budget consumption. |
+| **Boundary lint failure after adding a package** | LOW | 1. Read the error — it names the disallowed edge. 2. Decide: does the edge belong? If yes, add it to `ALLOWED_EDGES` **in the same commit**. If no, move the import. 3. If the edge is legitimate but crosses a *category* boundary (e.g. an inbound adapter imported by the worker), the placement is wrong — fix the placement, **not** the rule. 4. **Never** relax `default: 'disallow'` or remove `checkAllOrigins`. |
+| **PII leaked into logs/spans** | **MEDIUM–HIGH** | 1. Identify the field and the commit that introduced it. 2. Remove it from the allowlist if it was added; if it was smuggled through `reason`, fix that. 3. **Purge the affected sink** if the retention window allows (hot logs) — cold logs and **traces** may not be purgeable, in which case escalate to the compliance path (D-18's reasoning). 4. Record it in the erasure register. |
 
 ---
 
 ## Pitfall-to-Phase Mapping
 
-Phase names are PRD §20's. **"Design in"** means the decision must be taken in that phase even if the triggering feature ships later — retrofitting a JWT claim or a log allowlist after links are in circulation or after logs are written is not possible.
+> **Proposed v2 phase structure.** These phase numbers are a **proposal** for the roadmapper to reconcile against `FEATURES.md` / `ARCHITECTURE.md`. The **ordering constraints** below are the load-bearing part.
+
+**Proposed phases**
+
+| Phase | Name | Purpose |
+|---|---|---|
+| **10** | v2 Foundations — Contract, Identity & Observability Extensions | Extend the frozen/closed surfaces **before** any adapter depends on them: `native_event_id` on the inbound envelope, the platform-neutral conversation-reference model, the real `perm_version` epoch and the Redis RBAC cache, the boundary-graph extension, the D-16/D-18 widening with justifications, the Slack placeholder replacement, and the notification-TTL policy. |
+| **11** | Zalo OA Adapter | Inbound receiver (raw-body digest, 2 s ack), token lifecycle (single-flight rotation, KMS storage), outbound send, big-int-safe ids, VN egress precondition, group-member enumeration with explicit paging. |
+| **12** | Telegram Adapter | Inbound receiver (`secret_token`, `allowed_updates` asserted at boot), command surface with mandatory re-validation, inline-keyboard handle discipline, `answerCallbackQuery`, admin-status onboarding. |
+| **13** | Two-Way Synchronisation & Delivery Semantics | At-least-once dedupe (unique indexes), idempotent consumers, conversation/thread identity binding, outbound notification delivery resolved from `real_user_id`, notification-link TTL. |
+| **14** | Directory & Group RBAC Sync | Slack usergroups (read-only mirror), Graph delta with terminal-state handling and throttling, Zalo group members with the permission scope, group-aware epoch fan-out, permission-first group resolution. |
+| **15** | Permission-First Open-Ended AI Guard | Model-proposes / platform-disposes, the closed permitted set, execution-time permission re-check, bounded tool catalogue, monotonic fallback chain, cost/timeout budgets, `clarify` as the safe default. |
+| **16** | Security, Compliance & Operations | Per-tenant credential operations, event-freshness probes and the re-enrolment runbook, egress/region matrix, allowlist governance, erasure/audit coverage, load verification. |
+
+**Mapping**
 
 | Pitfall | Prevention Phase | Verification |
 |---|---|---|
-| 1. `GETDEL` not durable | **Phase 1** (design + build) | `link_consumptions` unique index on `jti` exists; `submission_id` unique index exists; an integration test kills Redis mid-submit and asserts exactly one submission; `token_consumed_total{result}` emits all five values |
-| 2. Edit-link double submit | **Phase 2** (design in Phase 1) | Concurrent-submit test with N identical requests in parallel asserts one document and N identical 200 responses; §17.2's scenario extended to assert the response *shape*, not just the count |
-| 3. NFR-SEC-10 vs legitimate retry | **Phase 1** | A test simulates 5 benign failures (expired/consumed/perm_version) from one IP and asserts **no** block; 5 signature failures **do** block; an alert exists for `block>0 ∧ signature_invalid≈0` |
-| 4. Read-link staleness + no revocation | **Phase 4** feature; **Phase 1** design | Link JWT carries `form_version`/`app_version`/epoch; an app-purged link returns 410; a per-user epoch bump revokes every app's links in one write; default TTL is 7 days; `read_link_denied_total{reason}` is emitted for all seven reasons |
-| 5. Ack-then-enqueue gap | **Phase 1** | `queue.add()` is awaited before the response, asserted by a test that kills the enqueue and asserts a non-2xx; `received − enqueued` is monitored with an alert |
-| 6. Signature verification drift | **Phase 1** | Raw-body verification test with a known fixture; **no** second verification exists in the consumer (asserted by a code search + a test); keyset with an overlap ≥1 h; hourly synthetic probe returns 2xx |
-| 7. Duplicate / out-of-order IM events | **Phase 1** | `native_event_id` is mandatory in `InboundEvent` (schema test); dedupe at enqueue with a 1 h TTL; unique index on `(im, chat_user_id)`; a duplicate-suppressed event still returns 2xx; out-of-order turns are dropped |
-| 8. IM outage / no silent failures | **Phase 1** (metrics, model) | `queue_oldest_item_age_seconds` exists with an alert; delivery status is on the submission model; confirmation messages follow a 3-attempt backoff policy; a staging test kills the IM connection and asserts a non-IM path to the outcome |
-| 9. JEV scale vs latency | **Phase 1** wire contract; **Phase 4** provider | The §11.1 contract has a two-stage shape; a load test with 200 apps / 800 tools and a 150-tool filtered set meets p95 <500 ms; `jev_timeout_total` and `jev_provider_used_total` are monitored and the `rule-based` share is ~0 |
-| 10. Wrong vs ambiguous | **Phase 4**; contract in **Phase 1** | The wire spec has `choice.verified: boolean \| null` and `state.force_clarification`; §17.3's conformance suite tests abstention; a labelled set exists and per-app accuracy is reported with an interval; `jev_feedback_total{label}` is populated in production |
-| 11. Publish steals routing traffic | **Phase 3** | Publishing runs a routing dry run against the labelled set and blocks on a >5-point drop for any existing app; description-collision check at publish; `routing_share{app_id}` is a dashboard panel with week-over-week delta |
-| 12. App Builder adoption | **Phase 3**; `is_platform_engineer` in **Phase 1** | A first app is publishable in ≤30 min with zero platform-admin involvement; a connector-request flow exists; reachability checks run on publish and on role change; connector alerts fan out to referencing app owners; draft-age and time-to-publish alerts exist |
-| 13. Hybrid routing window | **Phase 2** (design in Phase 1) | `sent_unconfirmed` is committed before the outbound call (asserted by a crash test); only `not_sent` auto-retries; a reconciliation job exists and is exercised; per-connector `supports_idempotency_key` is declared and surfaced at publish; response assertions reject 2xx-with-garbage |
-| 14. Version drift | **Phase 2 / Phase 3**; link-claim pin in **Phase 1** | `form_id`/`form_version`/`app_version` are link claims; the renderer is served the pinned version; rollback bumps `perm_version` and the epochs; field-reference impact warnings exist for rename/delete; old schemas are never collected while referenced |
-| 15. Compliance vs observability | **Phase 1** (allowlist, headers); **Phase 2** (trace ID, audit) | An allowlist is applied in the serialisation path, verified by a CI test that fails on any disallowed field in a log line; `Referrer-Policy: no-referrer` and `Cache-Control: no-store` are asserted; the trace ID is not `submission_id`, or the exclusion is documented; the erasure scope in §15.4 is rewritten to the deliverable promise |
-| 16. Connector blast radius | **Phase 2** (labels and schema in Phase 1) | `connector_call_total` carries `app_id`; the health probe uses the credential; `credential_rejected` alerts separately from `endpoint_unreachable`; `connector_ref` changes are a separate audited mutation; the blast-radius view exists and appears in alerts |
-| 17. Pub/sub invalidation loss | **Phase 1** | Cache keys are version-stamped or version-checked on read; a test that drops a pub/sub message asserts the next read still sees fresh state; `invalidation_missed_total` is monitored |
-| 18. Soft-delete + DSL filter leaks | **Phase 1** (builder); **Phase 3** (export) | One builder emits both `real_user_id` (unless `view_all`) and `deleted_at: null`; every DSL construct has a test asserting the injected filter survives; exports use the same builder with an audited `include_deleted` |
-| 19. Error-shaped duplicates; IDs in chat | **Phase 1** | A duplicate same-user submit returns 200 with the original confirmation; a test asserts outbound confirmation payloads contain no `submission_id`; the IM-transcript boundary is documented in the compliance design |
+| **P1** Zalo plain-hash signature, raw body, OA-vs-App key | **11** (verifier + frozen test vector); raw-body plumbing in **10** | A test uses a **captured** request with a literal expected digest; exactly one module hashes a Zalo body |
+| **P2** Zalo 2 s ack, 5-stage retry, silent webhook death | **11** (enqueue-only receiver); **16** (freshness probe + runbook) | Ack p99 < 1.2 s in load test; per-OA last-event-age alert exists; the runbook has the portal re-enable steps |
+| **P3** VN egress rule vs. data residency | **11** (typed error + self-check); **16** (egress/region matrix) | A boot check fails outside VN; the residency matrix states Zalo is VN-egress-only |
+| **P4** 25 h token / 90 d rotating refresh | **11** | A concurrency test shows exactly one refresh exchange; a refresh failure raises an admin alert |
+| **P5** 19-digit id corruption | **11** | Fixtures use the real 19-digit ids and assert round-trip equality; no `coerce.number()` in the adapter |
+| **P6** Telegram `callback_data` 64 bytes + `answerCallbackQuery` | **12** | A builder throws over 64 bytes; a test asserts `answerCallbackQuery` is called before slow work |
+| **P7** Telegram command carries no scope; privacy mode | **12** (re-validation + onboarding copy); **14** (RBAC) | Every command handler calls `PermissionCheckService.check` with an explicit epoch; the onboarding copy names the remove-and-re-add step |
+| **P8** `allowed_updates` / non-monotonic `update_id` | **12** | Boot asserts `getWebhookInfo.allowed_updates`; `update_id` appears only in the dedupe path |
+| **P9** At-least-once delivery; Slack's dedupe key | **10** (`native_event_id`); **13** (unique indexes) | Unique index on `(platform, native_event_id)` **and** on the Slack message `ts`; a replay test produces one side effect |
+| **P10** Conversation/thread identity not expressible | **10** (model + migration); **13** (delivery) | The reference key is platform-prefixed with a scope kind; the continuation payload is a validated union; the notification path resolves a destination |
+| **P11** RBAC revocation fan-out; stub authoriser; in-process cache | **10** (real epoch + Redis cache); **14** (group fan-out) | `hasPermission` is no longer a stub; `perm_version` has no default; a revocation test denies on the **next** check, across all pods |
+| **P12** Three directory failure vocabularies; Zalo scope/page size | **14** | `syncStateNotFound` and `410+empty-$deltatoken` hit one resync branch; a failed read never replaces a good set; Zalo pages with an explicit `count` |
+| **P13** AI guard must never invoke a tool | **15** | A regression test proves the model cannot widen the permitted set; the executor re-checks permission at execution; every fallback returns `clarify` |
+| **P14** Frozen D-21 / D-23 / D-16 / D-18 collisions | **10** | `git diff` shows no change to the frozen constants; the allowlist widening carries its written justification in the same commit |
+| **P15** Boundary lint; mis-categorised adapters | **10** (graph extension); **11/12** (placement) | The lint gate passes with `default: 'disallow'` and `checkAllOrigins: true` intact; new adapters match the `inbound`/`outbound` category patterns |
 
-### Ordering observations for the roadmapper
+**Ordering constraints (the parts that are not negotiable)**
 
-Three of these are Phase 1 design commitments whose features ship later. They are listed here explicitly because they are the cases where the PRD's sequencing will bite:
-
-1. **Pitfall 4 (read-link epoch)** — read links ship in Phase 4. Adding a JWT claim in Phase 4 breaks every outstanding link on deploy. The claim shape is fixed in Phase 1.
-2. **Pitfall 9/10 (tiered routing, abstention)** — JEV ships in Phase 4, but the §11.1 wire contract is fixed in Phase 1 and §17.3's conformance suite will test against whatever contract exists by the time the suite runs.
-3. **Pitfall 15 (log allowlist, trace ID)** — the allowlist is a serialisation-path change and the trace ID is an OTel wiring decision. Both are effectively irreversible once production logs exist. There is no Phase 2 version of this pitfall.
-
-And one scope observation the PRD does not state: **FR-D-12's write-once guarantee is unimplementable against most enterprise downstreams.** This is not a pitfall to prevent so much as a promise to amend. The honest amendment is: *the platform guarantees a single *send* per submission; write-once against the downstream additionally requires either downstream idempotency-key support or a natural-key pre-check, and the connector's capability is declared per instance and surfaced to the App Builder at publish time.* That is achievable and it is what the code will actually do.
+1. **Phase 10 must precede Phases 11, 12, 13 and 14.** It carries the frozen-contract decisions (P14), the boundary-graph extension (P15), the `native_event_id` contract change (P9), the conversation-reference model (P10), and the real RBAC epoch (P11). Every one of those is a dependency of an adapter, and changing them later invalidates links and adapters already shipped.
+2. **Phase 11 and Phase 12 may run in parallel** once Phase 10 lands — they touch different adapters. They share the receiver contract, the dedupe machinery, and the credential store, so Phase 10 must have frozen those.
+3. **Phase 13 must land before Phase 14's revocation semantics are meaningful** — the two-way delivery path is what makes group-scoped notifications possible, and the notification path is where the conversation-reference model is exercised.
+4. **Phase 15 must land after Phase 14** — the open-ended guard's permitted set is the union of app-scoped and group-scoped permissions. Building it before the group axis exists means building it against the stub authoriser.
+5. **Phase 16 is not optional cleanup.** The Zalo re-enrolment runbook (P2), the egress/region matrix (P3), and the credential operations (P4) are the difference between a recoverable incident and a 90-day outage.
 
 ---
 
 ## Sources
 
-**Primary sources — read directly during this research**
+**First-party documentation (HIGH confidence; cross-checked against a second source where noted)**
 
-- `redis.io` — *Replication* docs: asynchronous replication by default; `WAIT` *"does not turn a set of Redis instances into a CP system with strong consistency: acknowledged writes can still be lost during a failover, depending on the exact configuration of the Redis persistence."* Basis for Pitfall 1. (fetched 2026-10-01)
-- `docs.slack.dev` — *Verifying requests from Slack*: v0 signature over `v0:{timestamp}:{raw_body}` using the **raw** body before deserialization; *"we verify that the timestamp does not differ from local time by more than five minutes… It could be a replay attack, so let's ignore it."* Basis for Pitfall 6. (fetched 2026-10-01)
-- `docs.bullmq.io` — *Stalled*: a job whose worker stops renewing its lock is moved from active back to waiting, emitting a `stalled` event; `maxStalledCount` defaults to 1; default stalled check 30 s. *Idempotent jobs* pattern: *"it should not make the final state of the system different if a job successfully completes on its first attempt, or if it fails initially and succeeds when retried."* Basis for Pitfalls 7 and 13. (fetched 2026-10-01)
+- Zalo for Developers — Official Account webhook signature, OA Access Token V4 (PKCE), token lifetimes and rotation, IP whitelist / VN-region policy: `developers.zalo.me`, `docs.zaloplatforms.com`, `oauth.zaloapp.com/v4/oa/access_token`
+- Zalo for Developers — Group management: `GET https://openapi.zalo.me/v3.0/oa/group/listmember` (`group_id`, `offset`, `count` default 5), `listpendingmember`, `getgroup`, and the "quản lý thông tin nhóm" permission requirement
+- Zalo for Developers — GMF group management guide (`oa.zalo.me/home/documents/.../quan-ly-nhom-gmf`)
+- Telegram Bot API — `callback_data` limits, `answerCallbackQuery`, privacy mode, `allowed_updates`, `chat_member`, `update_id` semantics, `setWebhook` `secret_token`, `getUpdates` retention and mutual exclusion
+- Slack Events API — 3-second ack, retry schedule and `x-slack-retry-num` / `x-slack-retry-reason`, `x-slack-no-retry`, the 95%-failure disable threshold, Delayed Events
+- Slack API — `usergroups.list` / `usergroups.write` / `usergroups.users.update`, scopes and plan requirements, `subteam_*` events
+- Microsoft Graph — delta query behaviour, 7-day delta token, `syncStateNotFound`, `410 Gone` with an empty `$deltatoken`, `members@delta` limitations, `$select` suppression, throttling limits and `Retry-After`, group pagination
+- Slack / Microsoft Learn — Bot Framework retirement (support ended 2025-12-31) and the Agents SDK successor, which the v2 adapters inherit from v1
 
-**Authoritative project sources**
+**Community / issue-tracker evidence (MEDIUM confidence; used to corroborate the docs, not to replace them)**
 
-- `PRD.md` v2.0 (2026-09-30) — §7.3 AD-1…AD-12; §7.4 stack table; §8.1–§8.12 FRs; §9 NFR-S/P/SEC/O/A/U; §10.3 App Definition, §10.4 Submission, §10.5 Connector Definition, §10.6 Audit Log Entry; §11.1–§11.4 JEV wire spec, provider interface, fallback chain config; §12.1–§12.5 user flows; §13.1–§13.4 API principles; §14.1–§14.2 App Builder pages and UX requirements; §15.1–§15.4 security and compliance; §16.1–§16.4 tracing, metrics, alert rules, runbook; §17.1–§17.3 test pyramid, scenarios, JEV conformance; §18 deployment; §19.3 connector onboarding; §20 MVP roadmap; §21 KPIs.
-- `.planning/PROJECT.md` — Core Value, Constraints, Key Decisions (AD-5 shared connectors, AD-8 atomic token consumption, AD-11 stateless read links, the PII allowlist amendment, the erasure-conflict amendment, the 26–34 week estimate).
+- `slackapi/node-slack-sdk` issue #2141 — the same Slack message delivered multiple times with **different** `event_id`s and no retry header (the basis for Pitfall 9's second dedupe key)
+- `slackapi/bolt-python` issues #678 / #693 — `x-slack-retry-num` in practice, and the "fast-ack + lazy" pattern
+- `slackapi/bolt-js` `src/receivers/HTTPModuleFunctions.ts` — the reference implementation of raw-body buffering, signature verification, and `ssl_check` handling
+- `rune-kit/rune` and Vietnamese-language Zalo guides — **used as an example of the error to avoid** (they misstate the digest as HMAC-SHA256)
+- `Duonghn257/zalo_mcp` — corroborates the Zalo OA OAuth v4 PKCE exchange shape and the GMF endpoint set
 
-**Domain comparison references (conceptual, not measured on this system)**
+**This codebase (HIGH confidence — read directly at commit `215f96e6`)**
 
-- Low-code / internal-tool platforms with per-app roles and environments (Retool, Zoho Creator, ServiceNow's request catalogue, Microsoft Copilot Studio's approval-request patterns) — used for Pitfall 12's publish-gate and reachability-check pattern. **These are structural analogies, not measured claims; App Builder adoption should be re-researched against comparable deployments before Phase 3 is planned.**
-- Mature chatops platforms (PagerDuty, Shopify) — used for Pitfall 8's distinction between webhook-push and polling transports, which underlies the critique of `active_im_connections`.
-- Enterprise form gateways (Jotform, Formstack, DocuSign) — used for Pitfall 19's draft-autosave expectation.
+- `packages/contract/src/events/inbound-event.ts` — `.strict()` envelope; `ImPlatformSchema` already lists `zalo` and `telegram`; `event_id` documented as "unique per delivery attempt chain"; **no `native_event_id`**
+- `packages/contract/src/events/outbound-message.ts` — `.strict()`; **no thread / conversation / tenant field**
+- `packages/contract/src/links/read-link-claims.ts` — D-21 frozen claim set; `notification` → `target_id` absent; `MAX_READ_LINK_TTL_SECONDS` = 90 days; `READ_LINK_CLAIMS_VERSION = '1.0'`
+- `packages/contract/src/jev/v1/jev-request.ts` — D-23 frozen wire contract; `tools: ToolDescriptor[]`; `state.force_clarification`; `spec_version: '1.0'`
+- `packages/platform/src/logging/log-allowlist.ts` — D-16 `LOG_FIELD_ALLOWLIST`; no `chat_user_id` / `group_id` / `chat_id` / `telegram_user_id` / `zalo_user_id`
+- `packages/platform/src/otel/span-attribute-allowlist.ts` — D-18 `SPAN_ATTRIBUTE_ALLOWLIST` and `FORBIDDEN_SPAN_ATTRIBUTES` (`submission_id`, `actor_ref`, `user_email`, `email`)
+- `packages/domain/src/authz/rbac.service.ts` — `hasPermission` returns `true` unconditionally; `getRoles` → `['employee']`
+- `packages/domain/src/authz/rbac-cache.service.ts` — in-process `Map`, key `ak:rbac:${app_id}:${real_user_id}:${perm_version}`, 60 s TTL
+- `packages/domain/src/authz/permission-check.service.ts` — `perm_version = 0` default
+- `packages/domain/src/identity/identity-mapping.repository.ts` — in-memory array; upsert keyed on `(platform, chat_user_id)`; `chat_user_id: string`
+- `packages/domain/src/notifications/data-access/conversation-reference.repository.ts` — Teams-shaped record; key `${channelId}::${chatUserId}`; `reference: unknown`
+- `packages/domain/src/decision/routing-orchestrator.ts` — the v1 gate: `verified === true`, finite confidence, `confidence >= gate`, no permitted alternative, `canOpenNow`, absolute `deadlineEpochMs`; per-attempt budget `min(remaining, providerCap)`
+- `apps/api/src/webhooks/external/webhook-hmac.service.ts` — raw-body HMAC-SHA256 with `timingSafeEqual` and a fast-fail envelope check
+- `apps/api/src/webhooks/external/nonce-store.service.ts` — Redis `SET NX EX` replay guard, ±300 s skew window
+- `apps/api/src/adapters/slack/slack-webhook.controller.ts` — **still a placeholder** returning `{ ok: true }`
+- `packages/domain/src/connectors/data-access/connector-credentials.repository.ts` — the KMS-backed AES-256-GCM credential envelope (the R2-owning path for per-tenant IM secrets)
+- `tooling/boundaries.config.mjs` — `DOMAIN_ELEMENT_TYPES` (15, `domain` root deliberately not one), `APP_ELEMENT_TYPES`, `ALLOWED_EDGES`, `BOUNDARY_FILE_CATEGORIES`, `default: 'disallow'`, `checkAllOrigins: true`, `partialMatch: false`, last-match-wins, and R1/R2/R3
 
-**Explicitly not verified during this pass**
+**Gaps and unverified items (LOW confidence — treat as open)**
 
-- Zalo OA callback signature support. The Zalo developers site returned only a client-rendered shell. **This must be checked during the Phase 4 adapter spike** — if the OA callback carries no signature, the webhook endpoint is unauthenticated by design and the security model (source-IP allowlist, unguessable callback path, replay window) changes materially.
-- Microsoft Teams activity-delivery retry semantics beyond the retry-on-429/502 behaviour stated in the prompt. The relevant Microsoft Learn pages 404'd during this pass; verify against current Bot Framework / Microsoft 365 Agents SDK docs before the Phase 4 adapter.
-- Quantified accuracy degradation of LLM tool selection as a function of candidate-tool count. The relevant benchmarks were not retrievable during this pass. **Pitfalls 9 and 10 rest on mechanism (catalog size, near-duplicate descriptions, uncalibrated confidence, a 50-item conformance set that cannot cover a 600-tool catalogue) rather than on measurement. A phase-specific research pass on tool-selection accuracy at 100–800 candidates should precede Phase 4 planning.**
-- Real-world adoption-rate benchmarks for self-service form builders by departmental (non-developer) admins. Pitfall 12's Wall 2 threshold (~30 minutes to first value) is a judgement from comparable-tool adoption behaviour, not a measured figure for this domain.
-
-**Confidence by area**
-
-| Area | Confidence | Reason |
+| Item | Status | Why it matters / suggested resolution |
 |---|---|---|
-| Link / token lifecycle (Pits 1–3) | HIGH | Two authoritative primary sources (Redis, Slack) plus explicit PRD text; the failure modes are mechanical |
-| Webhook reliability (Pits 5–8) | HIGH for the ordering and verification mechanics (Slack docs); MEDIUM for platform-specific Teams/Zalo behaviour | Two sources unreachable or unverified during this pass |
-| JEV routing (Pits 9–11) | MEDIUM | Mechanism is well-founded; the quantitative accuracy claim is unverified. Named as a required pre-Phase-4 research pass |
-| App Builder adoption (Pit 12) | MEDIUM | The connector-dependency argument is structural and certain (FR-C-2 + FR-C-10 + §12.4); the adoption-rate claims are judgement |
-| Hybrid routing (Pitfall 13) | HIGH | BullMQ's at-least-once semantics are documented; the three-state model is standard distributed-systems practice |
-| Version drift (Pitfall 14) | HIGH | Follows directly from a spec gap in §12.1 vs FR-F-12 |
-| Compliance (Pitfall 15) | HIGH on the conflict identification; the *legal* framing (legitimate interest for audit) should be confirmed by counsel, not by research | Two genuine requirement conflicts, named with an explicit winner |
-| Connectors (Pitfall 16) | HIGH | Follows from FR-C-4, §10.5's schema, and FR-C-10 |
-| Cache invalidation (Pitfall 17) | HIGH | Redis pub/sub has no delivery guarantee; the mechanism is not in dispute |
+| **Zalo OA webhook signature in the wild** | ⚠️ **Unverified against a live OA** | The formula is from official documentation, but the **exact field order** and whether `timeStamp` is a header or a body field has not been confirmed against a captured production request. **Resolve in Phase 11** with a captured request + expected digest, and freeze it as a test vector. |
+| **Zalo webhook disable: notification and detection** | ⚠️ **Unverified** | No evidence was found that Zalo notifies the app owner before disabling. The freshness probe (P2) is designed for exactly this uncertainty. |
+| **Zalo `X-ZEvent-Signature` hex vs. base64** | ⚠️ **Unverified** | Official docs read as hex. The implementation must accept the documented encoding and fail closed on anything else. |
+| **Zalo `listmember` vs. `listpendingmember` overlap** | ⚠️ **Unverified** | The `members[].user_id` field description mentions members "waiting in the group," which suggests overlap with the pending list. Confirm on a real OA before relying on either as the authoritative set. |
+| **Zalo OA rate limits** | ⚠️ **Not documented** | No published rate limit for OpenAPI or group endpoints. The Phase 11 client must be conservative and must not assume a specific quota. |
+| **Slack usergroups `include_users` page size and cost** | ⚠️ **Unverified** | The Tier 2 rate (~20 req/min) is documented; the page shape is not. Measure during the Phase 14 spike. |
+| **Graph `members@delta` removal behaviour in a live tenant** | ⚠️ **Documented as a limitation; not empirically re-tested here** | The blind spot is documented. Confirm the mitigation (periodic full reconciliation) is affordable at the target tenant size. |
+| **Telegram `update_id` randomisation, observed** | ⚠️ **Documented; not observed here** | The behaviour is in the official docs. A regression test should exercise the "gap > 7 days" path rather than assume it. |
+| **The AI guard's tool-catalogue accuracy-vs-size curve** | ⚠️ **Not measured** | The cap for `tools.length` (Pitfall 13) must be chosen from measurement on the v1 fixture set, not guessed. |
+| **Real per-tenant IM credential volume** | ⚠️ **Not modelled** | KMS-backed credential reads per request × tenant count × 3 platforms determines whether a credential cache is needed and what its TTL should be. Measure in Phase 16. |
 
 ---
 
-*Pitfalls research for: IM-driven enterprise workflow gateway (Slack/Teams/Zalo/Telegram → Redmine/HR/ERP, self-service FormIO.js App Builder, per-app RBAC, JEV-compatible decision layer, connector fan-out)*
-*Researched: 2026-10-01*
+*Pitfalls research for: IM-driven enterprise app builder — v2 platform expansion (Zalo OA, Telegram, two-way sync, group/directory RBAC, permission-first open-ended AI guard)*
+*Researched: 2026-10-21*

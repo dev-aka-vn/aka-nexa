@@ -152,6 +152,14 @@ export { ConnectorsModule } from './connectors/connectors.module.js';
 // entrypoint-drift gate forbids the worker from reaching any
 // adapters/<name>/inbound/ path. api imports them via the @akane/domain
 // subpath (see apps/api/src/adapters/teams/*).
+//
+// OUT-12's outbound ports are subpath-only for the mirror-image reason: the
+// `outbound-adapter` file category is worker-only (R1), and this barrel is in
+// the api's import closure, so re-exporting a port here would make api reach a
+// worker-only path *transitively* — `tooling/entrypoint-drift.spec.ts` asserts
+// exactly that and would fail. The worker imports
+// `@akane/domain/adapters/<platform>/outbound/<port>.js` directly; the subpath
+// mappings live in this package's exports.
 export {
   ConversationReferenceRepository,
   type ConversationReferenceRecord,
@@ -160,6 +168,42 @@ export {
 export { NotificationAssemblerService } from './notifications/notification-assembler.service.js';
 export type { NotificationAssembleResult } from './notifications/notification-assembler.service.js';
 export { NotificationsModule } from './notifications/notifications.module.js';
+// OUT-09/OUT-10/OUT-11: the neutral platform-event ledger. Also reachable via
+// the `platform-events/index.js` subpath for a consumer that wants only the
+// ledger. It is its own element type so both the api (dedupe write on the ack
+// path) and the worker (reconciler) can import it without touching an inbound
+// adapter, which the entrypoint-drift gate and R1 forbid the worker from doing.
+export {
+  PLATFORM_EVENT_COLLECTION,
+  PLATFORM_EVENT_RETENTION_DAYS,
+  PLATFORM_EVENT_STATES,
+  PlatformEventRepository,
+  type PlatformEventDocument,
+  type PlatformEventInput,
+  type PlatformEventInsertResult,
+  type PlatformEventRepositoryOptions,
+  type PlatformEventState,
+} from './platform-events/index.js';
+// OUT-03: the adapter-coverage declaration and its boot assertion. Exported
+// from the root barrel because every composition root needs it — `api` asserts
+// its inbound registrations, `worker` its outbound ones — and the two must
+// agree, which is only possible if both read the same declaration.
+export {
+  analyzeCoverage,
+  analyzeRegistrations,
+  assertAdapterCoverage,
+  assertRegistrations,
+  halfWiredPlatforms,
+  IM_ADAPTER_WIRING,
+  IM_PLATFORMS,
+  unwiredPlatforms,
+  wiredPlatforms,
+  wiringFor,
+  type AdapterCoverageViolation,
+  type AdapterRegistrations,
+  type AdapterRegistration,
+  type ImPlatformWiring,
+} from './adapters/coverage/im-adapter-coverage.js';
 export {
   ConnectorRateLimiter,
   ConnectorRateLimitedError,

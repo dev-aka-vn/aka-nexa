@@ -1,6 +1,7 @@
 import {
   INBOUND_ADAPTER_REGISTRATIONS,
   JOB_SCHEDULER_REGISTRATIONS,
+  OUTBOUND_DELIVERY_REGISTRATIONS,
   type BoundaryManifest,
 } from '@akane/platform';
 
@@ -36,6 +37,17 @@ import {
  * so the heartbeat queue resolves in this process on purpose — that is how the
  * consumer's queue name is kept from drifting away from a registered producer
  * (D-14). Forbidding it would forbid the consistency check itself.
+ *
+ * ## What is allowed here (10-07)
+ *
+ * `OUTBOUND_DELIVERY_REGISTRATIONS` — worker is the one process that may hold a
+ * live outbound delivery port, because delivery needs the
+ * `ConversationReferenceRepository` lookup and the platform SDK (OUT-12). Named
+ * in `allowed` following the api's D-37 pattern: a capability this process is
+ * *supposed* to hold is recorded by name for review, rather than being absent
+ * from the manifest and therefore unreviewed. (It is not in this app's
+ * `forbidden`, so `allowed` here documents the admission rather than creating an
+ * exception.)
  */
 export const WORKER_BOUNDARY_MANIFEST: BoundaryManifest = Object.freeze({
   app: 'worker',
@@ -43,4 +55,5 @@ export const WORKER_BOUNDARY_MANIFEST: BoundaryManifest = Object.freeze({
     INBOUND_ADAPTER_REGISTRATIONS,
     JOB_SCHEDULER_REGISTRATIONS,
   ]),
+  allowed: Object.freeze([OUTBOUND_DELIVERY_REGISTRATIONS]),
 });

@@ -20,6 +20,16 @@
       "types": "./dist/adapters/teams/inbound/data-access/teams-event.repository.d.ts",
       "import": "./dist/adapters/teams/inbound/data-access/teams-event.repository.js",
       "default": "./dist/adapters/teams/inbound/data-access/teams-event.repository.js"
+    },
+    "./adapters/teams/outbound/teams.outbound.port.js": {
+      "types": "./dist/adapters/teams/outbound/teams.outbound.port.d.ts",
+      "import": "./dist/adapters/teams/outbound/teams.outbound.port.js",
+      "default": "./dist/adapters/teams/outbound/teams.outbound.port.js"
+    },
+    "./adapters/slack/outbound/slack.outbound.port.js": {
+      "types": "./dist/adapters/slack/outbound/slack.outbound.port.d.ts",
+      "import": "./dist/adapters/slack/outbound/slack.outbound.port.js",
+      "default": "./dist/adapters/slack/outbound/slack.outbound.port.js"
     }
   }
 }

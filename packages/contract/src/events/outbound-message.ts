@@ -28,9 +28,14 @@ export type OutboundAction = z.infer<typeof OutboundActionSchema>;
 
 const opaqueId = z.string().min(1);
 
+const platformMetadataSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean()]),
+);
+
 export const OutboundMessageSchema = z
   .object({
-    /** Platform-assigned, unique per send attempt chain. */
+    /** Producer-generated, unique per outbound message, stable across delivery retries. */
     message_id: opaqueId,
     platform: ImPlatformSchema,
     channel_id: opaqueId,
@@ -45,6 +50,14 @@ export const OutboundMessageSchema = z
     attempt: z.number().int().nonnegative(),
     /** Deferred delivery. Absent means send now. */
     scheduled_for: z.string().datetime().optional(),
+    /** Thread identifier for threading context. */
+    thread_id: opaqueId.optional(),
+    /** Message id to reply to. */
+    reply_to_message_id: opaqueId.optional(),
+    /** Platform-native event/message id for ledger correlation. */
+    native_event_id: opaqueId.optional(),
+    /** Adapter-scoped, non-PII only; depth-1 primitives. Never log/span attributes. */
+    platform_metadata: platformMetadataSchema.optional(),
   })
   .strict();
 

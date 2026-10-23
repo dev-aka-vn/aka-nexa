@@ -63,6 +63,27 @@ describe('InboundEventSchema', () => {
   it('keeps a negative retry count out of the envelope', () => {
     expect(InboundEventSchema.safeParse({ ...INBOUND, attempt: -1 }).success).toBe(false);
   });
+
+  it('accepts optional threading and platform metadata fields', () => {
+    const result = InboundEventSchema.safeParse({
+      ...INBOUND,
+      thread_id: 'T123',
+      reply_to_message_id: 'msg_prev',
+      native_event_id: '1727859600.123456',
+      platform_metadata: { team_id: 'T01', is_ephemeral: true },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts depth-1 primitive platform_metadata values', () => {
+    const result = InboundEventSchema.safeParse({
+      ...INBOUND,
+      platform_metadata: { count: 1, enabled: false, label: 'ok' },
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('OutboundMessageSchema', () => {
@@ -83,5 +104,17 @@ describe('OutboundMessageSchema', () => {
     delete bodyless.text;
 
     expect(OutboundMessageSchema.safeParse(bodyless).success).toBe(false);
+  });
+
+  it('accepts optional threading and platform metadata fields', () => {
+    const result = OutboundMessageSchema.safeParse({
+      ...OUTBOUND,
+      thread_id: 'T123',
+      reply_to_message_id: 'msg_prev',
+      native_event_id: '1727859605.654321',
+      platform_metadata: { thread_ts: '1727859600.123456' },
+    });
+
+    expect(result.success).toBe(true);
   });
 });

@@ -6,9 +6,15 @@ import {
 } from '@microsoft/agents-hosting';
 import type { OutboundMessage } from '@akane/contract';
 import { ConversationReferenceRepository } from '@akane/domain';
+import type { TeamsOutboundPort } from '@akane/domain/adapters/teams/outbound/teams.outbound.port.js';
 
 export const TEAMS_CLOUD_ADAPTER = Symbol('TEAMS_CLOUD_ADAPTER');
 
+/**
+ * Lazily built holder around the Agents SDK CloudAdapter. Construction does not
+ * touch the environment; the adapter and auth config are built on first delivery
+ * so a module without Teams env vars still boots.
+ */
 export class TeamsCloudAdapterHolder {
   private authConfig?: AuthConfiguration;
   private adapter?: CloudAdapter;
@@ -69,8 +75,20 @@ export function isRetryableDeliveryError(error: unknown): boolean {
   return false;
 }
 
+/**
+ * The Teams outbound delivery implementation (OUT-12).
+ *
+ * Lives under `apps/worker/src/adapters/teams/outbound/` — the `outbound-adapter`
+ * boundary category R1 restricts to `app-worker` — because delivery needs the
+ * conversation-reference repository and the Agents SDK, neither of which the
+ * api request path may reach (T-10-06).
+ *
+ * Addressing comes from the envelope: `(platform, channel_id, chat_user_id)` is
+ * the conversation key, and it is platform-scoped so a second platform cannot
+ * collide with a Teams row (OUT-07).
+ */
 @Injectable()
-export class TeamsDeliveryService {
+export class TeamsDeliveryAdapter implements TeamsOutboundPort {
   constructor(
     private readonly convRefRepo: ConversationReferenceRepository,
     @Inject(TEAMS_CLOUD_ADAPTER)
@@ -105,7 +123,7 @@ export class TeamsDeliveryService {
       throw new Error(`Invalid platform for Teams delivery: ${message.platform}`);
     }
 
-    const key = ConversationReferenceRepository.key(message.channel_id, message.chat_user_id);
+    const key = ConversationReferenceRepository.key('teams', message.channel_id, message.chat_user_id);
     const ref = await this.convRefRepo.get(key);
     if (!ref) {
       throw new Error(
@@ -125,13 +143,5 @@ export class TeamsDeliveryService {
       }
       throw new Error(`Non-retryable Teams delivery error: ${String(error)}`);
     }
-  }
-
-  async deliver(message: OutboundMessage): Promise<void> {
-    await this.sendMessage(message);
-  }
-
-  async deliverToTeams(message: OutboundMessage): Promise<void> {
-    await this.sendMessage(message);
   }
 }

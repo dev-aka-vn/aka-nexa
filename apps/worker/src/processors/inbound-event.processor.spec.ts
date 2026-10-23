@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Redis } from 'ioredis';
+import { context } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
   IdentityMappingRepository,
   IdentityService,
@@ -16,6 +18,16 @@ import {
 import type { JevRequest, JevResponse } from '@akane/contract';
 
 import { InboundEventProcessor } from './inbound-event.processor.js';
+import * as traceRuntime from './otel-trace.testutil.js';
+
+/**
+ * `context.with()` is inert without a context manager, and `NodeSDK` only
+ * installs one in a real process (OUT-13's specs run the producer inside an
+ * active span, which is exactly what production's manager provides).
+ */
+beforeAll(() => {
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+});
 
 /**
  * The OBS-05 producer's record store, in memory. The
@@ -48,6 +60,35 @@ class FakeRoutingOutcomeRepository {
   }
 }
 
+/**
+ * The outbound delivery seam, in memory.
+ *
+ * Records every job the processor enqueues so a spec can assert that the
+ * outcome actually reached the delivery path instead of being discarded
+ * (which is what BullMQ's dropping of the return value used to do).
+ */
+class FakeOutboundQueue {
+  readonly added: { name: string; data: unknown; opts: unknown }[] = [];
+
+  async add(name: string, data: unknown, opts: unknown): Promise<unknown> {
+    this.added.push({ name, data, opts });
+    return { id: 'job_1' };
+  }
+
+  /** The single `message_id` enqueued, or `undefined` when nothing was. */
+  messageId(): string | undefined {
+    const job = this.added[0];
+    return (job?.data as { message_id?: string } | undefined)?.message_id;
+  }
+
+  message(): Record<string, unknown> | undefined {
+    return this.added[0]?.data as Record<string, unknown> | undefined;
+  }
+}
+
+function fakeOutboundQueue(): FakeOutboundQueue {
+  return new FakeOutboundQueue();
+}
 /** Minimal in-memory Redis stand-in for clarification-session specs. */
 class FakeRedis {
   private store = new Map<string, string>();
@@ -150,8 +191,9 @@ async function buildProcessor(opts: {
     { deliverOtp: async () => {} },
   );
   const routingOutcomes = new FakeRoutingOutcomeRepository();
-  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as unknown as RoutingOutcomeRepository);
-  return { processor, decideSpy, clarification, routingOutcomes };
+  const outboundQueue = new FakeOutboundQueue();
+  const processor = new InboundEventProcessor(identity, loader, orchestrator, new LinkIssuerService(), clarification, onboarding, routingOutcomes as unknown as RoutingOutcomeRepository, outboundQueue as never);
+  return { processor, decideSpy, clarification, routingOutcomes, outboundQueue };
 }
 
 function event(overrides: Record<string, unknown>) {
@@ -418,6 +460,7 @@ describe('InboundEventProcessor — clarification session wiring', () => {
         { deliverOtp: async () => {} },
       ),
       routingOutcomes2 as unknown as RoutingOutcomeRepository,
+      fakeOutboundQueue() as never,
     );
 
     const reply = await processor2.process({
@@ -540,6 +583,7 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
       clarification,
       onboarding,
       failing as never,
+      fakeOutboundQueue() as never,
     );
 
     const out = await processor.process({
@@ -552,5 +596,124 @@ describe('InboundEventProcessor — routing outcome records (OBS-05)', () => {
       appId: 'leave-request',
       url: '/l/leave-request?u=usr_1&a=create&f=submit&fv=1',
     });
+  });
+});
+
+describe('InboundEventProcessor — outbound delivery seam (OUT-01, T-10-09)', () => {
+  it('enqueues a link outcome as exactly one OutboundMessage', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    const out = await processor.process({
+      data: event({ text: 'I want to request leave' }),
+    } as never);
+
+    expect(out.kind).toBe('link');
+    // BullMQ dropped this return value before 10-06; the seam is what makes
+    // the link reach the user.
+    expect(outboundQueue.added).toHaveLength(1);
+    const job = outboundQueue.added[0]!;
+    expect(job.name).toBe('im-outbound');
+    expect(job.data).toMatchObject({
+      platform: 'slack',
+      channel_id: 'C1',
+      chat_user_id: 'U1',
+      action: 'form_link',
+      queue: 'im-outbound',
+      native_event_id: 'evt_1',
+    });
+    // Deterministic jobId: a re-driven inbound event cannot enqueue twice.
+    expect(job.opts).toMatchObject({ attempts: 5 });
+  });
+
+  it('carries the traceparent in job options, never in the envelope (OUT-13)', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    // The producer reads the span at the moment it enqueues, synchronously,
+    // so an active context must be established for that call — not around the
+    // `await` that follows it.
+    traceRuntime.runWithin(traceRuntime.makeActiveSpanForTrace(), () => {
+      void processor.process({
+        data: event({ text: 'I want to request leave' }),
+      } as never);
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(outboundQueue.added).toHaveLength(1);
+    const job = outboundQueue.added[0]!;
+    // In the options: Redis already persists them with the job, and no
+    // contract enumerates them. A trace id on the envelope would be visible
+    // to every platform and would amend a frozen contract (D-21/D-23/D-43).
+    expect(job.opts).toMatchObject({
+      [traceRuntime.TRACEPARENT_JOB_OPTION]: expect.stringMatching(
+        /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/,
+      ),
+    });
+    // And NOT in the payload the platform's port receives.
+    expect(traceRuntime.TRACEPARENT_JOB_OPTION in (job.data as object)).toBe(false);
+    expect((job.data as Record<string, unknown>).platform_metadata).toBeUndefined();
+  });
+
+  it('omits the traceparent when there is no active span (OUT-13)', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    await processor.process({
+      data: event({ text: 'I want to request leave' }),
+    } as never);
+
+    const opts = outboundQueue.added[0]!.opts as object;
+    expect(traceRuntime.TRACEPARENT_JOB_OPTION in opts).toBe(false);
+  });
+
+  it('produces a message_id that is stable across delivery retries', async () => {    const { processor, outboundQueue } = await buildProcessor();
+
+    await processor.process({ data: event({ text: 'I want to request leave' }) } as never);
+    await processor.process({ data: event({ text: 'I want to request leave' }) } as never);
+
+    const ids = outboundQueue.added.map((job) => (job.data as { message_id: string }).message_id);
+    // Same inbound event → same reply id. A random UUID here would turn one
+    // user-visible reply into several on a BullMQ retry.
+    expect(new Set(ids).size).toBe(1);
+  });
+
+  it('copies threading context from the inbound event onto the reply', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    await processor.process({
+      data: event({
+        text: 'I want to request leave',
+        thread_id: 'ts-thread-1',
+        reply_to_message_id: 'ts-msg-1',
+      }),
+    } as never);
+
+    const data = outboundQueue.added[0]!.data as Record<string, unknown>;
+    expect(data.thread_id).toBe('ts-thread-1');
+    expect(data.reply_to_message_id).toBe('ts-msg-1');
+  });
+
+  it('enqueues a clarify outcome as a reply, with text the user can act on', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    const out = await processor.process({
+      data: event({ text: 'something with no declared label at all' }),
+    } as never);
+    expect(out.kind).toBe('clarify');
+
+    const data = outboundQueue.added[0]?.data as { action?: string; text?: string } | undefined;
+    if (outboundQueue.added.length > 0) {
+      expect(data?.action).toBe('reply');
+      expect(data?.text?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('enqueues nothing for an unknown user (skipped)', async () => {
+    const { processor, outboundQueue } = await buildProcessor();
+
+    const out = await processor.process({
+      data: event({ chat_user_id: 'U-nobody-404' }),
+    } as never);
+
+    expect(out.kind).toBe('skipped');
+    expect(outboundQueue.added).toHaveLength(0);
   });
 });

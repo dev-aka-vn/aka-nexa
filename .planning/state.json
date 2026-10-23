@@ -1,58 +1,53 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": null,
+  "milestone": "v2.0 — Platform Expansion & Advanced Capabilities",
   "phases": [
     {
-      "number": "1",
-      "name": "Foundations & Platform",
-      "status": "complete"
-    },
-    {
-      "number": "2",
-      "name": "The Vertical Slice",
+      "number": "10",
+      "name": "Outbound Delivery Seam & Event Contract",
       "status": "in_progress"
     },
     {
-      "number": "3",
-      "name": "Natural-Language Routing",
-      "status": "in_progress"
-    },
-    {
-      "number": "4",
-      "name": "Read Path & Query DSL",
-      "status": "in_progress"
-    },
-    {
-      "number": "5",
-      "name": "Integration & Async Execution",
-      "status": "in_progress"
-    },
-    {
-      "number": "6",
-      "name": "Self-Service App Builder",
-      "status": "complete"
-    },
-    {
-      "number": "7",
-      "name": "Multi-Form Apps & Per-Form Triggers",
-      "status": "complete"
-    },
-    {
-      "number": "8",
-      "name": "Multi-IM Expansion & Two-Way Sync",
+      "number": "11",
+      "name": "Real Authorization & Persistent Identity",
       "status": "pending"
     },
     {
-      "number": "9",
-      "name": "Production Readiness",
+      "number": "12",
+      "name": "Telegram Adapter",
+      "status": "pending"
+    },
+    {
+      "number": "13",
+      "name": "Zalo OA Adapter",
+      "status": "pending"
+    },
+    {
+      "number": "14",
+      "name": "Two-Way Synchronisation & Delivery Semantics",
+      "status": "pending"
+    },
+    {
+      "number": "15",
+      "name": "Directory & Group RBAC Sync",
+      "status": "pending"
+    },
+    {
+      "number": "16",
+      "name": "Permission-First Open-Ended AI Guard",
+      "status": "pending"
+    },
+    {
+      "number": "17",
+      "name": "Security, Compliance & Operations",
       "status": "pending"
     }
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 8)",
-    "reason": "Phase 8 of 9 — needs a plan"
+    "label": "Advance to the next step (plan phase 10)",
+    "reason": "Phase 10 of 8 — needs a plan"
   },
-  "updated_at": "2026-10-18T16:32:22.344Z"
+  "updated_at": "2026-10-22T09:46:21.062Z"
 }
